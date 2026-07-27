@@ -9,18 +9,25 @@ export default function Home() {
 
   const [partyCode, setPartyCode] = useState("");
 
-  function createParty() {
+ async function createParty() {
+  console.log("Bouton cliqué");
 
-    const code =
-      "MX" +
-      Math.random()
-        .toString(36)
-        .substring(2, 6)
-        .toUpperCase();
+  try {
+    const response = await fetch("http://192.168.1.21:4000/party", {
+      method: "POST",
+    });
 
-    router.push(`/party/${code}`);
+    const party = await response.json();
+
+    alert("Soirée créée : " + party.code);
+
+    router.push(`/party/${party.code}`);
+
+  } catch (error) {
+    console.error(error);
+    alert("Erreur API");
   }
-
+}
 
   return (
     <main className="min-h-screen bg-[#09090B] text-white flex items-center justify-center px-6">
@@ -30,23 +37,30 @@ export default function Home() {
         <h1 className="text-6xl font-bold mb-6">
           🎵 MixParty
         </h1>
-
+<p className="text-red-500">
+  VERSION TEST BENJI
+</p>
 
         <p className="text-gray-400 text-xl mb-10">
           La playlist collaborative de vos soirées
         </p>
 
 
-        <button
-          onClick={createParty}
-          className="bg-[#1DB954] text-black font-bold px-10 py-4 rounded-full text-lg mb-8"
-        >
-          🎉 Créer une soirée
-        </button>
+       <button
+  onClick={() => {
+    alert("BOUTON OK");
+    createParty();
+  }}
+  className="bg-[#1DB954] text-black font-bold px-10 py-4 rounded-full text-lg mb-8"
+>
+  🎉 Créer une soirée
+</button>
 
 
         <div className="flex gap-3">
-
+<p className="text-red-500">
+  PAGE ACCUEIL TEST
+</p>
           <input
             placeholder="Code de soirée"
             value={partyCode}
@@ -56,15 +70,14 @@ export default function Home() {
 
 
           <button
-            onClick={()=>{
-              if(partyCode){
-                router.push(`/party/${partyCode}`);
-              }
-            }}
-            className="bg-[#8B5CF6] px-6 rounded-xl font-bold"
-          >
-            Rejoindre
-          </button>
+  type="button"
+  onClick={() => {
+    alert("CLIC REJOINDRE");
+  }}
+  className="bg-red-600 px-6 py-4 rounded-xl font-bold"
+>
+  Rejoindre
+</button>
 
         </div>
 
