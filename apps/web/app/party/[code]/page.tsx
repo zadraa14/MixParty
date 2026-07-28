@@ -22,10 +22,14 @@ export default function PartyPage() {
 
   const [party, setParty] = useState<Party | null>(null);
 
-  const [name, setName] = useState("");
-  const [playerName, setPlayerName] = useState("");
+ const [name, setName] = useState("");
+const [playerName, setPlayerName] = useState("");
 
-  const [song, setSong] = useState("");
+const [song, setSong] = useState("");
+
+const [search, setSearch] = useState("");
+
+const [results, setResults] = useState<any[]>([]);
 
 
   // Charger le prénom sauvegardé
@@ -171,7 +175,66 @@ export default function PartyPage() {
     setSong("");
 
   }
+async function searchYoutube(){
 
+  if(!search.trim()) return;
+
+
+  try {
+
+    const response = await fetch(
+      `http://192.168.1.21:4000/search/youtube?q=${encodeURIComponent(search)}`
+    );
+
+
+    const data = await response.json();
+
+
+    setResults(data);
+
+
+  } catch(error){
+
+    console.error(
+      "Erreur recherche YouTube",
+      error
+    );
+
+  }
+
+}
+
+
+
+async function addYoutubeSong(video:any){
+
+
+  const response = await fetch(
+    `http://192.168.1.21:4000/party/${code}/song`,
+    {
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({
+
+        song:video.title,
+
+        addedBy:
+          playerName || "Inconnu"
+
+      })
+    }
+  );
+
+
+  const updated = await response.json();
+
+
+  setParty(updated);
+
+
+}
 
 
 
@@ -354,14 +417,13 @@ Rejoindre
 
 <div className="flex gap-3 mb-5">
 
-
 <input
 
-value={song}
+value={search}
 
-onChange={(e)=>setSong(e.target.value)}
+onChange={(e)=>setSearch(e.target.value)}
 
-placeholder="Nom de la chanson"
+placeholder="Rechercher une musique YouTube"
 
 className="flex-1 bg-[#27272A] rounded-xl p-3"
 
@@ -370,13 +432,54 @@ className="flex-1 bg-[#27272A] rounded-xl p-3"
 
 <button
 
-onClick={addSong}
+onClick={searchYoutube}
 
 className="bg-[#1DB954] text-black font-bold px-5 rounded-xl"
 
 >
 
-Ajouter
+🔎 Chercher
+
+</button>
+
+
+</div>
+
+{
+results.map((video)=>(
+  
+<div
+key={video.id}
+className="bg-[#27272A] rounded-xl p-3 mb-3 flex gap-3 items-center"
+>
+
+
+<img
+
+src={video.thumbnail}
+
+className="w-32 rounded-lg"
+
+/>
+
+
+<div className="flex-1">
+
+
+<p className="font-bold">
+{video.title}
+</p>
+
+
+<button
+
+onClick={()=>addYoutubeSong(video)}
+
+className="bg-[#8B5CF6] text-white px-4 py-2 rounded-xl mt-2"
+
+>
+
+➕ Ajouter
 
 </button>
 
@@ -384,6 +487,11 @@ Ajouter
 </div>
 
 
+</div>
+
+
+))
+}
 
 
 
