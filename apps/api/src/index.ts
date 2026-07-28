@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
-
+import fs from "fs";
 dotenv.config();
 
 console.log(
@@ -26,20 +26,40 @@ app.use(express.json());
 
 
 type Song = {
-  title: string;
-  votes: number;
-  addedBy: string;
+  title:string;
+  videoId:string;
+  thumbnail:string;
+  votes:number;
+  addedBy:string;
+  voters:string[];
+  played:boolean;
+  addedAt:number;
 };
 
 
 type Party = {
   code: string;
   songs: Song[];
+  history: Song[];
   participants: string[];
+  currentSong: Song | null;
+  createdAt: number;
 };
 
+let parties: Party[] = [];
 
-const parties: Party[] = [];
+if(fs.existsSync("data.json")){
+
+  const data = fs.readFileSync(
+    "data.json",
+    "utf-8"
+  );
+
+  parties = JSON.parse(data);
+
+  cleanOldParties();
+
+}
 
 
 
@@ -63,8 +83,38 @@ function findParty(code:string) {
 }
 
 
+function saveParties(){
+
+  fs.writeFileSync(
+    "data.json",
+    JSON.stringify(parties, null, 2)
+  );
+
+}
+
+
+function cleanOldParties(){
+
+  const now = Date.now();
+
+  parties = parties.filter((party)=>{
+
+    if(!party.createdAt){
+      party.createdAt = now;
+    }
+
+    return now - party.createdAt < 24 * 60 * 60 * 1000;
+
+  });
+
+
+  saveParties();
+
+}
 
 function updateParty(party:Party) {
+
+  saveParties();
 
   io.emit(
     "party_updated",
@@ -101,21 +151,28 @@ app.get("/party", (req,res)=>{
 app.post("/party",(req,res)=>{
 
 
-  const party:Party = {
+const party:Party = {
 
-    code:generateCode(),
+  code: generateCode(),
 
-    songs:[],
+  songs: [],
 
-    participants:[]
+  history: [],
 
-  };
+  participants: [],
+
+  currentSong: null,
+
+  createdAt: Date.now()
+
+};
 
 
-  parties.push(party);
+parties.push(party);
 
+saveParties();
 
-  res.json(party);
+res.json(party);
 
 });
 
@@ -165,7 +222,7 @@ app.post("/party/:code/join",(req,res)=>{
 
 
 
-  const {name} = req.body;
+  const name = req.body.name?.trim();
 
 
 
@@ -218,9 +275,11 @@ app.post("/party/:code/song",(req,res)=>{
 
 
   const {
-    song,
-    addedBy
-  } = req.body;
+  song,
+  videoId,
+  thumbnail,
+  addedBy
+} = req.body;
 
 
 
@@ -233,16 +292,26 @@ app.post("/party/:code/song",(req,res)=>{
   }
 
 
+console.log("CHANSON RECUE API :", req.body);
+party.songs.push({
 
-  party.songs.push({
+  title: song,
 
-    title:song,
+  videoId: videoId || "",
 
-    votes:0,
+  thumbnail: thumbnail || "",
 
-    addedBy: addedBy || "Inconnu"
+  votes: 0,
 
-  });
+  addedBy: addedBy || "Inconnu",
+
+  voters: [],
+
+  played:false,
+
+  addedAt: Date.now()
+
+});
 
 
 
@@ -257,10 +326,10 @@ app.post("/party/:code/song",(req,res)=>{
 
 
 
-
 // Voter pour une chanson
 app.post("/party/:code/song/:index/vote",(req,res)=>{
 
+  console.log("========== ROUTE VOTE ==========");
 
   const party = findParty(
     req.params.code
@@ -297,6 +366,34 @@ app.post("/party/:code/song/:index/vote",(req,res)=>{
 
 
 
+  const name = req.body.name?.trim().toLowerCase();
+console.log("Vote reçu de :", name);
+console.log("Votants actuels :", song.voters);
+console.log("Nom reçu :", JSON.stringify(name));
+console.log("Résultat includes :", song.voters.includes(name));
+
+  if(!name){
+
+    return res.status(400).json({
+      error:"Nom obligatoire"
+    });
+
+  }
+
+
+
+  if(song.voters.includes(name)){
+
+    return res.status(400).json({
+      error:"Tu as déjà voté pour cette chanson"
+    });
+
+  }
+
+
+
+  song.voters.push(name);
+
   song.votes++;
 
 
@@ -313,6 +410,123 @@ app.post("/party/:code/song/:index/vote",(req,res)=>{
 
 
 
+// Lire une chanson
+app.post("/party/:code/play/:index",(req,res)=>{
+
+  console.log("========== PLAY ==========");
+  console.log("CODE :", req.params.code);
+  console.log("INDEX :", req.params.index);
+
+  const party = findParty(req.params.code);
+
+
+  if(!party){
+
+    return res.status(404).json({
+      error:"Soirée introuvable"
+    });
+
+  }
+
+
+  const index = Number(
+    req.params.index
+  );
+
+
+  const song = party.songs[index];
+
+
+  if(!song){
+
+    return res.status(404).json({
+      error:"Chanson introuvable"
+    });
+
+  }
+
+
+  party.currentSong = song;
+
+
+  updateParty(party);
+
+
+  res.json(party);
+
+
+});
+
+// Lancer DJ automatique
+app.post("/party/:code/next",(req,res)=>{
+
+  console.log("========== DJ NEXT ==========");
+
+  const party = findParty(req.params.code);
+
+
+  if(!party){
+
+    return res.status(404).json({
+      error:"Soirée introuvable"
+    });
+
+  }
+
+
+  if(!party.history){
+    party.history = [];
+  }
+
+
+  if(party.currentSong){
+
+    party.history.push(
+      party.currentSong
+    );
+
+  }
+
+
+
+  const nextSong = party.songs
+.filter(song=>!song.played)
+.sort((a,b)=>{
+
+  if(b.votes !== a.votes){
+
+    return b.votes - a.votes;
+
+  }
+
+
+  return a.addedAt - b.addedAt;
+
+})[0];
+
+
+
+  if(!nextSong){
+
+    return res.status(400).json({
+      error:"Plus de chansons disponibles"
+    });
+
+  }
+
+
+
+  nextSong.played = true;
+
+  party.currentSong = nextSong;
+
+
+  updateParty(party);
+
+
+  res.json(party);
+
+});
 // Socket connexion
 io.on("connection",(socket)=>{
 
