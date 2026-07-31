@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:xlink="http://www.w3.org/1999/xlink"
+     viewBox="0 0 1600 1000"
+     width="1600"
+     height="1000"
+     role="img"
+     aria-labelledby="title desc">
+
+  <title id="title">Logo musique néon vectoriel</title>
+  <desc id="desc">
+    Logo transparent avec cadre arrondi, cercle central, double note de musique centrée
+    et barres d'égaliseur parfaitement symétriques.
+  </desc>
+
+  <defs>
+    <!-- Dégradé principal -->
+    <linearGradient id="gradientMain" x1="0%" y1="20%" x2="100%" y2="80%">
+      <stop offset="0%" stop-color="#7627FF"/>
+      <stop offset="27%" stop-color="#B813FF"/>
+      <stop offset="49%" stop-color="#F000D8"/>
+      <stop offset="67%" stop-color="#FF247E"/>
+      <stop offset="84%" stop-color="#FF6A19"/>
+      <stop offset="100%" stop-color="#FFB000"/>
+    </linearGradient>
+
+    <!-- Dégradé de la note -->
+    <linearGradient id="gradientNote" x1="15%" y1="5%" x2="85%" y2="95%">
+      <stop offset="0%" stop-color="#C513FF"/>
+      <stop offset="42%" stop-color="#F100D3"/>
+      <stop offset="70%" stop-color="#FF3473"/>
+      <stop offset="100%" stop-color="#FF9900"/>
+    </linearGradient>
+
+    <!-- Lueur légère -->
+    <filter id="glow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="blur"/>
+      <feColorMatrix in="blur" type="matrix"
+        values="1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 0.75 0"
+        result="softGlow"/>
+      <feMerge>
+        <feMergeNode in="softGlow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Ombre interne subtile -->
+    <filter id="innerHighlight" x="-10%" y="-10%" width="120%" height="120%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.8" result="blur"/>
+      <feSpecularLighting in="blur"
+        surfaceScale="2"
+        specularConstant="0.45"
+        specularExponent="18"
+        lighting-color="#FFFFFF"
+        result="specular">
+        <feDistantLight azimuth="225" elevation="55"/>
+      </feSpecularLighting>
+      <feComposite in="specular" in2="SourceAlpha" operator="in" result="specularClip"/>
+      <feComposite in="SourceGraphic" in2="specularClip" operator="arithmetic"
+                   k1="1" k2="1" k3="0" k4="0"/>
+    </filter>
+  </defs>
+
+  <!-- Fond volontairement transparent -->
+
+  <!-- Cadre extérieur -->
+  <rect x="340" y="105"
+        width="920" height="790"
+        rx="165" ry="165"
+        fill="none"
+        stroke="url(#gradientMain)"
+        stroke-width="12"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        filter="url(#glow)"/>
+
+  <!-- Cercle central parfaitement centré -->
+  <circle cx="800" cy="500" r="326"
+          fill="none"
+          stroke="url(#gradientMain)"
+          stroke-width="40"
+          filter="url(#glow)"/>
+
+  <!-- Double note de musique centrée -->
+  <g id="music-note"
+     fill="url(#gradientNote)"
+     filter="url(#glow)">
+
+    <!-- Deux têtes identiques -->
+    <circle cx="680" cy="635" r="72"/>
+    <circle cx="920" cy="635" r="72"/>
+
+    <!-- Deux hampes identiques -->
+    <rect x="728" y="330"
+          width="42" height="310"
+          rx="20" ry="20"/>
+    <rect x="968" y="275"
+          width="42" height="365"
+          rx="20" ry="20"/>
+
+    <!-- Barre supérieure -->
+    <path d="
+      M749 330
+      L989 275
+      Q1010 270 1010 292
+      L1010 345
+      L770 400
+      L770 350
+      Q770 335 749 330
+      Z"/>
+  </g>
+
+  <!-- Égaliseur gauche -->
+  <g id="equalizer-left"
+     fill="url(#gradientMain)"
+     filter="url(#glow)">
+    <rect x="105" y="466" width="24" height="68" rx="12"/>
+    <rect x="160" y="425" width="26" height="150" rx="13"/>
+    <rect x="218" y="370" width="28" height="260" rx="14"/>
+    <rect x="278" y="310" width="30" height="380" rx="15"/>
+    <rect x="330" y="365" width="28" height="270" rx="14"/>
+  </g>
+
+  <!-- Égaliseur droit : miroir exact -->
+  <g id="equalizer-right"
+     fill="url(#gradientMain)"
+     filter="url(#glow)"
+     transform="translate(1600 0) scale(-1 1)">
+    <rect x="105" y="466" width="24" height="68" rx="12"/>
+    <rect x="160" y="425" width="26" height="150" rx="13"/>
+    <rect x="218" y="370" width="28" height="260" rx="14"/>
+    <rect x="278" y="310" width="30" height="380" rx="15"/>
+    <rect x="330" y="365" width="28" height="270" rx="14"/>
+  </g>
+
+</svg>

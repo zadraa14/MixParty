@@ -4,24 +4,29 @@ import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import fs from "fs";
+import path from "path";
+import { randomUUID } from "crypto";
 dotenv.config();
 
-console.log(
-  "CLE YOUTUBE PRESENTE :",
-  process.env.YOUTUBE_API_KEY?.substring(0,10)
-);
 
 
 const app = express();
+const port = Number(process.env.PORT ?? 4000);
+const dataFilePath = path.resolve(process.cwd(), "data.json");
+const configuredOrigins = process.env.CORS_ORIGINS
+  ?.split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const corsOrigin = configuredOrigins?.length ? configuredOrigins : true;
 const httpServer = createServer(app);
 
 const io = new Server(httpServer, {
   cors: {
-    origin: "*",
+    origin: corsOrigin,
   },
 });
 
-app.use(cors());
+app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 
 
@@ -37,25 +42,36 @@ type Song = {
 };
 
 
+type Participant = { id:string; name:string; avatar?:string; lastSeen:number };
+
 type Party = {
   code: string;
   songs: Song[];
   history: Song[];
-  participants: string[];
+  participants: Participant[];
   currentSong: Song | null;
   createdAt: number;
+  creatorToken: string;
 };
 
 let parties: Party[] = [];
 
-if(fs.existsSync("data.json")){
+if(fs.existsSync(dataFilePath)){
 
   const data = fs.readFileSync(
-    "data.json",
+    dataFilePath,
     "utf-8"
   );
 
   parties = JSON.parse(data);
+  parties.forEach((party:any) => {
+    party.participants = (party.participants || []).map((participant:any, index:number) =>
+      typeof participant === "string"
+        ? { id: `legacy-${index}-${participant}`, name: participant, lastSeen: 0 }
+        : { ...participant, lastSeen: Number(participant.lastSeen || 0) }
+    );
+    party.creatorToken = typeof party.creatorToken === "string" && party.creatorToken ? party.creatorToken : randomUUID();
+  });
 
   cleanOldParties();
 
@@ -86,7 +102,7 @@ function findParty(code:string) {
 function saveParties(){
 
   fs.writeFileSync(
-    "data.json",
+    dataFilePath,
     JSON.stringify(parties, null, 2)
   );
 
@@ -112,15 +128,22 @@ function cleanOldParties(){
 
 }
 
-function updateParty(party:Party) {
-
-  saveParties();
-
-  io.emit(
-    "party_updated",
-    party
+function pruneOfflineParticipants(party: Party) {
+  const cutoff = Date.now() - 30_000;
+  party.participants = (party.participants || []).filter(
+    (participant) => Number(participant.lastSeen || 0) >= cutoff
   );
+}
 
+function toPublicParty(party: Party) {
+  const { creatorToken: _creatorToken, ...publicParty } = party;
+  return publicParty;
+}
+
+function updateParty(party:Party) {
+  pruneOfflineParticipants(party);
+  saveParties();
+  io.emit("party_updated", toPublicParty(party));
 }
 
 
@@ -163,7 +186,9 @@ const party:Party = {
 
   currentSong: null,
 
-  createdAt: Date.now()
+  createdAt: Date.now(),
+
+  creatorToken: randomUUID()
 
 };
 
@@ -172,7 +197,7 @@ parties.push(party);
 
 saveParties();
 
-res.json(party);
+res.json({ ...toPublicParty(party), creatorToken: party.creatorToken });
 
 });
 
@@ -196,7 +221,8 @@ app.get("/party/:code",(req,res)=>{
   }
 
 
-  res.json(party);
+  pruneOfflineParticipants(party);
+  res.json(toPublicParty(party));
 
 
 });
@@ -236,10 +262,16 @@ app.post("/party/:code/join",(req,res)=>{
 
 
 
-  if(!party.participants.includes(name)){
+  const participantId = req.body.id || `guest-${name.toLowerCase()}`;
+  const avatar = typeof req.body.avatar === "string" ? req.body.avatar : undefined;
+  const existingParticipant = party.participants.find((participant) => participant.id === participantId);
 
-    party.participants.push(name);
-
+  if(existingParticipant){
+    existingParticipant.name = name;
+    existingParticipant.avatar = avatar || existingParticipant.avatar;
+    existingParticipant.lastSeen = Date.now();
+  } else {
+    party.participants.push({ id: participantId, name, avatar, lastSeen: Date.now() });
   }
 
 
@@ -247,13 +279,46 @@ app.post("/party/:code/join",(req,res)=>{
   updateParty(party);
 
 
-  res.json(party);
+  res.json(toPublicParty(party));
 
 
 });
 
 
 
+
+
+// Maintenir un participant en ligne
+app.post("/party/:code/presence", (req, res) => {
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  const id = String(req.body.id || "").trim();
+  const name = String(req.body.name || "").trim();
+  const avatar = typeof req.body.avatar === "string" ? req.body.avatar : undefined;
+  if (!id || !name) return res.status(400).json({ error: "Participant invalide" });
+
+  const participant = party.participants.find((item) => item.id === id);
+  if (participant) {
+    participant.name = name;
+    participant.avatar = avatar || participant.avatar;
+    participant.lastSeen = Date.now();
+  } else {
+    party.participants.push({ id, name, avatar, lastSeen: Date.now() });
+  }
+
+  updateParty(party);
+  res.json(toPublicParty(party));
+});
+
+app.post("/party/:code/leave", (req, res) => {
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+  const id = String(req.body.id || "").trim();
+  party.participants = party.participants.filter((participant) => participant.id !== id);
+  updateParty(party);
+  res.json(toPublicParty(party));
+});
 
 // Ajouter une chanson
 app.post("/party/:code/song",(req,res)=>{
@@ -319,7 +384,7 @@ party.songs.push({
 
 
 
-  res.json(party);
+  res.json(toPublicParty(party));
 
 
 });
@@ -402,7 +467,7 @@ console.log("Résultat includes :", song.voters.includes(name));
 
 
 
-  res.json(party);
+  res.json(toPublicParty(party));
 
 
 });
@@ -452,7 +517,7 @@ app.post("/party/:code/play/:index",(req,res)=>{
   updateParty(party);
 
 
-  res.json(party);
+  res.json(toPublicParty(party));
 
 
 });
@@ -524,11 +589,53 @@ app.post("/party/:code/next",(req,res)=>{
   updateParty(party);
 
 
-  res.json(party);
+  res.json(toPublicParty(party));
 
 });
 // Socket connexion
+const playbackControllers = new Map<string, string>();
+
 io.on("connection",(socket)=>{
+
+  socket.on("join_party_room", (payload: string | { code?: string; creatorToken?: string }) => {
+    const rawCode = typeof payload === "string" ? payload : payload?.code;
+    const providedCreatorToken = typeof payload === "object" ? String(payload?.creatorToken || "") : "";
+    const code = String(rawCode || "").toUpperCase();
+    if (!code) return;
+
+    socket.join(`party:${code}`);
+
+    const party = findParty(code);
+    const isCreator = Boolean(
+      party && providedCreatorToken && providedCreatorToken === party.creatorToken
+    );
+
+    if (isCreator) {
+      playbackControllers.set(code, socket.id);
+    }
+
+    socket.emit("playback_role", {
+      controller: isCreator && playbackControllers.get(code) === socket.id,
+    });
+  });
+
+  socket.on("request_playback_sync", (rawCode: string) => {
+    const code = String(rawCode || "").toUpperCase();
+    const controllerId = playbackControllers.get(code);
+    if (controllerId) io.to(controllerId).emit("provide_playback_sync");
+  });
+
+  socket.on("playback_sync", (payload: any) => {
+    const code = String(payload?.code || "").toUpperCase();
+    if (!code || playbackControllers.get(code) !== socket.id) return;
+    socket.to(`party:${code}`).emit("playback_sync", {
+      code,
+      videoId: String(payload.videoId || ""),
+      state: Number(payload.state),
+      time: Number(payload.time || 0),
+    });
+  });
+
 
   console.log(
     "Client connecté",
@@ -537,6 +644,9 @@ io.on("connection",(socket)=>{
 
 
   socket.on("disconnect",()=>{
+    for (const [partyCode, controllerId] of playbackControllers.entries()) {
+      if (controllerId === socket.id) playbackControllers.delete(partyCode);
+    }
 
     console.log(
       "Client déconnecté",
@@ -613,16 +723,13 @@ app.get("/search/youtube", async (req, res) => {
 
 });
 
-const PORT = 4000;
-
-
 httpServer.listen(
-  PORT,
+  port,
   "0.0.0.0",
   ()=>{
     
     console.log(
-      `API démarrée sur http://0.0.0.0:${PORT}`
+      `API MixParty démarrée sur http://localhost:${port}`
     );
 
   }

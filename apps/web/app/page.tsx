@@ -1,142 +1,85 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import MixPartyBackground from "../components/MixPartyBackground";
+import MixPartyFooter from "../components/MixPartyFooter";
+import MixPartyHeader from "../components/MixPartyHeader";
+import MixPartyHero from "../components/MixPartyHero";
+import MixPartyLoader from "../components/MixPartyLoader";
+import PartyCard from "../components/PartyCard";
+import { getApiBaseUrl } from "../lib/config";
 
 export default function Home() {
-
   const router = useRouter();
-
   const [partyCode, setPartyCode] = useState("");
+  const [creatingParty, setCreatingParty] = useState(false);
+  const [showLoader, setShowLoader] = useState(true);
+  const [loaderVisible, setLoaderVisible] = useState(true);
 
+  useEffect(() => {
+    const fadeTimer = window.setTimeout(() => setLoaderVisible(false), 1800);
+    const removeTimer = window.setTimeout(() => setShowLoader(false), 2300);
+
+    return () => {
+      window.clearTimeout(fadeTimer);
+      window.clearTimeout(removeTimer);
+    };
+  }, []);
 
   async function createParty() {
+    if (creatingParty) return;
+    setCreatingParty(true);
 
     try {
-
-      const response = await fetch(
-        "http://192.168.1.21:4000/party",
-        {
-          method: "POST",
-        }
-      );
-
-
-      const party = await response.json();
-
-
+      const response = await fetch(`${getApiBaseUrl()}/party`, { method: "POST" });
+      if (!response.ok) throw new Error(`Erreur API ${response.status}`);
+      const party = (await response.json()) as { code?: string; creatorToken?: string };
+      if (!party.code || !party.creatorToken) throw new Error("La réponse de création est incomplète.");
+      localStorage.setItem(`mixparty_creator_${party.code}`, party.creatorToken);
       router.push(`/party/${party.code}`);
-
-
     } catch (error) {
-
       console.error(error);
-      alert("Erreur API");
-
+      window.alert("Impossible de créer la soirée. Vérifie que l’API est démarrée.");
+      setCreatingParty(false);
     }
-
   }
-
-
 
   function joinParty() {
-
-    if (!partyCode.trim()) {
-
-      alert("Entre un code de soirée");
+    const normalizedCode = partyCode.trim().toUpperCase();
+    if (!normalizedCode) {
+      window.alert("Entre un code de soirée");
       return;
-
     }
-
-
-    router.push(
-      `/party/${partyCode.toUpperCase()}`
-    );
-
+    router.push(`/party/${normalizedCode}`);
   }
 
-
-
   return (
+    <>
+      {showLoader && <MixPartyLoader visible={loaderVisible} />}
 
-    <main className="min-h-screen bg-[#09090B] text-white flex items-center justify-center px-6">
+      <main className="relative isolate min-h-screen overflow-hidden bg-[#070711] text-white">
+        <MixPartyBackground />
 
+        <div className="relative z-10 mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-5 sm:px-6 lg:px-8">
+          <MixPartyHeader />
 
-      <div className="text-center max-w-xl">
-
-
-        <h1 className="text-6xl font-bold mb-6">
-          🎵 MixParty
-        </h1>
-
-
-        <p className="text-xl text-gray-300 mb-10">
-          La playlist collaborative de vos soirées.
-          <br />
-          Une seule playlist, tous les amis aux commandes.
-        </p>
-
-
-
-        <div className="flex flex-col gap-4">
-
-
-          <button
-
-            onClick={createParty}
-
-            className="bg-[#1DB954] hover:opacity-90 text-black font-bold px-8 py-4 rounded-full"
-
-          >
-
-            🎉 Créer une soirée
-
-          </button>
-
-
-
-
-          <div className="flex gap-3">
-
-
-            <input
-
-              placeholder="Code de soirée"
-
-              value={partyCode}
-
-              onChange={(e)=>setPartyCode(e.target.value)}
-
-              className="flex-1 bg-[#18181B] rounded-xl p-4"
-
-            />
-
-
-
-            <button
-
-              onClick={joinParty}
-
-              className="bg-[#8B5CF6] hover:opacity-90 text-white font-bold px-8 py-4 rounded-full"
-
-            >
-
-              📱 Rejoindre
-
-            </button>
-
-
+          <div className="flex flex-1 items-center py-12 lg:py-16">
+            <div className="grid w-full items-center gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
+              <MixPartyHero />
+              <PartyCard
+                partyCode={partyCode}
+                creatingParty={creatingParty}
+                onPartyCodeChange={setPartyCode}
+                onCreateParty={createParty}
+                onJoinParty={joinParty}
+              />
+            </div>
           </div>
 
-
+          <MixPartyFooter />
         </div>
-
-
-      </div>
-
-
-    </main>
-
+      </main>
+    </>
   );
-
 }

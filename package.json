@@ -1,24 +1,17 @@
 {
   "name": "mixparty",
   "version": "1.0.0",
-  "description": "Open source collaborative music playlist for parties",
-  "main": "index.js",
+  "private": true,
+  "workspaces": [
+    "apps/*"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "npm run dev --workspace=api",
+    "dev:web": "npm run dev --workspace=web",
+    "build": "npm run build --workspace=web"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/zadraa14/MixParty.git"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
-  "bugs": {
-    "url": "https://github.com/zadraa14/MixParty/issues"
-  },
-  "homepage": "https://github.com/zadraa14/MixParty#readme",
   "devDependencies": {
-    "turbo": "^2.10.7"
+    "concurrently": "^9.2.0"
   }
 }

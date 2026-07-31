@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { getApiBaseUrl } from "../../lib/config";
 
 export default function Home() {
 
@@ -13,12 +14,17 @@ export default function Home() {
   console.log("Bouton cliqué");
 
   try {
-    const response = await fetch("http://192.168.1.21:4000/party", {
+    const response = await fetch(`${getApiBaseUrl()}/party`, {
       method: "POST",
     });
 
     const party = await response.json();
 
+    if (!party.code || !party.creatorToken) {
+      throw new Error("La réponse de création est incomplète");
+    }
+
+    localStorage.setItem(`mixparty_creator_${party.code}`, party.creatorToken);
     alert("Soirée créée : " + party.code);
 
     router.push(`/party/${party.code}`);
