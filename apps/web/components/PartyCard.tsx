@@ -48,25 +48,25 @@ export default function PartyCard({
   }
 
   return (
-    <section className="relative [perspective:1200px]">
-      <div ref={glowRef} className="absolute inset-8 rounded-full bg-gradient-to-br from-purple-600/25 via-pink-500/20 to-orange-400/15 blur-[80px] transition-transform duration-300 ease-out" />
+    <section className="relative mx-auto w-full max-w-md [perspective:1200px] lg:max-w-none">
+      <div ref={glowRef} className="absolute inset-10 hidden sm:block rounded-full bg-gradient-to-br from-purple-600/25 via-pink-500/20 to-orange-400/15 blur-[80px] transition-transform duration-300 ease-out" />
 
       <div
         ref={cardRef}
         onMouseMove={handleMove}
         onMouseLeave={resetCard}
-        className="relative overflow-hidden rounded-[34px] border border-white/10 bg-white/[0.055] p-5 shadow-[0_35px_100px_rgba(0,0,0,0.35)] backdrop-blur-2xl transition-transform duration-300 ease-out will-change-transform sm:p-7"
+        className="relative overflow-hidden rounded-[28px] border border-white/10 bg-white/[0.065] p-4 sm:rounded-[34px] shadow-[0_35px_100px_rgba(0,0,0,0.35)] backdrop-blur-2xl transition-transform duration-300 ease-out will-change-transform sm:p-7"
         style={{ transformStyle: "preserve-3d" }}
       >
-        <div className="mb-7 flex items-center justify-between">
+        <div className="mb-4 flex items-center justify-between sm:mb-7">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.2em] text-purple-400">MixParty</p>
-            <h2 className="mt-1 text-2xl font-black">Lance ta soirée</h2>
+            <h2 className="mt-1 text-xl font-black sm:text-2xl">Lance ta soirée</h2>
           </div>
-          <img src="/mixparty-logo-officiel.svg" alt="Logo MixParty" className="h-20 w-24 shrink-0 object-contain" />
+          <img src="/mixparty-logo-officiel.svg" alt="Logo MixParty" className="h-14 w-20 sm:h-20 sm:w-24 shrink-0 object-contain" />
         </div>
 
-        <div className="mb-6 overflow-hidden rounded-[24px] border border-white/[0.08] bg-black/25 p-4 shadow-inner">
+        <div className="mb-5 hidden overflow-hidden sm:block rounded-[24px] border border-white/[0.08] bg-black/25 p-4 shadow-inner">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-500/25 via-pink-500/20 to-orange-400/20">
@@ -110,13 +110,13 @@ export default function PartyCard({
           className="group relative w-full rounded-[22px] transition duration-300 hover:-translate-y-1 active:translate-y-0 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
         >
           <div className="absolute -inset-1 rounded-[26px] bg-gradient-to-r from-purple-600 via-pink-500 to-orange-400 opacity-35 blur-xl transition duration-500 group-hover:opacity-70" />
-          <div className="relative overflow-hidden rounded-[22px] border border-white/20 bg-gradient-to-r from-purple-600 via-pink-500 to-orange-400 px-5 py-5 shadow-[0_18px_50px_rgba(168,85,247,0.25)]">
+          <div className="relative overflow-hidden rounded-[22px] border border-white/20 bg-gradient-to-r from-purple-600 via-pink-500 to-orange-400 px-4 py-4 sm:px-5 sm:py-5 shadow-[0_18px_50px_rgba(168,85,247,0.25)]">
             <div className="absolute inset-0 bg-gradient-to-b from-white/15 via-transparent to-black/10" />
             <div className="absolute -left-28 top-[-40%] h-[180%] w-20 rotate-[20deg] bg-white/30 blur-md transition-all duration-700 ease-out group-hover:left-[120%]" />
             <div className="relative flex items-center justify-between gap-4">
               <div className="text-left">
-                <p className="text-lg font-black">{creatingParty ? "Création en cours..." : "Créer une soirée"}</p>
-                <p className="mt-1 text-sm text-white/75">Obtiens immédiatement ton code et ton QR Code.</p>
+                <p className="text-base font-black sm:text-lg">{creatingParty ? "Création en cours..." : "Créer une soirée"}</p>
+                <p className="mt-1 text-xs text-white/75 sm:text-sm">Obtiens immédiatement ton code et ton QR Code.</p>
               </div>
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/20 shadow-[inset_0_1px_2px_rgba(255,255,255,0.15)] backdrop-blur-md transition duration-300 group-hover:scale-110 group-hover:bg-white/30">
                 <ArrowRight className="h-5 w-5 text-white transition duration-300 group-hover:translate-x-0.5" />
@@ -125,25 +125,26 @@ export default function PartyCard({
           </div>
         </button>
 
-        <div className="my-7 flex items-center gap-4">
+        <div className="my-5 flex items-center gap-4 sm:my-7">
           <div className="h-px flex-1 bg-white/10" />
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-white/25">ou</p>
           <div className="h-px flex-1 bg-white/10" />
         </div>
 
         <div>
-          <label htmlFor="party-code" className="mb-3 block text-sm font-bold text-white/65">Rejoindre une soirée existante</label>
+          <label htmlFor="party-code" className="mb-2 block text-sm font-bold sm:mb-3 text-white/65">Rejoindre une soirée existante</label>
           <div className="flex flex-col gap-3 sm:flex-row">
             <div className="relative flex-1">
               <Hash className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-white/35" />
               <input
                 suppressHydrationWarning
                 id="party-code"
-                placeholder="CODE DE SOIRÉE"
+                placeholder="CODE"
                 value={partyCode}
                 maxLength={10}
                 onChange={(event) => onPartyCodeChange(event.target.value.toUpperCase())}
                 onKeyDown={(event) => { if (event.key === "Enter") onJoinParty(); }}
+                inputMode="text" autoCapitalize="characters" autoCorrect="off" spellCheck={false}
                 className="w-full rounded-2xl border border-white/10 bg-black/25 py-4 pl-12 pr-4 font-black uppercase tracking-[0.16em] text-white outline-none transition duration-300 placeholder:text-xs placeholder:text-white/20 hover:border-white/20 focus:border-purple-400/60 focus:bg-black/35 focus:shadow-[0_0_25px_rgba(168,85,247,0.18)]"
               />
             </div>
@@ -154,12 +155,12 @@ export default function PartyCard({
           </div>
         </div>
 
-        <div className="mt-7 rounded-[22px] border border-white/[0.07] bg-black/20 p-4">
+        <div className="mt-5 rounded-[20px] sm:mt-7 sm:rounded-[22px] border border-white/[0.07] bg-black/20 p-4">
           <div className="flex items-start gap-3">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500/10"><Flame className="h-5 w-5 text-orange-300" /></div>
             <div>
               <p className="font-black">Aucun compte nécessaire</p>
-              <p className="mt-1 text-sm leading-relaxed text-white/35">Un code suffit pour rejoindre, proposer des musiques et voter avec tes amis.</p>
+              <p className="mt-1 text-xs leading-relaxed text-white/35 sm:text-sm">Un code suffit pour rejoindre, proposer des musiques et voter avec tes amis.</p>
             </div>
           </div>
         </div>

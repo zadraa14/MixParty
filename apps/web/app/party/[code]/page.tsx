@@ -43,7 +43,38 @@ type Song = {
   addedAt: number;
 };
 
-type Participant = { id: string; name: string };
+type Participant = { id: string; name: string; avatar?: string };
+
+const DEFAULT_AVATARS = [
+  "/avatars/default/001-panda.png",
+  "/avatars/default/002-corgi.png",
+  "/avatars/default/003-black-cat.png",
+  "/avatars/default/004-shiba.png",
+  "/avatars/default/005-sloth.png",
+  "/avatars/default/006-rabbit.png",
+  "/avatars/default/007-tiger.png",
+  "/avatars/default/008-lion.png",
+  "/avatars/default/009-fox.png",
+  "/avatars/default/010-wolf.png",
+  "/avatars/default/011-koala.png",
+  "/avatars/default/012-bear.png",
+  "/avatars/default/013-raccoon.png",
+  "/avatars/default/014-giraffe.png",
+  "/avatars/default/015-monkey.png",
+  "/avatars/default/016-bull.png",
+  "/avatars/default/017-duck.png",
+  "/avatars/default/018-owl.png",
+  "/avatars/default/019-frog.png",
+  "/avatars/default/020-penguin.png",
+] as const;
+
+function defaultAvatarForParticipant(participantId: string) {
+  let hash = 0;
+  for (let index = 0; index < participantId.length; index += 1) {
+    hash = (hash * 31 + participantId.charCodeAt(index)) >>> 0;
+  }
+  return DEFAULT_AVATARS[hash % DEFAULT_AVATARS.length];
+}
 
 type Party = {
   code: string;
@@ -74,6 +105,9 @@ export default function PartyPage() {
 
   const [name, setName] = useState("");
   const [playerName, setPlayerName] = useState("");
+  const [participantId, setParticipantId] = useState("");
+  const [participantAvatar, setParticipantAvatar] = useState("");
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<any[]>([]);
@@ -100,6 +134,19 @@ export default function PartyPage() {
   useEffect(() => {
     const saved = localStorage.getItem("playerName");
     const resolvedName = saved || "";
+
+    let stableId = localStorage.getItem("mixparty.participant.id") || "";
+    if (!stableId) {
+      stableId = globalThis.crypto?.randomUUID?.() || `participant-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem("mixparty.participant.id", stableId);
+    }
+
+    const personalPhoto = localStorage.getItem("mixparty.profile.photo.v1") || "";
+    const avatar = personalPhoto || defaultAvatarForParticipant(stableId);
+
+    setParticipantId(stableId);
+    setParticipantAvatar(avatar);
+
     if (resolvedName) {
       setPlayerName(resolvedName);
       setName(resolvedName);
@@ -111,6 +158,39 @@ export default function PartyPage() {
       setShareUrl(`${getAppBaseUrl()}/party/${code}`);
     }
   }, [code]);
+
+  useEffect(() => {
+    if (!code || !playerName || !participantId) return;
+
+    let cancelled = false;
+
+    async function sendPresence() {
+      try {
+        const response = await fetch(`${getApiBaseUrl()}/party/${code}/presence`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: participantId,
+            name: playerName,
+            avatar: participantAvatar || undefined,
+          }),
+        });
+        if (!response.ok) return;
+        const updated = normalizeParty(await response.json());
+        if (!cancelled && updated) setParty(updated);
+      } catch (error) {
+        console.error("Présence participant indisponible", error);
+      }
+    }
+
+    sendPresence();
+    const timer = window.setInterval(sendPresence, 12_000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [code, playerName, participantId, participantAvatar]);
 
   useEffect(() => {
     if (!code) return;
@@ -286,7 +366,9 @@ export default function PartyPage() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          name: name.trim()
+          id: participantId,
+          name: name.trim(),
+          avatar: participantAvatar || undefined,
         })
       }
     );
@@ -305,6 +387,47 @@ export default function PartyPage() {
       setName("");
     } finally {
       setJoining(false);
+    }
+  }
+
+  async function handleProfilePhotoUpload(file: File | null) {
+    if (!file || !file.type.startsWith("image/")) return;
+    setUploadingAvatar(true);
+
+    try {
+      const source = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const next = new Image();
+        next.onload = () => resolve(next);
+        next.onerror = reject;
+        next.src = source;
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = 128;
+      canvas.height = 128;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+
+      const side = Math.min(image.width, image.height);
+      const sx = (image.width - side) / 2;
+      const sy = (image.height - side) / 2;
+      context.drawImage(image, sx, sy, side, side, 0, 0, 128, 128);
+      const compressed = canvas.toDataURL("image/webp", 0.72);
+
+      localStorage.setItem("mixparty.profile.photo.v1", compressed);
+      setParticipantAvatar(compressed);
+    } catch (error) {
+      console.error("Impossible de préparer la photo de profil", error);
+      window.alert("Impossible d’utiliser cette image. Essaie avec une autre photo.");
+    } finally {
+      setUploadingAvatar(false);
     }
   }
 
@@ -663,7 +786,7 @@ export default function PartyPage() {
 
       </div>
 
-      <div className="relative mx-auto max-w-7xl px-4 py-4 pb-28 sm:px-6 sm:py-5 md:pb-5 lg:px-8">
+      <div className="relative mx-auto max-w-[1600px] px-4 py-4 pb-28 sm:px-6 sm:py-5 md:pb-5 lg:px-8 xl:px-10">
 
         <header className="mb-4 flex items-center justify-between rounded-[22px] border border-white/10 bg-black/25 px-3 py-3 backdrop-blur-xl md:hidden">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -685,7 +808,7 @@ export default function PartyPage() {
           </button>
         </header>
 
-        <header className="mb-7 hidden items-center justify-between gap-4 md:flex">
+        <header className="desktop-topbar mb-6 hidden items-center justify-between gap-4 md:flex">
 
           <div className="group flex min-w-0 items-center gap-3 sm:gap-4">
 
@@ -731,11 +854,35 @@ export default function PartyPage() {
 
         </header>
 
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <section className="desktop-command-deck mb-6 hidden md:grid md:grid-cols-[1.2fr_0.8fr_0.8fr] md:gap-3">
+          <div className="desktop-command-card desktop-command-card--hero">
+            <div>
+              <p className="desktop-command-label">Session en direct</p>
+              <p className="desktop-command-title">La soirée est lancée</p>
+            </div>
+            <div className="desktop-live-wave" aria-hidden="true">
+              {[34, 62, 45, 78, 54, 88, 48, 70, 40].map((height, index) => (
+                <span key={index} style={{ height: `${height}%`, animationDelay: `${index * 90}ms` }} />
+              ))}
+            </div>
+          </div>
+          <div className="desktop-command-card">
+            <p className="desktop-command-label">Ambiance</p>
+            <p className="desktop-command-value">{queue.length} titre{queue.length > 1 ? "s" : ""} en attente</p>
+            <p className="desktop-command-meta">Classés automatiquement par votes</p>
+          </div>
+          <div className="desktop-command-card">
+            <p className="desktop-command-label">Communauté</p>
+            <p className="desktop-command-value">{party.participants.length} participant{party.participants.length > 1 ? "s" : ""}</p>
+            <p className="desktop-command-meta">Connectés à la soirée {party.code}</p>
+          </div>
+        </section>
 
-          <div className="space-y-6">
+        <div className="desktop-party-grid grid gap-6 lg:grid-cols-[minmax(0,1fr)_380px] xl:grid-cols-[minmax(0,1fr)_410px]">
 
-            <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} overflow-hidden rounded-[24px] border border-orange-400/20 bg-gradient-to-br from-orange-500/[0.09] via-white/[0.045] to-purple-600/[0.08] p-3 shadow-[0_25px_80px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-6 md:block md:rounded-[30px]`}>
+          <div className="desktop-main-column space-y-6">
+
+            <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} now-playing-panel overflow-hidden rounded-[24px] border border-orange-400/20 bg-gradient-to-br from-orange-500/[0.09] via-white/[0.045] to-purple-600/[0.08] p-3 shadow-[0_25px_80px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-6 md:block md:rounded-[30px]`}>
 
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
 
@@ -1253,7 +1400,7 @@ export default function PartyPage() {
 
           </div>
 
-          <aside className="space-y-6 lg:sticky lg:top-5 lg:self-start">
+          <aside className="desktop-side-column space-y-6 lg:sticky lg:top-5 lg:self-start">
 
             <section className={`${activeMobileTab === "guests" ? "block" : "hidden"} rounded-[24px] border border-white/10 bg-white/[0.045] p-4 backdrop-blur-xl md:block md:rounded-[30px] md:p-5`}>
 
@@ -1277,14 +1424,28 @@ export default function PartyPage() {
 
               </div>
 
-              <div className="rounded-[24px] bg-white p-4">
-
-                <QRCodeCanvas
-                  value={shareUrl || `http://localhost:3000/party/${party.code}`}
-                  size={280}
-                  className="h-auto w-full"
-                />
-
+              <div className="relative overflow-hidden rounded-[28px] border border-purple-300/25 bg-gradient-to-br from-purple-500/20 via-pink-500/10 to-orange-400/15 p-[1px] shadow-[0_18px_60px_rgba(168,85,247,0.18)]">
+                <div className="relative rounded-[27px] bg-[#0d0b18] p-5">
+                  <div className="absolute -left-8 -top-8 h-24 w-24 rounded-full bg-purple-500/20 blur-3xl" />
+                  <div className="absolute -bottom-8 -right-8 h-24 w-24 rounded-full bg-orange-400/15 blur-3xl" />
+                  <div className="relative rounded-[22px] bg-white p-4 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]">
+                    <QRCodeCanvas
+                      value={shareUrl || `http://localhost:3000/party/${party.code}`}
+                      size={280}
+                      level="H"
+                      bgColor="#ffffff"
+                      fgColor="#171126"
+                      className="h-auto w-full rounded-xl"
+                    />
+                    <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-2xl border-[5px] border-white bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 shadow-lg">
+                      <Music4 className="h-7 w-7 text-white" />
+                    </div>
+                  </div>
+                  <div className="relative mt-4 flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3">
+                    <span className="text-xs font-bold uppercase tracking-[0.18em] text-white/35">Code soirée</span>
+                    <strong className="text-lg tracking-[0.18em] text-purple-200">{party.code}</strong>
+                  </div>
+                </div>
               </div>
 
               <p className="mt-4 text-center text-sm text-white/40">
@@ -1344,8 +1505,12 @@ export default function PartyPage() {
 
                 <div className="flex items-center gap-4">
 
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-pink-500 text-xl font-black uppercase">
-                    {playerName.charAt(0)}
+                  <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-purple-300/30 bg-gradient-to-br from-purple-600 to-pink-500 shadow-[0_0_24px_rgba(168,85,247,0.22)]">
+                    {participantAvatar ? (
+                      <img src={participantAvatar} alt="Ton avatar" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-xl font-black uppercase">{playerName.charAt(0)}</div>
+                    )}
                   </div>
 
                   <div>
@@ -1362,8 +1527,20 @@ export default function PartyPage() {
 
                 </div>
 
-                <div className="mt-4 rounded-2xl border border-white/[0.07] bg-black/20 px-4 py-3 text-sm text-white/50">
-                  Tu peux maintenant ajouter des morceaux et voter.
+                <label className="mt-4 flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-bold text-white/65 transition hover:border-purple-400/30 hover:bg-purple-500/10">
+                  <UserPlus className="h-4 w-4 text-purple-300" />
+                  {uploadingAvatar ? "Préparation de la photo…" : "Choisir ma photo de profil"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={uploadingAvatar}
+                    onChange={(event) => handleProfilePhotoUpload(event.target.files?.[0] || null)}
+                  />
+                </label>
+
+                <div className="mt-3 rounded-2xl border border-white/[0.07] bg-black/20 px-4 py-3 text-sm text-white/50">
+                  Sans photo personnelle, MixParty t’attribue automatiquement un avatar unique.
                 </div>
 
               </section>
@@ -1399,8 +1576,14 @@ export default function PartyPage() {
                       key={`${participant.id || participant.name}-${index}`}
                       className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-black/20 p-3"
                     >
-                      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-purple-400/30 bg-gradient-to-br from-purple-500/25 to-pink-500/20 text-lg font-black uppercase shadow-[0_0_20px_rgba(168,85,247,0.18)]">
-                        {participant.name.trim().charAt(0) || "?"}
+                      <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-purple-400/30 bg-gradient-to-br from-purple-500/25 to-pink-500/20 shadow-[0_0_20px_rgba(168,85,247,0.18)]">
+                        {participant.avatar ? (
+                          <img src={participant.avatar} alt={`Avatar de ${participant.name}`} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-lg font-black uppercase">
+                            {participant.name.trim().charAt(0) || "?"}
+                          </div>
+                        )}
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-bold">{participant.name}</p>
@@ -1650,6 +1833,105 @@ export default function PartyPage() {
         .suggestion-add { display: inline-flex; align-items: center; gap: .4rem; border: 1px solid rgba(255,255,255,.13); background: linear-gradient(115deg, rgba(8,145,178,.45), rgba(124,58,237,.65), rgba(217,70,239,.58)); box-shadow: 0 10px 26px rgba(124,58,237,.16); transition: transform .2s ease, filter .2s ease; }
         .suggestion-add:hover { transform: translateY(-2px); filter: brightness(1.18); }
         .suggestion-add:disabled { opacity: .55; cursor: wait; }
+
+
+        @keyframes desktopLiveWave {
+          0%, 100% { transform: scaleY(.45); opacity: .45; }
+          50% { transform: scaleY(1); opacity: 1; }
+        }
+
+        @media (min-width: 768px) {
+          .desktop-topbar {
+            min-height: 104px;
+            padding: 0 1rem;
+            border-bottom: 1px solid rgba(255,255,255,.07);
+          }
+
+          .desktop-command-deck {
+            position: relative;
+          }
+
+          .desktop-command-card {
+            position: relative;
+            min-height: 104px;
+            overflow: hidden;
+            border: 1px solid rgba(255,255,255,.09);
+            border-radius: 24px;
+            padding: 1.15rem 1.25rem;
+            background: linear-gradient(145deg, rgba(255,255,255,.07), rgba(255,255,255,.025));
+            box-shadow: 0 20px 55px rgba(0,0,0,.2), inset 0 1px 0 rgba(255,255,255,.08);
+            backdrop-filter: blur(22px);
+          }
+
+          .desktop-command-card::after {
+            content: "";
+            position: absolute;
+            inset: auto -15% -65% 20%;
+            height: 130px;
+            border-radius: 999px;
+            background: radial-gradient(circle, rgba(168,85,247,.18), transparent 68%);
+            pointer-events: none;
+          }
+
+          .desktop-command-card--hero {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: linear-gradient(130deg, rgba(124,58,237,.2), rgba(236,72,153,.12) 54%, rgba(249,115,22,.15));
+            border-color: rgba(216,180,254,.16);
+          }
+
+          .desktop-command-label {
+            font-size: .65rem;
+            font-weight: 900;
+            letter-spacing: .2em;
+            text-transform: uppercase;
+            color: rgba(255,255,255,.34);
+          }
+
+          .desktop-command-title,
+          .desktop-command-value {
+            margin-top: .45rem;
+            font-family: var(--font-exo-2), sans-serif;
+            font-size: 1.1rem;
+            line-height: 1.15;
+            font-weight: 900;
+            color: rgba(255,255,255,.94);
+          }
+
+          .desktop-command-title { font-size: 1.35rem; }
+          .desktop-command-meta { margin-top: .42rem; font-size: .76rem; color: rgba(255,255,255,.34); }
+
+          .desktop-live-wave {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            width: 122px;
+            height: 48px;
+          }
+
+          .desktop-live-wave span {
+            flex: 1;
+            min-width: 4px;
+            transform-origin: bottom;
+            border-radius: 999px;
+            background: linear-gradient(to top, #7c3aed, #ec4899, #fb923c);
+            box-shadow: 0 0 14px rgba(236,72,153,.24);
+            animation: desktopLiveWave 1.15s ease-in-out infinite;
+          }
+
+          .now-playing-panel {
+            border-color: rgba(251,146,60,.22);
+            box-shadow: 0 32px 100px rgba(0,0,0,.34), 0 0 80px rgba(124,58,237,.08), inset 0 1px 0 rgba(255,255,255,.08);
+          }
+        }
+
+        @media (min-width: 1280px) {
+          .desktop-party-grid { align-items: start; }
+          .desktop-main-column > section { border-radius: 32px; }
+          .desktop-side-column > section { border-radius: 28px; }
+          .now-playing-panel { padding: 1.65rem; }
+        }
 
         @media (prefers-reduced-motion: reduce) {
           .party-action, .party-action__shine, .party-action__icon, .suggestion-orb, .vote-button--burst, .vote-button--burst .vote-button__plus {

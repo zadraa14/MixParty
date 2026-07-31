@@ -1,0 +1,18 @@
+MIXPARTY — BUILD 0.4
+
+Contenu :
+- nouvelle page d'accueil adaptée aux téléphones ;
+- version PC conservée ;
+- 20 avatars animaux intégrés et activés ;
+- aucun changement du backend, des sockets, des votes ou de YouTube.
+
+IMPORTANT :
+Les fichiers .env ne sont volontairement pas inclus afin de protéger tes clés API.
+Conserve les fichiers .env de ton projet actuel lorsque tu remplaces le dossier.
+
+Installation conseillée :
+1. Sauvegarde ton dossier MixParty actuel.
+2. Décompresse ce ZIP.
+3. Recopie tes fichiers .env dans apps/api et apps/web si nécessaire.
+4. Depuis la racine du projet, lance npm install.
+5. Lance ensuite ton script habituel de développement.

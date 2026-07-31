@@ -44,23 +44,23 @@ const ACCENTS = {
 
 export default function MixPartyHero() {
   return (
-    <section>
-      <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-purple-400/20 bg-purple-500/10 px-4 py-2 text-sm font-bold text-purple-300">
+    <section className="text-center lg:text-left">
+      <div className="mb-3 inline-flex sm:mb-6 items-center gap-2 rounded-full border border-purple-400/20 bg-purple-500/10 px-4 py-2 text-sm font-bold text-purple-300">
         <span>✦</span>
         La playlist devient collective
       </div>
 
-      <h1 className="max-w-3xl text-5xl font-black leading-[0.98] tracking-tight sm:text-6xl lg:text-7xl">
+      <h1 className="mx-auto max-w-3xl text-[2.15rem] lg:mx-0 lg:text-7xl sm:text-6xl font-black leading-[0.98] tracking-tight">
         La musique de la soirée appartient à
         <span className="block bg-gradient-to-r from-purple-400 via-pink-400 to-orange-300 bg-clip-text pb-2 text-transparent">tout le monde.</span>
       </h1>
 
-      <p className="mt-6 max-w-2xl text-lg leading-relaxed text-white/50 sm:text-xl">
+      <p className="mx-auto mt-3 max-w-xl text-[0.95rem] lg:mx-0 lg:mt-6 lg:max-w-2xl lg:text-xl sm:text-lg leading-relaxed text-white/50">
         Crée une soirée, partage le QR Code et laisse tes invités ajouter leurs morceaux préférés.
         <span className="font-bold text-white/80"> Les titres les plus votés passent en premier.</span>
       </p>
 
-      <div className="mt-9 grid max-w-2xl gap-3 sm:grid-cols-3">
+      <div className="mx-auto mt-5 hidden max-w-2xl lg:mx-0 lg:mt-9 lg:grid gap-3 sm:grid-cols-3">
         {FEATURES.map(({ title, text, icon: Icon, accent }) => {
           const styles = ACCENTS[accent];
           return (

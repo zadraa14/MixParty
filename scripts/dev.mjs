@@ -47,7 +47,7 @@ const appUrl = `http://${host}:3000`;
 const sharedEnv = {
   ...process.env,
   NEXT_PUBLIC_APP_URL: process.env.NEXT_PUBLIC_APP_URL || appUrl,
-  NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || `${appUrl}/mixparty-api`,
+  NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || `http://${host}:4000`,
 };
 
 // Supprime l'ancien cache de développement Next.js afin que le téléphone

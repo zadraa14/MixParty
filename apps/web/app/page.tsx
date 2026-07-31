@@ -58,14 +58,14 @@ export default function Home() {
     <>
       {showLoader && <MixPartyLoader visible={loaderVisible} />}
 
-      <main className="relative isolate min-h-screen overflow-hidden bg-[#070711] text-white">
+      <main className="relative isolate min-h-[100dvh] overflow-hidden bg-[#070711] text-white">
         <MixPartyBackground />
 
-        <div className="relative z-10 mx-auto flex min-h-screen max-w-7xl flex-col px-4 py-5 sm:px-6 lg:px-8">
+        <div className="relative z-10 mx-auto flex min-h-[100dvh] max-w-7xl flex-col px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6 sm:py-5 lg:px-8">
           <MixPartyHeader />
 
-          <div className="flex flex-1 items-center py-12 lg:py-16">
-            <div className="grid w-full items-center gap-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)]">
+          <div className="flex flex-1 items-center py-5 sm:py-10 lg:py-16">
+            <div className="grid w-full items-center gap-7 sm:gap-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)] lg:gap-12">
               <MixPartyHero />
               <PartyCard
                 partyCode={partyCode}
