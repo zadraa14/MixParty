@@ -141,3 +141,7 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Cache local de recherche YouTube
+apps/api/youtube-search-cache.json
+youtube-search-cache.json

@@ -658,69 +658,441 @@ io.on("connection",(socket)=>{
 });
 
 // Recherche YouTube
-app.get("/search/youtube", async (req, res) => {
 
-  const query = req.query.q as string;
+type YoutubeSearchResult = {
+  id: string;
+  title: string;
+  thumbnail: string;
+  channelTitle?: string;
+  durationSeconds?: number;
+};
 
+type SearchCacheEntry = {
+  query: string;
+  normalizedQuery: string;
+  createdAt: number;
+  results: YoutubeSearchResult[];
+};
 
-  if (!query) {
-    return res.status(400).json({
-      error: "Recherche manquante",
-    });
+const YOUTUBE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const YOUTUBE_CACHE_MAX_ENTRIES = 500;
+const youtubeCacheFilePath = path.resolve(process.cwd(), "youtube-search-cache.json");
+const youtubeSearchCache = new Map<string, SearchCacheEntry>();
+const youtubeSearchesInFlight = new Map<string, Promise<YoutubeSearchResult[]>>();
+
+const youtubeSearchStats = {
+  totalRequests: 0,
+  youtubeCalls: 0,
+  exactCacheHits: 0,
+  fuzzyCacheHits: 0,
+  aliasCacheHits: 0,
+  inFlightHits: 0,
+  quotaSaved: 0,
+};
+
+function logYoutubeSearchDiagnostic(params: {
+  query: string;
+  normalizedQuery: string;
+  source: "YOUTUBE" | "CACHE" | "FUZZY_CACHE" | "ALIAS_CACHE" | "IN_FLIGHT";
+  durationMs: number;
+  resultCount: number;
+  matchedQuery?: string;
+}) {
+  const sourceLabel = {
+    YOUTUBE: "🔵 YouTube API",
+    CACHE: "🟢 Cache exact",
+    FUZZY_CACHE: "🟣 Cache faute corrigée",
+    ALIAS_CACHE: "🟠 Cache variante",
+    IN_FLIGHT: "🟡 Recherche déjà en cours",
+  }[params.source];
+
+  console.log("\n══════════════════════════════════════");
+  console.log("🔎 MixParty Search Engine");
+  console.log(`Recherche : ${params.query}`);
+  console.log(`Clé normalisée : ${params.normalizedQuery}`);
+  if (params.matchedQuery) console.log(`Correspondance : ${params.matchedQuery}`);
+  console.log(`Source : ${sourceLabel}`);
+  console.log(`Temps : ${params.durationMs} ms`);
+  console.log(`Résultats : ${params.resultCount}`);
+  console.log(`Cache : ${youtubeSearchCache.size} entrées`);
+  console.log(`Appels YouTube : ${youtubeSearchStats.youtubeCalls}`);
+  console.log(`Requêtes économisées : ${youtubeSearchStats.quotaSaved}`);
+  console.log("══════════════════════════════════════\n");
+}
+
+function stripDiacritics(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function normalizeMusicQuery(value: string) {
+  return stripDiacritics(value)
+    .toLowerCase()
+    .replace(/&/g, " et ")
+    .replace(/\b(feat|featuring|ft)\.?\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(et|the|officiel|official|video|audio|clip|music)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function compactMusicQuery(value: string) {
+  return normalizeMusicQuery(value).replace(/\s+/g, "");
+}
+
+function levenshteinDistance(a: string, b: string) {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+  const current = new Array<number>(b.length + 1);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const substitution = previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1);
+      current[j] = Math.min(previous[j] + 1, current[j - 1] + 1, substitution);
+    }
+    for (let j = 0; j <= b.length; j += 1) previous[j] = current[j];
   }
 
+  return previous[b.length];
+}
+
+function findCloseCachedQuery(normalizedQuery: string) {
+  const compact = normalizedQuery.replace(/\s+/g, "");
+  if (compact.length < 4) return null;
+
+  let best: { key: string; distance: number } | null = null;
+
+  for (const key of youtubeSearchCache.keys()) {
+    const candidate = key.replace(/\s+/g, "");
+    const maxLength = Math.max(compact.length, candidate.length);
+    const allowedDistance = maxLength <= 7 ? 1 : maxLength <= 14 ? 2 : 3;
+    const distance = levenshteinDistance(compact, candidate);
+
+    if (distance <= allowedDistance && (!best || distance < best.distance)) {
+      best = { key, distance };
+    }
+  }
+
+  return best?.key ?? null;
+}
+
+function pruneYoutubeCache() {
+  const now = Date.now();
+  for (const [key, entry] of youtubeSearchCache.entries()) {
+    if (now - entry.createdAt > YOUTUBE_CACHE_TTL_MS) youtubeSearchCache.delete(key);
+  }
+
+  if (youtubeSearchCache.size <= YOUTUBE_CACHE_MAX_ENTRIES) return;
+
+  const oldest = [...youtubeSearchCache.entries()]
+    .sort(([, a], [, b]) => a.createdAt - b.createdAt)
+    .slice(0, youtubeSearchCache.size - YOUTUBE_CACHE_MAX_ENTRIES);
+
+  oldest.forEach(([key]) => youtubeSearchCache.delete(key));
+}
+
+function saveYoutubeCache() {
+  pruneYoutubeCache();
+  try {
+    fs.writeFileSync(
+      youtubeCacheFilePath,
+      JSON.stringify([...youtubeSearchCache.values()], null, 2),
+      "utf-8"
+    );
+  } catch (error) {
+    console.warn("Cache YouTube non sauvegardé :", error);
+  }
+}
+
+function loadYoutubeCache() {
+  if (!fs.existsSync(youtubeCacheFilePath)) return;
 
   try {
+    const entries = JSON.parse(fs.readFileSync(youtubeCacheFilePath, "utf-8"));
+    if (!Array.isArray(entries)) return;
 
-    const response = await fetch(
-      `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=5&q=${encodeURIComponent(query)}&key=${process.env.YOUTUBE_API_KEY}`
-    );
-
-
-    const data:any = await response.json();
-
-
-    console.log("REPONSE GOOGLE :", JSON.stringify(data, null, 2));
-
-
-    if (!data.items) {
-
-      return res.status(500).json({
-        error: "Erreur Google YouTube",
-        details: data.error,
-      });
-
+    for (const rawEntry of entries) {
+      const entry = rawEntry as SearchCacheEntry;
+      if (
+        entry &&
+        typeof entry.normalizedQuery === "string" &&
+        Array.isArray(entry.results) &&
+        Date.now() - Number(entry.createdAt || 0) <= YOUTUBE_CACHE_TTL_MS
+      ) {
+        youtubeSearchCache.set(entry.normalizedQuery, entry);
+      }
     }
+    pruneYoutubeCache();
+  } catch (error) {
+    console.warn("Cache YouTube illisible, nouveau cache créé :", error);
+  }
+}
 
+function parseIsoDuration(duration: string) {
+  const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!match) return 0;
+  return Number(match[1] || 0) * 3600 + Number(match[2] || 0) * 60 + Number(match[3] || 0);
+}
 
-    const videos = data.items.map((item:any) => ({
+function scoreMusicResult(result: YoutubeSearchResult, query: string) {
+  const title = stripDiacritics(result.title).toLowerCase();
+  const channel = stripDiacritics(result.channelTitle || "").toLowerCase();
+  const normalizedTitle = normalizeMusicQuery(title);
+  const queryTokens = normalizeMusicQuery(query).split(" ").filter(Boolean);
+  let score = 0;
 
-      id: item.id.videoId,
+  if (/official audio|audio officiel|provided to youtube/i.test(title)) score += 120;
+  if (/official (music )?video|clip officiel/i.test(title)) score += 110;
+  if (/\btopic\b/i.test(channel)) score += 95;
+  if (/vevo/i.test(channel)) score += 85;
+  if (/official/i.test(channel)) score += 70;
+  if (/music/i.test(channel)) score += 20;
 
-      title: item.snippet.title,
-
-      thumbnail:
-        item.snippet.thumbnails.medium.url,
-
-    }));
-
-
-    res.json(videos);
-
-
-  } catch(error) {
-
-
-    console.error("ERREUR YOUTUBE :", error);
-
-
-    res.status(500).json({
-      error:"Erreur recherche YouTube"
-    });
-
-
+  for (const token of queryTokens) {
+    if (normalizedTitle.includes(token)) score += 16;
+    if (channel.includes(token)) score += 10;
   }
 
+  if (/lyrics?|paroles/i.test(title)) score -= 35;
+  if (/karaoke|instrumental/i.test(title)) score -= 70;
+  if (/cover|reprise/i.test(title)) score -= 65;
+  if (/reaction|reacts?|analyse|analysis|review/i.test(title)) score -= 120;
+  if (/interview|podcast|documentary|documentaire|making of|behind the scenes/i.test(title)) score -= 140;
+  if (/shorts?|#shorts/i.test(title)) score -= 250;
+  if (/live|concert|festival/i.test(title)) score -= 25;
+  if (/mix|compilation|playlist|best of/i.test(title)) score -= 40;
+
+  const duration = result.durationSeconds || 0;
+  if (duration >= 90 && duration <= 600) score += 35;
+  if (duration > 1200 || (duration > 0 && duration < 45)) score -= 180;
+
+  return score;
+}
+
+async function requestYoutubeMusic(query: string): Promise<YoutubeSearchResult[]> {
+  const apiKey = process.env.YOUTUBE_API_KEY?.trim();
+  if (!apiKey) throw new Error("YOUTUBE_API_KEY manquante");
+
+  const searchParams = new URLSearchParams({
+    part: "snippet",
+    type: "video",
+    maxResults: "15",
+    q: query,
+    key: apiKey,
+    videoCategoryId: "10",
+    videoEmbeddable: "true",
+    videoSyndicated: "true",
+    regionCode: "FR",
+    relevanceLanguage: "fr",
+    order: "relevance",
+    safeSearch: "none",
+  });
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+
+  try {
+    const response = await fetch(
+      `https://www.googleapis.com/youtube/v3/search?${searchParams.toString()}`,
+      { signal: controller.signal }
+    );
+    const data: any = await response.json();
+
+    if (!response.ok || !Array.isArray(data.items)) {
+      const error: any = new Error(data?.error?.message || "Erreur Google YouTube");
+      error.status = response.status;
+      error.details = data?.error;
+      throw error;
+    }
+
+    const basicResults = data.items
+      .map((item: any) => ({
+        id: String(item?.id?.videoId || ""),
+        title: String(item?.snippet?.title || ""),
+        thumbnail:
+          item?.snippet?.thumbnails?.high?.url ||
+          item?.snippet?.thumbnails?.medium?.url ||
+          item?.snippet?.thumbnails?.default?.url ||
+          "",
+        channelTitle: String(item?.snippet?.channelTitle || ""),
+      }))
+      .filter((item: YoutubeSearchResult) => item.id && item.title);
+
+    if (!basicResults.length) return [];
+
+    const detailParams = new URLSearchParams({
+      part: "contentDetails,status,snippet",
+      id: basicResults.map((item: YoutubeSearchResult) => item.id).join(","),
+      key: apiKey,
+    });
+    const detailsResponse = await fetch(
+      `https://www.googleapis.com/youtube/v3/videos?${detailParams.toString()}`,
+      { signal: controller.signal }
+    );
+    const detailsData: any = await detailsResponse.json();
+    const detailsById = new Map<string, any>(
+      (Array.isArray(detailsData.items) ? detailsData.items : []).map((item: any) => [
+        String(item.id),
+        item,
+      ])
+    );
+
+    return basicResults
+      .map((result: YoutubeSearchResult) => {
+        const detail = detailsById.get(result.id);
+        return {
+          ...result,
+          durationSeconds: parseIsoDuration(String(detail?.contentDetails?.duration || "")),
+          channelTitle: String(detail?.snippet?.channelTitle || result.channelTitle || ""),
+          embeddable: detail?.status?.embeddable !== false,
+          privacyStatus: detail?.status?.privacyStatus,
+        };
+      })
+      .filter((result: any) => result.embeddable && result.privacyStatus !== "private")
+      .filter((result: YoutubeSearchResult) => {
+        const text = `${result.title} ${result.channelTitle || ""}`.toLowerCase();
+        return !/(podcast|interview|reaction|reacts?|documentary|documentaire|#shorts|\bshorts?\b)/i.test(text);
+      })
+      .sort((a: YoutubeSearchResult, b: YoutubeSearchResult) =>
+        scoreMusicResult(b, query) - scoreMusicResult(a, query)
+      )
+      .slice(0, 8)
+      .map((result: any): YoutubeSearchResult => ({
+        id: result.id,
+        title: result.title,
+        thumbnail: result.thumbnail,
+        channelTitle: result.channelTitle,
+        durationSeconds: result.durationSeconds,
+      }));
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+loadYoutubeCache();
+
+app.get("/search/youtube", async (req, res) => {
+  const startedAt = Date.now();
+  youtubeSearchStats.totalRequests += 1;
+
+  const query = String(req.query.q || "").trim();
+  if (!query) return res.status(400).json({ error: "Recherche manquante" });
+
+  const normalizedQuery = normalizeMusicQuery(query);
+  if (!normalizedQuery) return res.status(400).json({ error: "Recherche invalide" });
+
+  pruneYoutubeCache();
+
+  const exactCache = youtubeSearchCache.get(normalizedQuery);
+  if (exactCache) {
+    youtubeSearchStats.exactCacheHits += 1;
+    youtubeSearchStats.quotaSaved += 1;
+    logYoutubeSearchDiagnostic({
+      query,
+      normalizedQuery,
+      source: "CACHE",
+      durationMs: Date.now() - startedAt,
+      resultCount: exactCache.results.length,
+    });
+    res.setHeader("X-MixParty-Cache", "HIT");
+    return res.json(exactCache.results);
+  }
+
+  const closeKey = findCloseCachedQuery(normalizedQuery);
+  if (closeKey) {
+    const closeCache = youtubeSearchCache.get(closeKey);
+    if (closeCache) {
+      youtubeSearchCache.set(normalizedQuery, {
+        ...closeCache,
+        query,
+        normalizedQuery,
+      });
+      youtubeSearchStats.fuzzyCacheHits += 1;
+      youtubeSearchStats.quotaSaved += 1;
+      logYoutubeSearchDiagnostic({
+        query,
+        normalizedQuery,
+        source: "FUZZY_CACHE",
+        durationMs: Date.now() - startedAt,
+        resultCount: closeCache.results.length,
+        matchedQuery: closeCache.query,
+      });
+      res.setHeader("X-MixParty-Cache", "FUZZY-HIT");
+      return res.json(closeCache.results);
+    }
+  }
+
+  const compactKey = compactMusicQuery(query);
+  const alias = [...youtubeSearchCache.entries()].find(
+    ([key]) => key.replace(/\s+/g, "") === compactKey
+  );
+  if (alias) {
+    youtubeSearchStats.aliasCacheHits += 1;
+    youtubeSearchStats.quotaSaved += 1;
+    logYoutubeSearchDiagnostic({
+      query,
+      normalizedQuery,
+      source: "ALIAS_CACHE",
+      durationMs: Date.now() - startedAt,
+      resultCount: alias[1].results.length,
+      matchedQuery: alias[1].query,
+    });
+    res.setHeader("X-MixParty-Cache", "ALIAS-HIT");
+    return res.json(alias[1].results);
+  }
+
+  let inFlight = youtubeSearchesInFlight.get(normalizedQuery);
+  const reusedInFlight = Boolean(inFlight);
+  if (!inFlight) {
+    youtubeSearchStats.youtubeCalls += 1;
+    inFlight = requestYoutubeMusic(query);
+    youtubeSearchesInFlight.set(normalizedQuery, inFlight);
+  } else {
+    youtubeSearchStats.inFlightHits += 1;
+    youtubeSearchStats.quotaSaved += 1;
+  }
+
+  try {
+    const results = await inFlight;
+    youtubeSearchCache.set(normalizedQuery, {
+      query,
+      normalizedQuery,
+      createdAt: Date.now(),
+      results,
+    });
+    saveYoutubeCache();
+
+    logYoutubeSearchDiagnostic({
+      query,
+      normalizedQuery,
+      source: reusedInFlight ? "IN_FLIGHT" : "YOUTUBE",
+      durationMs: Date.now() - startedAt,
+      resultCount: results.length,
+    });
+
+    res.setHeader("X-MixParty-Cache", reusedInFlight ? "IN-FLIGHT" : "MISS");
+    return res.json(results);
+  } catch (error: any) {
+    console.error("ERREUR YOUTUBE :", error?.details || error);
+    const status = Number(error?.status || 500);
+
+    if (status === 429) {
+      return res.status(429).json({
+        error: "Quota YouTube dépassé",
+        message: "La recherche musicale sera de nouveau disponible après la remise à zéro du quota.",
+      });
+    }
+
+    return res.status(status >= 400 && status < 600 ? status : 500).json({
+      error: "Erreur recherche YouTube",
+      message: error?.message || "Impossible de rechercher cette musique.",
+    });
+  } finally {
+    youtubeSearchesInFlight.delete(normalizedQuery);
+  }
 });
 
 httpServer.listen(

@@ -91,3 +91,15 @@ Priorités :
 4. Invités
 5. Mode DJ
 6. Animations
+
+## 31 juillet 2026 — Build 0.5 : Recherche musicale V2
+
+- Ajout d’un cache partagé de 24 heures pour éviter de facturer plusieurs fois une même recherche YouTube.
+- Normalisation des requêtes : majuscules, accents, ponctuation, espaces et variantes comme `&` / `et` sont regroupés.
+- Tolérance aux petites fautes d’orthographe à partir des recherches déjà présentes dans le cache.
+- Déduplication des recherches identiques lancées simultanément.
+- Restriction des résultats à la catégorie Musique, aux vidéos intégrables et aux vidéos disponibles en France.
+- Classement intelligent favorisant les vidéos officielles, les chaînes Topic et VEVO.
+- Filtrage renforcé des podcasts, interviews, réactions, Shorts et vidéos hors sujet.
+- Vérification de la durée et du statut d’intégration avec `videos.list`.
+- Gestion explicite de l’erreur de quota YouTube `429`.
