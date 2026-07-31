@@ -103,3 +103,22 @@ Priorités :
 - Filtrage renforcé des podcasts, interviews, réactions, Shorts et vidéos hors sujet.
 - Vérification de la durée et du statut d’intégration avec `videos.list`.
 - Gestion explicite de l’erreur de quota YouTube `429`.
+
+## 31 juillet 2026 — Build 0.6 MusicBrain V1
+
+- Création d'une base musicale locale persistante au format JSON.
+- Enregistrement des artistes et morceaux découverts par le moteur de recherche.
+- Comptage des recherches, ajouts, lectures et votes.
+- Premier apprentissage des enchaînements entre les morceaux.
+- Ajout des routes d'administration MusicBrain.
+- Ajout de la page `/admin/musicbrain` pour consulter les statistiques et le catalogue appris.
+- Préparation de l'architecture pour une future migration vers PostgreSQL.
+
+## 1 août 2026 — PartyBrain Core et persistance Railway
+
+- MusicBrain devient officiellement PartyBrain.
+- Ajout d'un niveau d'apprentissage et d'un score de connaissance.
+- Fusion automatique des doublons d'artistes et décodage des entités HTML.
+- Ajout d'un score par morceau basé sur recherches, ajouts, lectures et votes.
+- Ajout d'un export JSON de PartyBrain.
+- Le stockage peut désormais être rendu persistant sur Railway grâce à un volume monté dans `/data` et à la variable `PERSISTENT_DATA_DIR=/data`.

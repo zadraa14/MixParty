@@ -12,7 +12,11 @@ dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
-const dataFilePath = path.resolve(process.cwd(), "data.json");
+const persistentDataDir = path.resolve(
+  process.env.PERSISTENT_DATA_DIR?.trim() || process.cwd()
+);
+fs.mkdirSync(persistentDataDir, { recursive: true });
+const dataFilePath = path.resolve(persistentDataDir, "data.json");
 const configuredOrigins = process.env.CORS_ORIGINS
   ?.split(",")
   .map((origin) => origin.trim())
@@ -30,6 +34,14 @@ app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
 
 
+type YoutubeSuggestion = {
+  id:string;
+  title:string;
+  thumbnail:string;
+  channelTitle?:string;
+  durationSeconds?:number;
+};
+
 type Song = {
   title:string;
   videoId:string;
@@ -39,8 +51,60 @@ type Song = {
   voters:string[];
   played:boolean;
   addedAt:number;
+  sourceQuery?:string;
+  suggestionPool?:YoutubeSuggestion[];
 };
 
+
+
+
+type MusicBrainSong = {
+  videoId: string;
+  title: string;
+  thumbnail: string;
+  channelTitle?: string;
+  durationSeconds?: number;
+  artistKey: string;
+  artistName: string;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  searchCount: number;
+  addedCount: number;
+  playedCount: number;
+  voteCount: number;
+};
+
+type MusicBrainArtist = {
+  key: string;
+  name: string;
+  aliases: string[];
+  firstSeenAt: number;
+  lastSeenAt: number;
+  searchCount: number;
+  songs: Record<string, MusicBrainSong>;
+};
+
+type MusicBrainTransition = {
+  fromVideoId: string;
+  toVideoId: string;
+  count: number;
+  lastSeenAt: number;
+};
+
+type MusicBrainDatabase = {
+  version: 1;
+  createdAt: number;
+  updatedAt: number;
+  totals: {
+    searches: number;
+    additions: number;
+    plays: number;
+    votes: number;
+  };
+  artists: Record<string, MusicBrainArtist>;
+  songs: Record<string, MusicBrainSong>;
+  transitions: Record<string, MusicBrainTransition>;
+};
 
 type Participant = { id:string; name:string; avatar?:string; lastSeen:number };
 
@@ -109,6 +173,339 @@ function saveParties(){
 }
 
 
+
+
+const musicBrainFilePath = path.resolve(persistentDataDir, "musicbrain.json");
+
+function createEmptyMusicBrain(): MusicBrainDatabase {
+  const now = Date.now();
+  return {
+    version: 1,
+    createdAt: now,
+    updatedAt: now,
+    totals: { searches: 0, additions: 0, plays: 0, votes: 0 },
+    artists: {},
+    songs: {},
+    transitions: {},
+  };
+}
+
+let musicBrain: MusicBrainDatabase = createEmptyMusicBrain();
+
+function loadMusicBrain() {
+  if (!fs.existsSync(musicBrainFilePath)) {
+    saveMusicBrain();
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(musicBrainFilePath, "utf-8"));
+    if (parsed?.version === 1 && parsed?.artists && parsed?.songs) {
+      const defaults = createEmptyMusicBrain();
+      musicBrain = {
+        ...defaults,
+        ...parsed,
+        createdAt: Number(parsed.createdAt || defaults.createdAt),
+        updatedAt: Number(parsed.updatedAt || defaults.updatedAt),
+        totals: { ...defaults.totals, ...(parsed.totals || {}) },
+        artists: parsed.artists || {},
+        songs: parsed.songs || {},
+        transitions: parsed.transitions || {},
+      };
+      mergeMusicBrainArtists();
+    }
+  } catch (error) {
+    console.warn("MusicBrain illisible, nouvelle base créée :", error);
+    musicBrain = createEmptyMusicBrain();
+    saveMusicBrain();
+  }
+}
+
+function mergeMusicBrainArtists() {
+  const merged: Record<string, MusicBrainArtist> = {};
+
+  for (const artist of Object.values(musicBrain.artists || {})) {
+    const cleanName = cleanArtistName(artist.name || artist.key);
+    const canonicalKey = normalizeMusicQuery(cleanName) || artist.key;
+    const target = merged[canonicalKey] || {
+      key: canonicalKey,
+      name: cleanName || artist.name,
+      aliases: [],
+      firstSeenAt: Number(artist.firstSeenAt || Date.now()),
+      lastSeenAt: Number(artist.lastSeenAt || Date.now()),
+      searchCount: 0,
+      songs: {},
+    };
+
+    target.firstSeenAt = Math.min(target.firstSeenAt, Number(artist.firstSeenAt || target.firstSeenAt));
+    target.lastSeenAt = Math.max(target.lastSeenAt, Number(artist.lastSeenAt || target.lastSeenAt));
+    target.searchCount += Number(artist.searchCount || 0);
+    target.aliases = [...new Set([
+      ...target.aliases,
+      ...(artist.aliases || []).map(cleanArtistName),
+      cleanArtistName(artist.name || ""),
+    ].filter(Boolean))].slice(-30);
+
+    for (const song of Object.values(artist.songs || {})) {
+      song.title = decodeHtmlEntities(song.title || "");
+      song.artistKey = canonicalKey;
+      song.artistName = target.name;
+      target.songs[song.videoId] = song;
+      musicBrain.songs[song.videoId] = song;
+    }
+
+    merged[canonicalKey] = target;
+  }
+
+  musicBrain.artists = merged;
+}
+
+let musicBrainSaveTimer: NodeJS.Timeout | null = null;
+function saveMusicBrain() {
+  musicBrain.updatedAt = Date.now();
+  if (musicBrainSaveTimer) clearTimeout(musicBrainSaveTimer);
+  musicBrainSaveTimer = setTimeout(() => {
+    try {
+      fs.writeFileSync(musicBrainFilePath, JSON.stringify(musicBrain, null, 2), "utf-8");
+    } catch (error) {
+      console.warn("MusicBrain non sauvegardé :", error);
+    }
+  }, 120);
+}
+
+function decodeHtmlEntities(value: string) {
+  const entities: Record<string, string> = {
+    "&amp;": "&",
+    "&#39;": "'",
+    "&quot;": '"',
+    "&lt;": "<",
+    "&gt;": ">",
+    "&nbsp;": " ",
+  };
+  return value
+    .replace(/&(amp|#39|quot|lt|gt|nbsp);/gi, (match) => entities[match.toLowerCase()] || match)
+    .replace(/&#(\d+);/g, (_match, code) => String.fromCharCode(Number(code)));
+}
+
+function cleanArtistName(value: string) {
+  return decodeHtmlEntities(value)
+    .replace(/\s+-\s+topic$/i, "")
+    .replace(/vevo$/i, "")
+    .replace(/official$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function inferArtistName(result: { title?: string; channelTitle?: string }, fallbackQuery: string) {
+  const channel = cleanArtistName(String(result.channelTitle || ""));
+  if (channel && !/music|records|label|entertainment/i.test(channel)) return channel;
+
+  const title = String(result.title || "");
+  const titleArtist = title.includes(" - ") ? title.split(" - ")[0].trim() : "";
+  if (titleArtist && titleArtist.length <= 80) return cleanArtistName(titleArtist);
+
+  return cleanArtistName(fallbackQuery) || "Artiste inconnu";
+}
+
+function upsertMusicBrainSong(params: {
+  videoId: string;
+  title: string;
+  thumbnail?: string;
+  channelTitle?: string;
+  durationSeconds?: number;
+  artistName?: string;
+  sourceQuery?: string;
+}) {
+  const now = Date.now();
+  const artistName = cleanArtistName(params.artistName || inferArtistName(params, params.sourceQuery || params.title));
+  const artistKey = normalizeMusicQuery(artistName) || normalizeMusicQuery(params.sourceQuery || "") || "unknown";
+  const existing = musicBrain.songs[params.videoId];
+  const song: MusicBrainSong = existing || {
+    videoId: params.videoId,
+    title: params.title,
+    thumbnail: params.thumbnail || "",
+    channelTitle: params.channelTitle,
+    durationSeconds: params.durationSeconds,
+    artistKey,
+    artistName,
+    firstSeenAt: now,
+    lastSeenAt: now,
+    searchCount: 0,
+    addedCount: 0,
+    playedCount: 0,
+    voteCount: 0,
+  };
+
+  song.title = params.title || song.title;
+  song.thumbnail = params.thumbnail || song.thumbnail;
+  song.channelTitle = params.channelTitle || song.channelTitle;
+  song.durationSeconds = params.durationSeconds ?? song.durationSeconds;
+  song.artistKey = artistKey;
+  song.artistName = artistName;
+  song.lastSeenAt = now;
+  musicBrain.songs[params.videoId] = song;
+
+  const artist = musicBrain.artists[artistKey] || {
+    key: artistKey,
+    name: artistName,
+    aliases: [],
+    firstSeenAt: now,
+    lastSeenAt: now,
+    searchCount: 0,
+    songs: {},
+  };
+  artist.name = artistName || artist.name;
+  artist.lastSeenAt = now;
+  const alias = cleanArtistName(params.sourceQuery || "");
+  if (alias && normalizeMusicQuery(alias) !== artistKey && !artist.aliases.includes(alias)) {
+    artist.aliases.push(alias);
+    artist.aliases = artist.aliases.slice(-20);
+  }
+  artist.songs[params.videoId] = song;
+  musicBrain.artists[artistKey] = artist;
+  return song;
+}
+
+function recordMusicBrainSearch(query: string, results: YoutubeSearchResult[]) {
+  musicBrain.totals.searches += 1;
+  const touchedArtists = new Set<string>();
+  for (const result of results) {
+    const song = upsertMusicBrainSong({
+      videoId: result.id,
+      title: result.title,
+      thumbnail: result.thumbnail,
+      channelTitle: result.channelTitle,
+      durationSeconds: result.durationSeconds,
+      sourceQuery: query,
+    });
+    song.searchCount += 1;
+    touchedArtists.add(song.artistKey);
+  }
+  for (const artistKey of touchedArtists) {
+    const artist = musicBrain.artists[artistKey];
+    if (artist) artist.searchCount += 1;
+  }
+  saveMusicBrain();
+}
+
+function recordMusicBrainAddition(song: Song) {
+  if (!song.videoId) return;
+  const item = upsertMusicBrainSong({
+    videoId: song.videoId,
+    title: song.title,
+    thumbnail: song.thumbnail,
+    sourceQuery: song.sourceQuery,
+  });
+  item.addedCount += 1;
+  musicBrain.totals.additions += 1;
+  saveMusicBrain();
+}
+
+function recordMusicBrainVote(song: Song) {
+  if (!song.videoId) return;
+  const item = upsertMusicBrainSong({
+    videoId: song.videoId,
+    title: song.title,
+    thumbnail: song.thumbnail,
+    sourceQuery: song.sourceQuery,
+  });
+  item.voteCount += 1;
+  musicBrain.totals.votes += 1;
+  saveMusicBrain();
+}
+
+function recordMusicBrainPlay(song: Song, previous?: Song | null) {
+  if (!song.videoId) return;
+  const item = upsertMusicBrainSong({
+    videoId: song.videoId,
+    title: song.title,
+    thumbnail: song.thumbnail,
+    sourceQuery: song.sourceQuery,
+  });
+  item.playedCount += 1;
+  musicBrain.totals.plays += 1;
+
+  if (previous?.videoId && previous.videoId !== song.videoId) {
+    const key = `${previous.videoId}>>${song.videoId}`;
+    const transition = musicBrain.transitions[key] || {
+      fromVideoId: previous.videoId,
+      toVideoId: song.videoId,
+      count: 0,
+      lastSeenAt: Date.now(),
+    };
+    transition.count += 1;
+    transition.lastSeenAt = Date.now();
+    musicBrain.transitions[key] = transition;
+  }
+  saveMusicBrain();
+}
+
+function musicBrainStats() {
+  const songs = Object.values(musicBrain.songs);
+  const artists = Object.values(musicBrain.artists);
+  const scoreSong = (song: MusicBrainSong) =>
+    Number(song.searchCount || 0) + Number(song.addedCount || 0) * 3 +
+    Number(song.playedCount || 0) * 2 + Number(song.voteCount || 0) * 2;
+  const topSongs = [...songs]
+    .sort((a, b) => scoreSong(b) - scoreSong(a))
+    .slice(0, 20)
+    .map((song) => ({ ...song, score: scoreSong(song) }));
+  const topArtists = [...artists]
+    .map((artist) => ({
+      key: artist.key,
+      name: artist.name,
+      searchCount: artist.searchCount,
+      songCount: Object.keys(artist.songs || {}).length,
+      totalAdds: Object.values(artist.songs || {}).reduce((sum, song) => sum + Number(song.addedCount || 0), 0),
+      totalVotes: Object.values(artist.songs || {}).reduce((sum, song) => sum + Number(song.voteCount || 0), 0),
+    }))
+    .sort((a, b) => (b.searchCount + b.totalAdds * 2 + b.totalVotes) - (a.searchCount + a.totalAdds * 2 + a.totalVotes))
+    .slice(0, 20);
+
+  const topTransitions = Object.values(musicBrain.transitions)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 20)
+    .map((transition) => ({
+      ...transition,
+      fromTitle: musicBrain.songs[transition.fromVideoId]?.title || transition.fromVideoId,
+      toTitle: musicBrain.songs[transition.toVideoId]?.title || transition.toVideoId,
+    }));
+
+  const knowledgePoints =
+    artists.length * 25 + songs.length * 5 + Object.keys(musicBrain.transitions).length * 10 +
+    musicBrain.totals.searches + musicBrain.totals.additions * 2 + musicBrain.totals.votes;
+  const level = Math.max(1, Math.floor(Math.sqrt(knowledgePoints / 100)) + 1);
+  const currentLevelStart = Math.pow(level - 1, 2) * 100;
+  const nextLevelStart = Math.pow(level, 2) * 100;
+  const levelProgress = Math.max(0, Math.min(100,
+    Math.round(((knowledgePoints - currentLevelStart) / Math.max(1, nextLevelStart - currentLevelStart)) * 100)
+  ));
+
+  return {
+    version: musicBrain.version,
+    brain: { name: "PartyBrain", level, levelProgress, knowledgePoints },
+    storage: {
+      mode: process.env.PERSISTENT_DATA_DIR ? "railway-volume" : "local-json",
+      path: persistentDataDir,
+      persistent: Boolean(process.env.PERSISTENT_DATA_DIR),
+    },
+    createdAt: musicBrain.createdAt,
+    updatedAt: musicBrain.updatedAt,
+    totals: {
+      ...musicBrain.totals,
+      artists: artists.length,
+      songs: songs.length,
+      transitions: Object.keys(musicBrain.transitions).length,
+      youtubeCalls: youtubeSearchStats.youtubeCalls,
+      quotaSaved: youtubeSearchStats.quotaSaved,
+    },
+    topArtists,
+    topSongs,
+    topTransitions,
+  };
+}
+
+
 function cleanOldParties(){
 
   const now = Date.now();
@@ -147,6 +544,8 @@ function updateParty(party:Party) {
 }
 
 
+
+loadMusicBrain();
 
 // Test API
 app.get("/", (req, res) => {
@@ -343,7 +742,9 @@ app.post("/party/:code/song",(req,res)=>{
   song,
   videoId,
   thumbnail,
-  addedBy
+  addedBy,
+  sourceQuery,
+  suggestionPool
 } = req.body;
 
 
@@ -374,11 +775,28 @@ party.songs.push({
 
   played:false,
 
-  addedAt: Date.now()
+  addedAt: Date.now(),
+
+  sourceQuery: typeof sourceQuery === "string" ? sourceQuery.trim() : undefined,
+
+  suggestionPool: Array.isArray(suggestionPool)
+    ? suggestionPool
+        .filter((item:any) => item && typeof item.id === "string" && typeof item.title === "string")
+        .slice(0, 12)
+        .map((item:any) => ({
+          id: item.id,
+          title: item.title,
+          thumbnail: typeof item.thumbnail === "string" ? item.thumbnail : "",
+          channelTitle: typeof item.channelTitle === "string" ? item.channelTitle : undefined,
+          durationSeconds: Number.isFinite(Number(item.durationSeconds))
+            ? Number(item.durationSeconds)
+            : undefined,
+        }))
+    : []
 
 });
 
-
+  recordMusicBrainAddition(party.songs[party.songs.length - 1]);
 
   updateParty(party);
 
@@ -460,8 +878,7 @@ console.log("Résultat includes :", song.voters.includes(name));
   song.voters.push(name);
 
   song.votes++;
-
-
+  recordMusicBrainVote(song);
 
   updateParty(party);
 
@@ -511,8 +928,9 @@ app.post("/party/:code/play/:index",(req,res)=>{
   }
 
 
+  const previousSong = party.currentSong;
   party.currentSong = song;
-
+  recordMusicBrainPlay(song, previousSong);
 
   updateParty(party);
 
@@ -543,6 +961,8 @@ app.post("/party/:code/next",(req,res)=>{
     party.history = [];
   }
 
+
+  const previousSong = party.currentSong;
 
   if(party.currentSong){
 
@@ -584,7 +1004,7 @@ app.post("/party/:code/next",(req,res)=>{
   nextSong.played = true;
 
   party.currentSong = nextSong;
-
+  recordMusicBrainPlay(nextSong, previousSong);
 
   updateParty(party);
 
@@ -676,7 +1096,7 @@ type SearchCacheEntry = {
 
 const YOUTUBE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const YOUTUBE_CACHE_MAX_ENTRIES = 500;
-const youtubeCacheFilePath = path.resolve(process.cwd(), "youtube-search-cache.json");
+const youtubeCacheFilePath = path.resolve(persistentDataDir, "youtube-search-cache.json");
 const youtubeSearchCache = new Map<string, SearchCacheEntry>();
 const youtubeSearchesInFlight = new Map<string, Promise<YoutubeSearchResult[]>>();
 
@@ -974,6 +1394,26 @@ async function requestYoutubeMusic(query: string): Promise<YoutubeSearchResult[]
 
 loadYoutubeCache();
 
+
+
+app.get("/musicbrain/stats", (_req, res) => {
+  return res.json(musicBrainStats());
+});
+
+app.get("/musicbrain/artists/:key", (req, res) => {
+  const key = normalizeMusicQuery(String(req.params.key || ""));
+  const artist = musicBrain.artists[key];
+  if (!artist) return res.status(404).json({ error: "Artiste inconnu" });
+  return res.json(artist);
+});
+
+app.get("/partybrain/stats", (_req, res) => res.json(musicBrainStats()));
+app.get("/partybrain/export", (_req, res) => {
+  res.setHeader("Content-Disposition", "attachment; filename=partybrain-export.json");
+  return res.json(musicBrain);
+});
+
+
 app.get("/search/youtube", async (req, res) => {
   const startedAt = Date.now();
   youtubeSearchStats.totalRequests += 1;
@@ -997,6 +1437,7 @@ app.get("/search/youtube", async (req, res) => {
       durationMs: Date.now() - startedAt,
       resultCount: exactCache.results.length,
     });
+    recordMusicBrainSearch(query, exactCache.results);
     res.setHeader("X-MixParty-Cache", "HIT");
     return res.json(exactCache.results);
   }
@@ -1020,6 +1461,7 @@ app.get("/search/youtube", async (req, res) => {
         resultCount: closeCache.results.length,
         matchedQuery: closeCache.query,
       });
+      recordMusicBrainSearch(query, closeCache.results);
       res.setHeader("X-MixParty-Cache", "FUZZY-HIT");
       return res.json(closeCache.results);
     }
@@ -1040,6 +1482,7 @@ app.get("/search/youtube", async (req, res) => {
       resultCount: alias[1].results.length,
       matchedQuery: alias[1].query,
     });
+    recordMusicBrainSearch(query, alias[1].results);
     res.setHeader("X-MixParty-Cache", "ALIAS-HIT");
     return res.json(alias[1].results);
   }
@@ -1064,6 +1507,7 @@ app.get("/search/youtube", async (req, res) => {
       results,
     });
     saveYoutubeCache();
+    recordMusicBrainSearch(query, results);
 
     logYoutubeSearchDiagnostic({
       query,
@@ -1100,9 +1544,9 @@ httpServer.listen(
   "0.0.0.0",
   ()=>{
     
-    console.log(
-      `API MixParty démarrée sur http://localhost:${port}`
-    );
+    console.log(`API MixParty démarrée sur http://localhost:${port}`);
+    console.log(`🧠 PartyBrain : ${process.env.PERSISTENT_DATA_DIR ? "volume Railway persistant" : "JSON local"}`);
+    console.log(`💾 Données : ${persistentDataDir}`);
 
   }
 );

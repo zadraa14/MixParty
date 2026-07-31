@@ -32,6 +32,16 @@ declare global {
   }
 }
 
+type YoutubeSuggestion = {
+  id: string;
+  title: string;
+  thumbnail: string;
+  channelTitle?: string;
+  durationSeconds?: number;
+  sourceQuery?: string;
+  suggestionPool?: YoutubeSuggestion[];
+};
+
 type Song = {
   title: string;
   videoId: string;
@@ -41,6 +51,8 @@ type Song = {
   voters: string[];
   played: boolean;
   addedAt: number;
+  sourceQuery?: string;
+  suggestionPool?: YoutubeSuggestion[];
 };
 
 type Participant = { id: string; name: string; avatar?: string };
@@ -94,6 +106,18 @@ function normalizeParty(data: Partial<Party> | null | undefined): Party | null {
     history: Array.isArray(data.history) ? data.history : [],
     participants: Array.isArray(data.participants) ? data.participants : [],
   };
+}
+
+function rotateSuggestions<T extends { id: string }>(items: T[], seed: string): T[] {
+  if (items.length <= 1) return items;
+
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) >>> 0;
+  }
+
+  const offset = hash % items.length;
+  return [...items.slice(offset), ...items.slice(0, offset)];
 }
 
 export default function PartyPage() {
@@ -298,45 +322,82 @@ export default function PartyPage() {
     };
   }, [code, party?.currentSong?.videoId]);
 
-  useEffect(() => {
-    const currentTitle = party?.currentSong?.title;
+  const queueSignature = (party?.songs || []).map((song) => song.videoId).join("|");
+  const historySignature = (party?.history || []).map((song) => song.videoId).join("|");
 
-    if (!currentTitle) {
+  useEffect(() => {
+    const currentSong = party?.currentSong;
+
+    if (!currentSong?.title) {
       setSuggestions([]);
       return;
     }
 
-    const suggestionTitle = currentTitle;
+    const activeSong = currentSong;
     const controller = new AbortController();
 
     async function loadSuggestions() {
       setLoadingSuggestions(true);
 
       try {
-        const cleanTitle = suggestionTitle
+        const existingIds = new Set([
+          activeSong.videoId,
+          ...(party?.songs || []).map((song) => song.videoId),
+          ...(party?.history || []).map((song) => song.videoId),
+        ]);
+
+        const storedPool = Array.isArray(activeSong.suggestionPool)
+          ? activeSong.suggestionPool
+          : [];
+
+        const availableFromPool = storedPool
+          .filter((video) => video?.id && !existingIds.has(video.id))
+          .map((video) => ({
+            ...video,
+            sourceQuery: activeSong.sourceQuery || video.sourceQuery,
+            suggestionPool: storedPool,
+          }));
+
+        const rotationSeed = `${activeSong.videoId}|${queueSignature}|${historySignature}`;
+        const immediateSuggestions = rotateSuggestions(availableFromPool, rotationSeed).slice(0, 4);
+
+        if (immediateSuggestions.length >= 4) {
+          console.log("🎵 Suggestions instantanées depuis la recherche initiale", {
+            sourceQuery: activeSong.sourceQuery,
+            disponibles: immediateSuggestions.length,
+          });
+          setSuggestions(immediateSuggestions);
+          return;
+        }
+
+        const cleanTitle = activeSong.title
           .replace(/\([^)]*(official|clip|lyrics|audio)[^)]*\)/gi, "")
           .replace(/\[[^\]]*(official|clip|lyrics|audio)[^\]]*\]/gi, "")
           .trim();
-        const artist = cleanTitle.includes("-")
-          ? cleanTitle.split("-")[0].trim()
-          : cleanTitle.split(" ").slice(0, 3).join(" ");
-        const query = `${artist} mix similar songs`;
+        const fallbackQuery = activeSong.sourceQuery?.trim() ||
+          (cleanTitle.includes("-")
+            ? cleanTitle.split("-")[0].trim()
+            : cleanTitle.split(" ").slice(0, 3).join(" "));
+
         const response = await fetch(
-          `${getApiBaseUrl()}/search/youtube?q=${encodeURIComponent(query)}`,
+          `${getApiBaseUrl()}/search/youtube?q=${encodeURIComponent(fallbackQuery)}`,
           { signal: controller.signal }
         );
         const data = await response.json();
-        const existingIds = new Set([
-          party?.currentSong?.videoId,
-          ...(party?.songs || []).map((song) => song.videoId),
-          ...(party?.history || []).map((song) => song.videoId)
-        ]);
+        const fetchedPool = Array.isArray(data) ? data : [];
 
-        setSuggestions(
-          (Array.isArray(data) ? data : [])
-            .filter((video) => !existingIds.has(video.id))
-            .slice(0, 4)
-        );
+        const merged = [...immediateSuggestions];
+        for (const video of fetchedPool) {
+          if (!video?.id || existingIds.has(video.id) || merged.some((item) => item.id === video.id)) continue;
+          merged.push({
+            ...video,
+            sourceQuery: fallbackQuery,
+            suggestionPool: fetchedPool,
+          });
+          if (merged.length >= 4) break;
+        }
+
+        setSuggestions(merged);
       } catch (error: any) {
         if (error?.name !== "AbortError") {
           console.error("Suggestions MixParty indisponibles", error);
@@ -350,7 +411,7 @@ export default function PartyPage() {
     loadSuggestions();
 
     return () => controller.abort();
-  }, [party?.currentSong?.videoId]);
+  }, [party?.currentSong?.videoId, queueSignature, historySignature]);
 
   async function joinParty() {
     if (!name.trim() || joining) return;
@@ -442,8 +503,15 @@ export default function PartyPage() {
     );
 
     const data = await response.json();
+    const pool = Array.isArray(data) ? data : [];
 
-      setResults(data);
+      setResults(
+        pool.map((video) => ({
+          ...video,
+          sourceQuery: search.trim(),
+          suggestionPool: pool,
+        }))
+      );
     } finally {
       setSearching(false);
     }
@@ -466,7 +534,17 @@ export default function PartyPage() {
           song: video.title,
           videoId: video.id,
           thumbnail: video.thumbnail,
-          addedBy: playerName || "Inconnu"
+          addedBy: playerName || "Inconnu",
+          sourceQuery: video.sourceQuery || search.trim(),
+          suggestionPool: Array.isArray(video.suggestionPool)
+            ? video.suggestionPool.map((item: any) => ({
+                id: item.id,
+                title: item.title,
+                thumbnail: item.thumbnail,
+                channelTitle: item.channelTitle,
+                durationSeconds: item.durationSeconds,
+              }))
+            : []
         })
       }
     );
@@ -475,6 +553,7 @@ export default function PartyPage() {
 
       setParty(updated);
       setResults((current) => current.filter((item) => item.id !== video.id));
+      setSuggestions((current) => current.filter((item) => item.id !== video.id));
     } finally {
       setAddingVideoId(null);
     }
