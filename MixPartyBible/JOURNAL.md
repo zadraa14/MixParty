@@ -8,62 +8,86 @@
 - Remplacement des avatars MixMates des participants par une pastille avec leur initiale.
 - Création du dossier `MixPartyBible`.
 - Prochaine étape : poursuivre le design de la V1.
+
+---
+
 ## 31 juillet 2026 — Correction des boutons lumineux
 
 - Correction de l’animation lumineuse des boutons **Titre suivant**, **Lancer le DJ** et **Rechercher**.
-- Le reflet animé est désormais masqué à l’intérieur des bords arrondis grâce à `overflow: hidden` sur la classe commune `.party-action`.
+- Le reflet animé est désormais masqué à l’intérieur des bords arrondis grâce à `overflow: hidden`.
 - L’apparence et le halo externe des boutons sont conservés.
 
+---
 
 ## 31 juillet 2026 — Robustesse des données de soirée
-- Correction d’un crash sur la page de soirée lorsque l’API renvoie temporairement une soirée sans tableau `songs`.
-- Normalisation des données reçues par HTTP et Socket.IO : `songs`, `history` et `participants` utilisent désormais un tableau vide par défaut.
-- La file d’attente DJ reste fonctionnelle même pendant un chargement ou avec d’anciennes données incomplètes.
 
-## 31 juillet 2026 — Réparation du QR code sur téléphone
-- Le lancement détecte désormais automatiquement l’adresse IPv4 locale du PC.
-- Le QR code encode l’adresse réseau du PC au lieu de `localhost`.
-- Le serveur web écoute sur toutes les interfaces réseau grâce à `--hostname 0.0.0.0`.
-- Une seule commande reste nécessaire : `npm run dev`.
-- Le téléphone et le PC doivent être connectés au même réseau Wi-Fi pour les tests locaux.
+- Correction d’un crash lorsque l’API renvoyait une soirée sans tableau `songs`.
+- Normalisation des données `songs`, `history` et `participants`.
+- La file d’attente DJ reste fonctionnelle même avec des données incomplètes.
 
+---
 
-## 31 juillet 2026 — Accès téléphone et chargement de soirée
-- Correction du chargement infini sur téléphone.
-- Les appels API et Socket.IO passent désormais par le port 3000 via un proxy Next.js.
-- Le téléphone n’a plus besoin d’accéder directement au port 4000.
-- Ajout d’un message d’erreur et d’un bouton « Réessayer » si la soirée ne peut pas être chargée.
+## 31 juillet 2026 — Compatibilité téléphone
 
+- QR Code compatible avec le réseau local.
+- Détection automatique de l'adresse IPv4 du PC.
+- Serveur accessible sur toutes les interfaces.
+- Proxy `/mixparty-api`.
+- Gestion des erreurs réseau.
+- Compatibilité améliorée avec iPhone.
 
-## 31 juillet 2026 — Proxy API téléphone renforcé
-- Remplacement de la réécriture Next.js par une vraie route proxy interne `/mixparty-api/[...path]`.
-- Ajout d’un délai maximal de 10 secondes pour empêcher le chargement infini.
-- Le chargement initial de la soirée passe uniquement par le port 3000.
-- Les erreurs de connexion à l’API sont maintenant visibles dans PowerShell et dans l’interface.
+---
 
+## 31 juillet 2026 — Sprint Expérience Soirée V1.1
 
-## 31 juillet 2026 — Chargement mobile corrigé
-- Vérification : le proxy `/mixparty-api` répond correctement depuis le téléphone.
-- Le chargement de la page soirée utilise maintenant une URL relative et un timeout compatible avec tous les navigateurs mobiles.
-- Le cache `.next` est automatiquement supprimé à chaque lancement en développement pour éviter une ancienne version bloquée.
+- Présence temps réel des participants.
+- Profils avec photo ou avatar MixParty.
+- Nouveau lecteur orienté musique.
+- Navigation mobile repensée.
+- Visualiseur musical.
+- Synchronisation Socket.IO améliorée.
 
-## 31 juillet 2026 — Sprint expérience soirée V1.1
+---
 
-- Participants connectés rétablis avec présence réelle : heartbeat toutes les 8 secondes, actualisation de secours et retrait automatique après déconnexion.
-- Ajout d'un identifiant local unique par participant afin d'éviter les doublons de prénom.
-- Nouveau lecteur orienté musique : pochette mise en avant, informations du morceau, visualiseur et bouton pour ouvrir/fermer le clip YouTube.
-- Refonte de la navigation mobile avec barre fixe : Lecture, Ajouter, File, Invités et Inviter.
-- Ajout des profils : import d'une photo personnelle (2 Mo maximum) ou choix parmi 18 avatars MixParty originaux.
-- Les avatars sont transmis et affichés dans la liste des participants en temps réel.
+## 31 juillet 2026 — Déploiement officiel de MixParty 🚀
 
-## 31 juillet 2026 — Compatibilité navigateurs mobiles
+### Infrastructure
 
-- Remplacement de `crypto.randomUUID()` par un générateur avec solution de repli compatible HTTP local sur iPhone.
-- Ajout de `suppressHydrationWarning` sur la racine de l’application pour tolérer les attributs injectés par les fonctions de traduction du navigateur avant le chargement React.
+- Déploiement du frontend sur Railway.
+- Déploiement de l'API sur Railway.
+- Configuration des variables d'environnement.
+- Application accessible publiquement.
 
-## 31 juillet 2026 — Recherche musicale fiabilisée
+### Corrections
 
-- Ajout d’un délai maximal sur la requête Google YouTube côté API.
-- Gestion claire des clés absentes, quotas, restrictions et erreurs réseau.
-- Ajout d’un délai maximal et d’un message visible côté interface.
-- La recherche ne peut plus rester bloquée indéfiniment.
+- Correction du port Railway.
+- Correction du fichier `data.json`.
+- Connexion Frontend ↔ API.
+- Configuration Socket.IO en production.
+
+### Recherche musicale
+
+- Ajout de la clé YouTube sur Railway.
+- Recherche musicale opérationnelle.
+
+### Résultat
+
+- ✅ Création de soirée.
+- ✅ Rejoindre une soirée.
+- ✅ Synchronisation temps réel.
+- ✅ Recherche YouTube.
+- ✅ Première version publique disponible.
+
+---
+
+## 31 juillet 2026 — Début de la V2
+
+Après validation de la V1, début de la refonte complète de l'expérience utilisateur.
+
+Priorités :
+1. Lecture
+2. Ajouter
+3. File d'attente
+4. Invités
+5. Mode DJ
+6. Animations

@@ -1,16 +1,55 @@
 # Roadmap MixParty
 
-## Priorité actuelle — V1
+# ✅ V1.0 — MVP (Terminée)
 
-1. Nettoyer le projet et supprimer les éléments non essentiels.
-2. Continuer le redesign de l’accueil et harmoniser l’identité visuelle.
-3. Améliorer le lecteur de musique.
-4. Vérifier le QR code et les liens d’invitation.
-5. Tester le parcours complet sur ordinateur et mobile.
-6. Préparer une version stable à montrer au frère de Ben et aux proches.
+- Nettoyage du projet.
+- Suppression des MixMates.
+- Nouveau lecteur.
+- QR Code.
+- Synchronisation.
+- Déploiement Railway.
+- Recherche YouTube.
+- Première version publique.
 
-## Après les premiers tests
+---
 
-- Corriger les bugs et intégrer les retours pertinents.
-- Mettre MixParty en ligne pour un test élargi.
-- Acheter le nom de domaine et envisager le dépôt de marque seulement après validation de l’intérêt.
+# 🚧 V2.0 — Refonte Mobile
+
+Direction graphique : **Neon Evolution**
+
+## Ordre de développement
+
+1. 🎵 Lecture
+2. 🔍 Ajouter une musique
+3. 📋 File d'attente
+4. 👥 Participants
+5. 📨 Invitations
+6. 🎧 Mode DJ
+7. ✨ Animations
+
+---
+
+# 🔜 V2.1
+
+- Optimisations
+- Animations avancées
+- Amélioration du Mode DJ
+
+---
+
+# 💡 Backlog
+
+- Comptes utilisateurs
+- Historique
+- Playlist sauvegardée
+- Spotify
+- Notifications
+- Statistiques
+- Personnalisation
+- Retour éventuel des MixMates
+
+---
+
+# 🚀 V3
+
+À définir selon les retours des utilisateurs.
