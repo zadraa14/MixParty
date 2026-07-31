@@ -1,7 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, Database, Music2, RefreshCw, Search, Sparkles, ThumbsUp, type LucideIcon } from "lucide-react";
+import { BrainCircuit, Database, Music2, Network, RefreshCw, Search, Sparkles, ThumbsUp, type LucideIcon } from "lucide-react";
 import { getApiBaseUrl } from "../../../lib/config";
 
 type Stats = {
@@ -33,6 +34,10 @@ type Stats = {
     videoId: string;
     title: string;
     artistName: string;
+    featuredArtistNames?: string[];
+    albumName?: string;
+    metadataSource?: "ART_TRACK_DESCRIPTION" | "TITLE_CHANNEL" | "QUERY_FALLBACK";
+    metadataConfidence?: number;
     thumbnail: string;
     searchCount: number;
     addedCount: number;
@@ -112,15 +117,21 @@ export default function MusicBrainAdminPage() {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={loadStats}
-            disabled={loading}
-            className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-black transition hover:bg-white/15 disabled:opacity-50"
-          >
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-            Actualiser
-          </button>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Link href="/admin/partybrain/graph" className="inline-flex items-center justify-center gap-2 rounded-2xl border border-fuchsia-400/20 bg-fuchsia-500/10 px-4 py-3 text-sm font-black text-fuchsia-100 transition hover:bg-fuchsia-500/15">
+              <Network className="h-4 w-4" />
+              Explorer le cerveau
+            </Link>
+            <button
+              type="button"
+              onClick={loadStats}
+              disabled={loading}
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm font-black transition hover:bg-white/15 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Actualiser
+            </button>
+          </div>
         </header>
 
         {error ? (
@@ -208,12 +219,19 @@ export default function MusicBrainAdminPage() {
                       <img src={song.thumbnail} alt="" className="h-16 w-16 shrink-0 rounded-xl object-cover" />
                       <div className="min-w-0 flex-1">
                         <p className="line-clamp-2 text-sm font-black">{song.title}</p>
-                        <p className="mt-1 truncate text-xs text-fuchsia-200/70">{song.artistName}</p>
+                        <p className="mt-1 truncate text-xs text-fuchsia-200/70">
+                          {song.artistName}
+                          {song.featuredArtistNames?.length ? ` feat. ${song.featuredArtistNames.join(", ")}` : ""}
+                        </p>
+                        {song.albumName ? <p className="mt-1 truncate text-[11px] text-cyan-200/55">Album : {song.albumName}</p> : null}
                         <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-white/45">
                           <span>{song.addedCount} ajouts</span>
                           <span>{song.playedCount} lectures</span>
                           <span className="inline-flex items-center gap-1"><ThumbsUp className="h-3 w-3" />{song.voteCount}</span>
                           <span className="font-black text-fuchsia-300">Score {song.score || 0}</span>
+                          <span className={song.metadataSource === "ART_TRACK_DESCRIPTION" ? "font-black text-emerald-300" : "text-white/35"}>
+                            {song.metadataSource === "ART_TRACK_DESCRIPTION" ? "Métadonnées Art Track" : song.metadataSource === "TITLE_CHANNEL" ? "Métadonnées YouTube" : "Analyse PartyBrain"}
+                          </span>
                         </div>
                       </div>
                     </article>

@@ -6,6 +6,19 @@ import { Server } from "socket.io";
 import fs from "fs";
 import path from "path";
 import { randomUUID } from "crypto";
+import {
+  cleanArtist as coreCleanArtist,
+  cleanTitle as coreCleanTitle,
+  decodeHtmlEntities as coreDecodeHtmlEntities,
+  normalizeKey as coreNormalizeKey,
+  isPlausibleArtist,
+} from "./music-intelligence/text";
+import {
+  cleanTrackTitle as coreCleanTrackTitle,
+  extractMusicMetadata as coreExtractMusicMetadata,
+  parseArtistCredits as coreParseArtistCredits,
+  parseProvidedToYoutube as coreParseProvidedToYoutube,
+} from "./music-intelligence/engine";
 dotenv.config();
 
 
@@ -40,6 +53,11 @@ type YoutubeSuggestion = {
   thumbnail:string;
   channelTitle?:string;
   durationSeconds?:number;
+  artistName?:string;
+  featuredArtistNames?:string[];
+  albumName?:string;
+  metadataSource?:MusicMetadataSource;
+  metadataConfidence?:number;
 };
 
 type Song = {
@@ -53,19 +71,32 @@ type Song = {
   addedAt:number;
   sourceQuery?:string;
   suggestionPool?:YoutubeSuggestion[];
+  artistName?:string;
+  featuredArtistNames?:string[];
+  albumName?:string;
+  metadataSource?:MusicMetadataSource;
+  metadataConfidence?:number;
 };
 
 
 
 
+type MusicMetadataSource = "ART_TRACK_DESCRIPTION" | "TITLE_CHANNEL" | "QUERY_FALLBACK";
+
 type MusicBrainSong = {
   videoId: string;
   title: string;
+  rawTitle?: string;
   thumbnail: string;
   channelTitle?: string;
   durationSeconds?: number;
   artistKey: string;
   artistName: string;
+  featuredArtistKeys?: string[];
+  featuredArtistNames?: string[];
+  albumName?: string;
+  metadataSource?: MusicMetadataSource;
+  metadataConfidence?: number;
   firstSeenAt: number;
   lastSeenAt: number;
   searchCount: number;
@@ -74,10 +105,18 @@ type MusicBrainSong = {
   voteCount: number;
 };
 
+type MusicBrainArtistLink = {
+  key: string;
+  name: string;
+  count: number;
+  lastSeenAt: number;
+};
+
 type MusicBrainArtist = {
   key: string;
   name: string;
   aliases: string[];
+  collaborators: Record<string, MusicBrainArtistLink>;
   firstSeenAt: number;
   lastSeenAt: number;
   searchCount: number;
@@ -91,8 +130,15 @@ type MusicBrainTransition = {
   lastSeenAt: number;
 };
 
+type MusicBrainArtistRelation = {
+  fromKey: string;
+  toKey: string;
+  count: number;
+  lastSeenAt: number;
+};
+
 type MusicBrainDatabase = {
-  version: 1;
+  version: 2;
   createdAt: number;
   updatedAt: number;
   totals: {
@@ -104,6 +150,7 @@ type MusicBrainDatabase = {
   artists: Record<string, MusicBrainArtist>;
   songs: Record<string, MusicBrainSong>;
   transitions: Record<string, MusicBrainTransition>;
+  artistRelations: Record<string, MusicBrainArtistRelation>;
 };
 
 type Participant = { id:string; name:string; avatar?:string; lastSeen:number };
@@ -180,13 +227,14 @@ const musicBrainFilePath = path.resolve(persistentDataDir, "musicbrain.json");
 function createEmptyMusicBrain(): MusicBrainDatabase {
   const now = Date.now();
   return {
-    version: 1,
+    version: 2,
     createdAt: now,
     updatedAt: now,
     totals: { searches: 0, additions: 0, plays: 0, votes: 0 },
     artists: {},
     songs: {},
     transitions: {},
+    artistRelations: {},
   };
 }
 
@@ -200,7 +248,7 @@ function loadMusicBrain() {
 
   try {
     const parsed = JSON.parse(fs.readFileSync(musicBrainFilePath, "utf-8"));
-    if (parsed?.version === 1 && parsed?.artists && parsed?.songs) {
+    if ((parsed?.version === 1 || parsed?.version === 2) && parsed?.artists && parsed?.songs) {
       const defaults = createEmptyMusicBrain();
       musicBrain = {
         ...defaults,
@@ -210,7 +258,9 @@ function loadMusicBrain() {
         totals: { ...defaults.totals, ...(parsed.totals || {}) },
         artists: parsed.artists || {},
         songs: parsed.songs || {},
+        version: 2,
         transitions: parsed.transitions || {},
+        artistRelations: parsed.artistRelations || {},
       };
       mergeMusicBrainArtists();
     }
@@ -222,42 +272,56 @@ function loadMusicBrain() {
 }
 
 function mergeMusicBrainArtists() {
-  const merged: Record<string, MusicBrainArtist> = {};
+  const previousArtists = musicBrain.artists || {};
+  const rebuilt: Record<string, MusicBrainArtist> = {};
+  musicBrain.artistRelations = {};
 
-  for (const artist of Object.values(musicBrain.artists || {})) {
-    const cleanName = cleanArtistName(artist.name || artist.key);
-    const canonicalKey = normalizeMusicQuery(cleanName) || artist.key;
-    const target = merged[canonicalKey] || {
-      key: canonicalKey,
-      name: cleanName || artist.name,
+  for (const song of Object.values(musicBrain.songs || {})) {
+    const previousArtist = previousArtists[song.artistKey];
+    const sourceHint = (previousArtist?.aliases || [])
+      .map(cleanArtistName)
+      .filter(Boolean)
+      .sort((a, b) => a.length - b.length)[0] || previousArtist?.name || song.artistName || "";
+    const credits = inferArtistCredits(song, sourceHint);
+    const artistName = credits.main;
+    const artistKey = normalizeMusicQuery(artistName) || "unknown";
+    const now = Date.now();
+
+    song.title = cleanDisplayTitle(song.title || "");
+    song.artistKey = artistKey;
+    song.artistName = artistName;
+    song.featuredArtistNames = credits.collaborators;
+    song.featuredArtistKeys = credits.collaborators.map(normalizeMusicQuery).filter(Boolean);
+
+    const target = rebuilt[artistKey] || {
+      key: artistKey,
+      name: artistName,
       aliases: [],
-      firstSeenAt: Number(artist.firstSeenAt || Date.now()),
-      lastSeenAt: Number(artist.lastSeenAt || Date.now()),
+      collaborators: {},
+      firstSeenAt: Number(song.firstSeenAt || now),
+      lastSeenAt: Number(song.lastSeenAt || now),
       searchCount: 0,
       songs: {},
     };
-
-    target.firstSeenAt = Math.min(target.firstSeenAt, Number(artist.firstSeenAt || target.firstSeenAt));
-    target.lastSeenAt = Math.max(target.lastSeenAt, Number(artist.lastSeenAt || target.lastSeenAt));
-    target.searchCount += Number(artist.searchCount || 0);
+    target.firstSeenAt = Math.min(target.firstSeenAt, Number(song.firstSeenAt || target.firstSeenAt));
+    target.lastSeenAt = Math.max(target.lastSeenAt, Number(song.lastSeenAt || target.lastSeenAt));
+    target.searchCount += Number(song.searchCount || 0);
     target.aliases = [...new Set([
       ...target.aliases,
-      ...(artist.aliases || []).map(cleanArtistName),
-      cleanArtistName(artist.name || ""),
+      cleanArtistName(previousArtist?.name || ""),
+      ...(previousArtist?.aliases || []).map(cleanArtistName),
     ].filter(Boolean))].slice(-30);
-
-    for (const song of Object.values(artist.songs || {})) {
-      song.title = decodeHtmlEntities(song.title || "");
-      song.artistKey = canonicalKey;
-      song.artistName = target.name;
-      target.songs[song.videoId] = song;
-      musicBrain.songs[song.videoId] = song;
-    }
-
-    merged[canonicalKey] = target;
+    target.songs[song.videoId] = song;
+    rebuilt[artistKey] = target;
   }
 
-  musicBrain.artists = merged;
+  musicBrain.artists = rebuilt;
+  for (const song of Object.values(musicBrain.songs || {})) {
+    for (const collaborator of song.featuredArtistNames || []) {
+      recordArtistRelation(song.artistName, collaborator);
+    }
+  }
+  saveMusicBrain();
 }
 
 let musicBrainSaveTimer: NodeJS.Timeout | null = null;
@@ -274,37 +338,69 @@ function saveMusicBrain() {
 }
 
 function decodeHtmlEntities(value: string) {
-  const entities: Record<string, string> = {
-    "&amp;": "&",
-    "&#39;": "'",
-    "&quot;": '"',
-    "&lt;": "<",
-    "&gt;": ">",
-    "&nbsp;": " ",
-  };
-  return value
-    .replace(/&(amp|#39|quot|lt|gt|nbsp);/gi, (match) => entities[match.toLowerCase()] || match)
-    .replace(/&#(\d+);/g, (_match, code) => String.fromCharCode(Number(code)));
+  return coreDecodeHtmlEntities(value);
+}
+
+function cleanDisplayTitle(value: string) {
+  return coreCleanTitle(value);
 }
 
 function cleanArtistName(value: string) {
-  return decodeHtmlEntities(value)
-    .replace(/\s+-\s+topic$/i, "")
-    .replace(/vevo$/i, "")
-    .replace(/official$/i, "")
+  return coreCleanArtist(value);
+}
+
+function normalizeArtistToken(value: string) {
+  return cleanArtistName(value)
+    .replace(/^[\s([\]{},:;.!+\-]+|[\s)\]\]{},:;.!+\-]+$/g, "")
+    .replace(/^(?:feat(?:uring)?|ft|avec)\.?\s*/i, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function inferArtistName(result: { title?: string; channelTitle?: string }, fallbackQuery: string) {
-  const channel = cleanArtistName(String(result.channelTitle || ""));
-  if (channel && !/music|records|label|entertainment/i.test(channel)) return channel;
+function splitGuestList(value: string) {
+  return value
+    .split(/\s*(?:,|;|\+|\bx\b|\bavec\b|\bfeat(?:uring)?\.?\b|\bft\.?\b)\s*/i)
+    .map(normalizeArtistToken)
+    .filter((name) => name.length >= 2 && !/^(?:official|music|topic)$/i.test(name));
+}
 
-  const title = String(result.title || "");
-  const titleArtist = title.includes(" - ") ? title.split(" - ")[0].trim() : "";
-  if (titleArtist && titleArtist.length <= 80) return cleanArtistName(titleArtist);
+function splitArtistCredits(value: string, sourceQuery = "") {
+  return coreParseArtistCredits(value, sourceQuery);
+}
 
-  return cleanArtistName(fallbackQuery) || "Artiste inconnu";
+function inferArtistCredits(result: { title?: string; channelTitle?: string }, fallbackQuery: string) {
+  const metadata = coreExtractMusicMetadata({
+    rawTitle: String(result.title || ""),
+    channelTitle: String(result.channelTitle || ""),
+    query: fallbackQuery,
+  });
+  return { main: metadata.artistName, collaborators: metadata.featuredArtistNames };
+}
+
+function relationKey(a: string, b: string) {
+  return [a, b].sort().join(">>");
+}
+
+function recordArtistRelation(mainName: string, collaboratorName: string) {
+  const mainKey = normalizeMusicQuery(mainName);
+  const collaboratorKey = normalizeMusicQuery(collaboratorName);
+  if (!mainKey || !collaboratorKey || mainKey === collaboratorKey) return;
+  const now = Date.now();
+  const collaborator = musicBrain.artists[collaboratorKey] || {
+    key: collaboratorKey, name: cleanArtistName(collaboratorName), aliases: [], collaborators: {},
+    firstSeenAt: now, lastSeenAt: now, searchCount: 0, songs: {},
+  };
+  musicBrain.artists[collaboratorKey] = collaborator;
+  const main = musicBrain.artists[mainKey];
+  if (main) {
+    const link = main.collaborators[collaboratorKey] || { key: collaboratorKey, name: collaborator.name, count: 0, lastSeenAt: now };
+    link.count += 1; link.lastSeenAt = now; main.collaborators[collaboratorKey] = link;
+  }
+  const reverse = collaborator.collaborators[mainKey] || { key: mainKey, name: main?.name || mainName, count: 0, lastSeenAt: now };
+  reverse.count += 1; reverse.lastSeenAt = now; collaborator.collaborators[mainKey] = reverse;
+  const key = relationKey(mainKey, collaboratorKey);
+  const relation = musicBrain.artistRelations[key] || { fromKey: mainKey, toKey: collaboratorKey, count: 0, lastSeenAt: now };
+  relation.count += 1; relation.lastSeenAt = now; musicBrain.artistRelations[key] = relation;
 }
 
 function upsertMusicBrainSong(params: {
@@ -315,9 +411,16 @@ function upsertMusicBrainSong(params: {
   durationSeconds?: number;
   artistName?: string;
   sourceQuery?: string;
+  collaborators?: string[];
+  albumName?: string;
+  metadataSource?: MusicMetadataSource;
+  metadataConfidence?: number;
+  rawTitle?: string;
 }) {
   const now = Date.now();
-  const artistName = cleanArtistName(params.artistName || inferArtistName(params, params.sourceQuery || params.title));
+  const inferred = inferArtistCredits(params, params.sourceQuery || params.title);
+  const credits = params.artistName ? splitArtistCredits(params.artistName, params.sourceQuery || "") : inferred;
+  const artistName = cleanArtistName(credits.main);
   const artistKey = normalizeMusicQuery(artistName) || normalizeMusicQuery(params.sourceQuery || "") || "unknown";
   const existing = musicBrain.songs[params.videoId];
   const song: MusicBrainSong = existing || {
@@ -336,12 +439,18 @@ function upsertMusicBrainSong(params: {
     voteCount: 0,
   };
 
-  song.title = params.title || song.title;
+  song.rawTitle = params.rawTitle || song.rawTitle || params.title;
+  song.title = cleanTrackTitle(params.title || song.title, artistName);
   song.thumbnail = params.thumbnail || song.thumbnail;
   song.channelTitle = params.channelTitle || song.channelTitle;
   song.durationSeconds = params.durationSeconds ?? song.durationSeconds;
   song.artistKey = artistKey;
   song.artistName = artistName;
+  song.featuredArtistNames = [...new Set([...credits.collaborators, ...(params.collaborators || [])].map(normalizeArtistToken).filter(Boolean))];
+  song.featuredArtistKeys = song.featuredArtistNames.map(normalizeMusicQuery).filter(Boolean);
+  song.albumName = params.albumName || song.albumName;
+  song.metadataSource = params.metadataSource || song.metadataSource;
+  song.metadataConfidence = params.metadataConfidence ?? song.metadataConfidence;
   song.lastSeenAt = now;
   musicBrain.songs[params.videoId] = song;
 
@@ -349,6 +458,7 @@ function upsertMusicBrainSong(params: {
     key: artistKey,
     name: artistName,
     aliases: [],
+    collaborators: {},
     firstSeenAt: now,
     lastSeenAt: now,
     searchCount: 0,
@@ -363,6 +473,9 @@ function upsertMusicBrainSong(params: {
   }
   artist.songs[params.videoId] = song;
   musicBrain.artists[artistKey] = artist;
+  for (const collaborator of song.featuredArtistNames || []) {
+    recordArtistRelation(artistName, collaborator);
+  }
   return song;
 }
 
@@ -376,6 +489,12 @@ function recordMusicBrainSearch(query: string, results: YoutubeSearchResult[]) {
       thumbnail: result.thumbnail,
       channelTitle: result.channelTitle,
       durationSeconds: result.durationSeconds,
+      artistName: result.artistName,
+      collaborators: result.featuredArtistNames,
+      albumName: result.albumName,
+      metadataSource: result.metadataSource,
+      metadataConfidence: result.metadataConfidence,
+      rawTitle: result.rawTitle,
       sourceQuery: query,
     });
     song.searchCount += 1;
@@ -394,6 +513,11 @@ function recordMusicBrainAddition(song: Song) {
     videoId: song.videoId,
     title: song.title,
     thumbnail: song.thumbnail,
+    artistName: song.artistName,
+    collaborators: song.featuredArtistNames,
+    albumName: song.albumName,
+    metadataSource: song.metadataSource,
+    metadataConfidence: song.metadataConfidence,
     sourceQuery: song.sourceQuery,
   });
   item.addedCount += 1;
@@ -407,6 +531,11 @@ function recordMusicBrainVote(song: Song) {
     videoId: song.videoId,
     title: song.title,
     thumbnail: song.thumbnail,
+    artistName: song.artistName,
+    collaborators: song.featuredArtistNames,
+    albumName: song.albumName,
+    metadataSource: song.metadataSource,
+    metadataConfidence: song.metadataConfidence,
     sourceQuery: song.sourceQuery,
   });
   item.voteCount += 1;
@@ -420,6 +549,11 @@ function recordMusicBrainPlay(song: Song, previous?: Song | null) {
     videoId: song.videoId,
     title: song.title,
     thumbnail: song.thumbnail,
+    artistName: song.artistName,
+    collaborators: song.featuredArtistNames,
+    albumName: song.albumName,
+    metadataSource: song.metadataSource,
+    metadataConfidence: song.metadataConfidence,
     sourceQuery: song.sourceQuery,
   });
   item.playedCount += 1;
@@ -471,8 +605,14 @@ function musicBrainStats() {
       toTitle: musicBrain.songs[transition.toVideoId]?.title || transition.toVideoId,
     }));
 
+  const artistRelations = Object.values(musicBrain.artistRelations || {});
+  const topArtistRelations = artistRelations
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 40)
+    .map((relation) => ({ ...relation, fromName: musicBrain.artists[relation.fromKey]?.name || relation.fromKey, toName: musicBrain.artists[relation.toKey]?.name || relation.toKey }));
+
   const knowledgePoints =
-    artists.length * 25 + songs.length * 5 + Object.keys(musicBrain.transitions).length * 10 +
+    artists.length * 25 + songs.length * 5 + Object.keys(musicBrain.transitions).length * 10 + artistRelations.length * 8 +
     musicBrain.totals.searches + musicBrain.totals.additions * 2 + musicBrain.totals.votes;
   const level = Math.max(1, Math.floor(Math.sqrt(knowledgePoints / 100)) + 1);
   const currentLevelStart = Math.pow(level - 1, 2) * 100;
@@ -496,12 +636,14 @@ function musicBrainStats() {
       artists: artists.length,
       songs: songs.length,
       transitions: Object.keys(musicBrain.transitions).length,
+      artistRelations: artistRelations.length,
       youtubeCalls: youtubeSearchStats.youtubeCalls,
       quotaSaved: youtubeSearchStats.quotaSaved,
     },
     topArtists,
     topSongs,
     topTransitions,
+    topArtistRelations,
   };
 }
 
@@ -744,7 +886,12 @@ app.post("/party/:code/song",(req,res)=>{
   thumbnail,
   addedBy,
   sourceQuery,
-  suggestionPool
+  suggestionPool,
+  artistName,
+  featuredArtistNames,
+  albumName,
+  metadataSource,
+  metadataConfidence
 } = req.body;
 
 
@@ -778,6 +925,11 @@ party.songs.push({
   addedAt: Date.now(),
 
   sourceQuery: typeof sourceQuery === "string" ? sourceQuery.trim() : undefined,
+  artistName: typeof artistName === "string" ? artistName.trim() : undefined,
+  featuredArtistNames: Array.isArray(featuredArtistNames) ? featuredArtistNames.map(String).filter(Boolean) : undefined,
+  albumName: typeof albumName === "string" ? albumName.trim() : undefined,
+  metadataSource: ["ART_TRACK_DESCRIPTION", "TITLE_CHANNEL", "QUERY_FALLBACK"].includes(String(metadataSource)) ? metadataSource : undefined,
+  metadataConfidence: Number.isFinite(Number(metadataConfidence)) ? Number(metadataConfidence) : undefined,
 
   suggestionPool: Array.isArray(suggestionPool)
     ? suggestionPool
@@ -791,6 +943,11 @@ party.songs.push({
           durationSeconds: Number.isFinite(Number(item.durationSeconds))
             ? Number(item.durationSeconds)
             : undefined,
+          artistName: typeof item.artistName === "string" ? item.artistName : undefined,
+          featuredArtistNames: Array.isArray(item.featuredArtistNames) ? item.featuredArtistNames.map(String).filter(Boolean) : undefined,
+          albumName: typeof item.albumName === "string" ? item.albumName : undefined,
+          metadataSource: item.metadataSource,
+          metadataConfidence: Number.isFinite(Number(item.metadataConfidence)) ? Number(item.metadataConfidence) : undefined,
         }))
     : []
 
@@ -1082,9 +1239,15 @@ io.on("connection",(socket)=>{
 type YoutubeSearchResult = {
   id: string;
   title: string;
+  rawTitle?: string;
   thumbnail: string;
   channelTitle?: string;
   durationSeconds?: number;
+  artistName?: string;
+  featuredArtistNames?: string[];
+  albumName?: string;
+  metadataSource?: MusicMetadataSource;
+  metadataConfidence?: number;
 };
 
 type SearchCacheEntry = {
@@ -1257,6 +1420,25 @@ function parseIsoDuration(duration: string) {
   return Number(match[1] || 0) * 3600 + Number(match[2] || 0) * 60 + Number(match[3] || 0);
 }
 
+
+function cleanTrackTitle(value: string, artistName = "") {
+  return coreCleanTrackTitle(value, artistName);
+}
+
+function parseProvidedToYoutube(description: string) {
+  return coreParseProvidedToYoutube(description);
+}
+
+function extractMusicMetadata(params: {
+  rawTitle: string;
+  channelTitle?: string;
+  description?: string;
+  tags?: string[];
+  query: string;
+}) {
+  return coreExtractMusicMetadata(params);
+}
+
 function scoreMusicResult(result: YoutubeSearchResult, query: string) {
   const title = stripDiacritics(result.title).toLowerCase();
   const channel = stripDiacritics(result.channelTitle || "").toLowerCase();
@@ -1344,7 +1526,7 @@ async function requestYoutubeMusic(query: string): Promise<YoutubeSearchResult[]
     if (!basicResults.length) return [];
 
     const detailParams = new URLSearchParams({
-      part: "contentDetails,status,snippet",
+      part: "contentDetails,status,snippet,topicDetails",
       id: basicResults.map((item: YoutubeSearchResult) => item.id).join(","),
       key: apiKey,
     });
@@ -1363,10 +1545,25 @@ async function requestYoutubeMusic(query: string): Promise<YoutubeSearchResult[]
     return basicResults
       .map((result: YoutubeSearchResult) => {
         const detail = detailsById.get(result.id);
+        const rawTitle = String(detail?.snippet?.title || result.title || "");
+        const metadata = extractMusicMetadata({
+          rawTitle,
+          channelTitle: String(detail?.snippet?.channelTitle || result.channelTitle || ""),
+          description: String(detail?.snippet?.description || ""),
+          tags: Array.isArray(detail?.snippet?.tags) ? detail.snippet.tags.map(String) : [],
+          query,
+        });
         return {
           ...result,
+          rawTitle,
+          title: metadata.title,
           durationSeconds: parseIsoDuration(String(detail?.contentDetails?.duration || "")),
           channelTitle: String(detail?.snippet?.channelTitle || result.channelTitle || ""),
+          artistName: metadata.artistName,
+          featuredArtistNames: metadata.featuredArtistNames,
+          albumName: metadata.albumName,
+          metadataSource: metadata.metadataSource,
+          metadataConfidence: metadata.metadataConfidence,
           embeddable: detail?.status?.embeddable !== false,
           privacyStatus: detail?.status?.privacyStatus,
         };
@@ -1386,6 +1583,12 @@ async function requestYoutubeMusic(query: string): Promise<YoutubeSearchResult[]
         thumbnail: result.thumbnail,
         channelTitle: result.channelTitle,
         durationSeconds: result.durationSeconds,
+        rawTitle: result.rawTitle,
+        artistName: result.artistName,
+        featuredArtistNames: result.featuredArtistNames,
+        albumName: result.albumName,
+        metadataSource: result.metadataSource,
+        metadataConfidence: result.metadataConfidence,
       }));
   } finally {
     clearTimeout(timeout);
@@ -1408,6 +1611,16 @@ app.get("/musicbrain/artists/:key", (req, res) => {
 });
 
 app.get("/partybrain/stats", (_req, res) => res.json(musicBrainStats()));
+app.get("/partybrain/graph", (_req, res) => {
+  const stats = musicBrainStats();
+  const nodes = Object.values(musicBrain.artists).map((artist) => ({
+    id: artist.key, label: artist.name, songs: Object.keys(artist.songs || {}).length, searches: artist.searchCount,
+    weight: Object.keys(artist.songs || {}).length + artist.searchCount + Object.values(artist.collaborators || {}).reduce((sum, item) => sum + item.count, 0),
+  })).sort((a, b) => b.weight - a.weight).slice(0, 80);
+  const allowed = new Set(nodes.map((node) => node.id));
+  const edges = (stats.topArtistRelations || []).filter((edge:any) => allowed.has(edge.fromKey) && allowed.has(edge.toKey));
+  res.json({ nodes, edges, updatedAt: musicBrain.updatedAt });
+});
 app.get("/partybrain/export", (_req, res) => {
   res.setHeader("Content-Disposition", "attachment; filename=partybrain-export.json");
   return res.json(musicBrain);

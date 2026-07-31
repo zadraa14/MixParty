@@ -38,6 +38,11 @@ type YoutubeSuggestion = {
   thumbnail: string;
   channelTitle?: string;
   durationSeconds?: number;
+  artistName?: string;
+  featuredArtistNames?: string[];
+  albumName?: string;
+  metadataSource?: "ART_TRACK_DESCRIPTION" | "TITLE_CHANNEL" | "QUERY_FALLBACK";
+  metadataConfidence?: number;
   sourceQuery?: string;
   suggestionPool?: YoutubeSuggestion[];
 };
@@ -53,6 +58,11 @@ type Song = {
   addedAt: number;
   sourceQuery?: string;
   suggestionPool?: YoutubeSuggestion[];
+  artistName?: string;
+  featuredArtistNames?: string[];
+  albumName?: string;
+  metadataSource?: "ART_TRACK_DESCRIPTION" | "TITLE_CHANNEL" | "QUERY_FALLBACK";
+  metadataConfidence?: number;
 };
 
 type Participant = { id: string; name: string; avatar?: string };
@@ -536,6 +546,11 @@ export default function PartyPage() {
           thumbnail: video.thumbnail,
           addedBy: playerName || "Inconnu",
           sourceQuery: video.sourceQuery || search.trim(),
+          artistName: video.artistName,
+          featuredArtistNames: video.featuredArtistNames,
+          albumName: video.albumName,
+          metadataSource: video.metadataSource,
+          metadataConfidence: video.metadataConfidence,
           suggestionPool: Array.isArray(video.suggestionPool)
             ? video.suggestionPool.map((item: any) => ({
                 id: item.id,
@@ -543,6 +558,11 @@ export default function PartyPage() {
                 thumbnail: item.thumbnail,
                 channelTitle: item.channelTitle,
                 durationSeconds: item.durationSeconds,
+                artistName: item.artistName,
+                featuredArtistNames: item.featuredArtistNames,
+                albumName: item.albumName,
+                metadataSource: item.metadataSource,
+                metadataConfidence: item.metadataConfidence,
               }))
             : []
         })

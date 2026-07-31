@@ -122,3 +122,30 @@ Priorités :
 - Ajout d'un score par morceau basé sur recherches, ajouts, lectures et votes.
 - Ajout d'un export JSON de PartyBrain.
 - Le stockage peut désormais être rendu persistant sur Railway grâce à un volume monté dans `/data` et à la variable `PERSISTENT_DATA_DIR=/data`.
+
+## 1 août 2026 — Build 0.8 PartyBrain V2
+
+- Ajout d’un Artist Cleaner pour fusionner les variantes d’un même artiste.
+- Nettoyage des titres et décodage des entités HTML.
+- Détection des collaborations et apprentissage des relations entre artistes.
+- Création d’une constellation musicale interactive accessible via `/admin/partybrain/graph`.
+- Migration automatique de la base PartyBrain vers le schéma V2 tout en conservant les données du volume Railway.
+
+## 1 août 2026 — Build 0.9 Music Intelligence Engine
+
+- Enrichissement des résultats YouTube avec les données `videos.list` disponibles.
+- Détection prioritaire des Art Tracks via la description « Provided to YouTube by ».
+- Extraction du titre propre, de l’artiste principal, des collaborateurs et de l’album lorsque ces informations sont présentes.
+- Conservation de la provenance des métadonnées et d’un indice de confiance dans PartyBrain.
+- Repli sur le parseur PartyBrain lorsque YouTube ne fournit pas de métadonnées musicales suffisamment fiables.
+- Affichage de la provenance des métadonnées dans l’administration PartyBrain.
+
+## 1 août 2026 — Build 1.0 Music Intelligence Core
+
+- Centralisation du nettoyage musical dans `apps/api/src/music-intelligence/`.
+- Ajout d’un moteur de métadonnées priorisant les Art Tracks YouTube.
+- Nettoyage des titres, sources radio, labels et mentions techniques.
+- Séparation fiable de l’artiste principal et des collaborateurs.
+- Préservation des groupes connus comme Bigflo & Oli.
+- Migration automatique des connaissances PartyBrain existantes.
+- Compatibilité maintenue avec le volume persistant Railway `/data`.
