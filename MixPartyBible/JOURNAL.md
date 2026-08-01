@@ -149,3 +149,11 @@ Priorités :
 - Préservation des groupes connus comme Bigflo & Oli.
 - Migration automatique des connaissances PartyBrain existantes.
 - Compatibilité maintenue avec le volume persistant Railway `/data`.
+
+## 1 août 2026 — Build 1.2 Live Party
+
+- Refonte animée de la démonstration présente sur la page d'accueil.
+- Ajout d'un égaliseur, d'une progression vivante, de transitions de morceaux, de votes et d'invités animés.
+- Ajout de particules discrètes et d'apparitions progressives dans le hero.
+- Toutes les animations sont locales et ne consomment aucun quota YouTube.
+- Le mode de réduction des animations du système est respecté.
