@@ -6,22 +6,28 @@ import { QRCodeCanvas } from "qrcode.react";
 import { io } from "socket.io-client";
 import {
   ArrowBigUp,
+  Battery,
   Bot,
   Check,
   Copy,
   Crown,
   Disc3,
+  Expand,
+  Headphones,
   ListMusic,
   Music4,
   Play,
   Plus,
   Radio,
+  RefreshCw,
   Sparkles,
   Search,
   SkipForward,
   TrendingUp,
   UserPlus,
   WandSparkles,
+  Wifi,
+  WifiOff,
 } from "lucide-react";
 import { getApiBaseUrl, getAppBaseUrl, getSocketPath, getSocketUrl } from "../../../lib/config";
 
@@ -157,7 +163,15 @@ export default function PartyPage() {
   const [isPlaybackController, setIsPlaybackController] = useState(false);
   const [remotePlayback, setRemotePlayback] = useState({ state: 2, time: 0, receivedAt: Date.now() });
   const [youtubeError, setYoutubeError] = useState<number | null>(null);
+  const [djModeActive, setDjModeActive] = useState(false);
+  const [djModeStartedAt, setDjModeStartedAt] = useState<number | null>(null);
+  const [djModeElapsed, setDjModeElapsed] = useState(0);
+  const [wakeLockActive, setWakeLockActive] = useState(false);
+  const [networkOnline, setNetworkOnline] = useState(true);
+  const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
+  const [resumeRequired, setResumeRequired] = useState(false);
 
+  const wakeLockRef = useRef<any>(null);
   const playerRef = useRef<any>(null);
   const playerHostRef = useRef<HTMLDivElement | null>(null);
   const socketRef = useRef<any>(null);
@@ -734,6 +748,9 @@ export default function PartyPage() {
             }
 
             socketRef.current?.emit("request_playback_sync", code);
+            if (djModeActive) {
+              try { event.target?.playVideo?.(); } catch {}
+            }
           },
 
           onStateChange: (event: any) => {
@@ -748,6 +765,13 @@ export default function PartyPage() {
               });
             }
 
+            if (event.data === 1) setResumeRequired(false);
+            if (djModeActive && isPlaybackControllerRef.current && (event.data === 2 || event.data === 5)) {
+              window.setTimeout(() => {
+                const state = playerRef.current?.getPlayerState?.();
+                if (state !== 1 && party?.currentSong) setResumeRequired(true);
+              }, 1200);
+            }
             if (event.data === 0 && isPlaybackControllerRef.current) {
               nextSong();
             }
@@ -789,7 +813,7 @@ export default function PartyPage() {
       cancelled = true;
       clearPlayer();
     };
-  }, [party?.currentSong?.videoId, isPlaybackController, code]);
+  }, [party?.currentSong?.videoId, isPlaybackController, code, djModeActive]);
 
   useEffect(() => {
     if (!party?.currentSong?.videoId) return;
@@ -804,6 +828,126 @@ export default function PartyPage() {
     }, 2000);
     return () => window.clearInterval(interval);
   }, [code, party?.currentSong?.videoId]);
+
+  async function requestWakeLock() {
+    if (!("wakeLock" in navigator) || document.visibilityState !== "visible") return;
+    try {
+      await wakeLockRef.current?.release?.();
+      wakeLockRef.current = await (navigator as any).wakeLock.request("screen");
+      setWakeLockActive(true);
+      wakeLockRef.current.addEventListener?.("release", () => setWakeLockActive(false));
+    } catch (error) {
+      console.warn("Wake Lock indisponible", error);
+      setWakeLockActive(false);
+    }
+  }
+
+  async function activateDjMode() {
+    setDjModeActive(true);
+    setDjModeStartedAt(Date.now());
+    setResumeRequired(false);
+    await requestWakeLock();
+    try {
+      await document.documentElement.requestFullscreen?.();
+    } catch (error) {
+      console.warn("Plein écran indisponible", error);
+    }
+    try {
+      playerRef.current?.playVideo?.();
+    } catch {}
+  }
+
+  async function deactivateDjMode() {
+    setDjModeActive(false);
+    setDjModeStartedAt(null);
+    setDjModeElapsed(0);
+    setResumeRequired(false);
+    try {
+      await wakeLockRef.current?.release?.();
+    } catch {}
+    wakeLockRef.current = null;
+    setWakeLockActive(false);
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen?.();
+    } catch {}
+  }
+
+  function resumePlayback() {
+    try {
+      playerRef.current?.playVideo?.();
+      setResumeRequired(false);
+      setYoutubeError(null);
+    } catch (error) {
+      console.warn("Reprise de lecture impossible", error);
+    }
+  }
+
+  useEffect(() => {
+    setNetworkOnline(navigator.onLine);
+    const onOnline = () => {
+      setNetworkOnline(true);
+      socketRef.current?.connect?.();
+      socketRef.current?.emit("request_playback_sync", code);
+    };
+    const onOffline = () => setNetworkOnline(false);
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, [code]);
+
+  useEffect(() => {
+    let battery: any = null;
+    let cancelled = false;
+    const updateBattery = () => {
+      if (!cancelled && battery) setBatteryLevel(Math.round(Number(battery.level || 0) * 100));
+    };
+    (navigator as any).getBattery?.().then((value: any) => {
+      battery = value;
+      updateBattery();
+      battery.addEventListener?.("levelchange", updateBattery);
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+      battery?.removeEventListener?.("levelchange", updateBattery);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!djModeActive || !djModeStartedAt) return;
+    const tick = () => setDjModeElapsed(Math.max(0, Date.now() - djModeStartedAt));
+    tick();
+    const interval = window.setInterval(tick, 1000);
+    return () => window.clearInterval(interval);
+  }, [djModeActive, djModeStartedAt]);
+
+  useEffect(() => {
+    if (!djModeActive) return;
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    const onVisibilityChange = async () => {
+      if (document.visibilityState !== "visible") return;
+      await requestWakeLock();
+      socketRef.current?.connect?.();
+      socketRef.current?.emit("request_playback_sync", code);
+      const state = playerRef.current?.getPlayerState?.();
+      if (party?.currentSong && state !== 1) setResumeRequired(true);
+    };
+    window.addEventListener("beforeunload", beforeUnload);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("beforeunload", beforeUnload);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [djModeActive, code, party?.currentSong?.videoId]);
+
+  useEffect(() => () => {
+    wakeLockRef.current?.release?.().catch?.(() => {});
+  }, []);
 
   if (!party) {
     return (
@@ -1042,6 +1186,21 @@ export default function PartyPage() {
                               {youtubeError === 153 && "YouTube ne reçoit pas correctement l’origine ou le référent de MixParty."}
                               {![-1, 2, 5, 100, 101, 150, 153].includes(youtubeError) && "Erreur inconnue du lecteur intégré."}
                             </p>
+                          </div>
+                        )}
+                        {resumeRequired && (
+                          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/65 p-5 backdrop-blur-sm">
+                            <button
+                              type="button"
+                              onClick={resumePlayback}
+                              className="party-action party-action--orange group rounded-2xl px-6 py-4 text-base font-black"
+                            >
+                              <span className="party-action__shine" aria-hidden="true" />
+                              <span className="party-action__content flex items-center gap-2">
+                                <Play className="h-5 w-5 fill-current" />
+                                Reprendre la lecture
+                              </span>
+                            </button>
                           </div>
                         )}
                       </div>
@@ -1703,28 +1862,76 @@ export default function PartyPage() {
 
             <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} overflow-hidden rounded-[24px] border border-orange-400/20 bg-gradient-to-br from-orange-500/15 via-pink-500/10 to-purple-600/10 p-4 backdrop-blur-xl md:block md:rounded-[30px] md:p-5`}>
 
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-orange-400/20 bg-orange-400/10 shadow-[0_0_28px_rgba(251,146,60,0.12)]">
-                <Crown className="h-5 w-5 text-orange-300" />
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-orange-400/20 bg-orange-400/10 shadow-[0_0_28px_rgba(251,146,60,0.12)]">
+                  <Headphones className="h-5 w-5 text-orange-300" />
+                </div>
+                {djModeActive && (
+                  <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-black text-emerald-300">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+                    Mode DJ actif
+                  </span>
+                )}
               </div>
 
-              <h2 className="mt-4 text-xl font-black">
-                Mode DJ
-              </h2>
-
+              <h2 className="mt-4 text-xl font-black">Mode DJ permanent</h2>
               <p className="mt-2 text-sm leading-relaxed text-white/45">
-                Le DJ sélectionne automatiquement le morceau ayant le plus de votes.
+                Garde l’écran allumé, protège la diffusion et reconnecte automatiquement la soirée.
               </p>
 
-              <button
-                onClick={nextSong}
-                className="party-action party-action--orange group mt-5 w-full rounded-2xl px-5 py-4"
-              >
-                <span className="party-action__shine" aria-hidden="true" />
-                <span className="party-action__content flex items-center justify-center gap-2">
-                  <span className="party-action__icon"><Crown className="h-4 w-4" /></span>
-                  Lancer le DJ
-                </span>
-              </button>
+              {djModeActive ? (
+                <>
+                  <div className="mt-5 grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                      <div className="flex items-center gap-2 text-white/55">
+                        {networkOnline ? <Wifi className="h-4 w-4 text-emerald-300" /> : <WifiOff className="h-4 w-4 text-red-300" />}
+                        Réseau
+                      </div>
+                      <p className={`mt-2 font-black ${networkOnline ? "text-emerald-300" : "text-red-300"}`}>
+                        {networkOnline ? "Connecté" : "Hors ligne"}
+                      </p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                      <div className="flex items-center gap-2 text-white/55"><Battery className="h-4 w-4 text-orange-300" /> Batterie</div>
+                      <p className="mt-2 font-black text-white">{batteryLevel === null ? "Indisponible" : `${batteryLevel} %`}</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                      <div className="flex items-center gap-2 text-white/55"><Sparkles className="h-4 w-4 text-purple-300" /> Écran</div>
+                      <p className={`mt-2 font-black ${wakeLockActive ? "text-emerald-300" : "text-amber-300"}`}>{wakeLockActive ? "Maintenu allumé" : "Wake Lock indisponible"}</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
+                      <div className="flex items-center gap-2 text-white/55"><Radio className="h-4 w-4 text-pink-300" /> Durée</div>
+                      <p className="mt-2 font-black text-white">{String(Math.floor(djModeElapsed / 3600000)).padStart(2, "0")}:{String(Math.floor((djModeElapsed % 3600000) / 60000)).padStart(2, "0")}:{String(Math.floor((djModeElapsed % 60000) / 1000)).padStart(2, "0")}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <button type="button" onClick={resumePlayback} className="rounded-2xl border border-white/10 bg-white/[0.07] px-3 py-3 text-sm font-black transition hover:bg-white/[0.12]">
+                      <span className="flex items-center justify-center gap-2"><RefreshCw className="h-4 w-4" /> Reprendre</span>
+                    </button>
+                    <button type="button" onClick={() => document.documentElement.requestFullscreen?.().catch(() => {})} className="rounded-2xl border border-white/10 bg-white/[0.07] px-3 py-3 text-sm font-black transition hover:bg-white/[0.12]">
+                      <span className="flex items-center justify-center gap-2"><Expand className="h-4 w-4" /> Plein écran</span>
+                    </button>
+                  </div>
+
+                  <button type="button" onClick={deactivateDjMode} className="mt-3 w-full rounded-2xl border border-red-400/20 bg-red-400/10 px-5 py-3 text-sm font-black text-red-200 transition hover:bg-red-400/15">
+                    Désactiver le mode DJ
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={activateDjMode}
+                  disabled={!isPlaybackController}
+                  className="party-action party-action--orange group mt-5 w-full rounded-2xl px-5 py-4 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  <span className="party-action__shine" aria-hidden="true" />
+                  <span className="party-action__content flex items-center justify-center gap-2">
+                    <span className="party-action__icon"><Headphones className="h-4 w-4" /></span>
+                    {isPlaybackController ? "Activer le mode DJ" : "Disponible sur l’appareil DJ"}
+                  </span>
+                </button>
+              )}
 
             </section>
 

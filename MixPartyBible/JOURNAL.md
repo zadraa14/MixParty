@@ -157,3 +157,7 @@ Priorités :
 - Ajout de particules discrètes et d'apparitions progressives dans le hero.
 - Toutes les animations sont locales et ne consomment aucun quota YouTube.
 - Le mode de réduction des animations du système est respecté.
+
+## 01/08/2026 — Build 1.3 Mode DJ permanent
+
+Ajout d'un mode de diffusion dédié : écran maintenu allumé, plein écran, reconnexion réseau, protection contre la fermeture accidentelle, reprise manuelle de lecture et indicateurs de santé de l'appareil DJ.
