@@ -153,6 +153,51 @@ type MusicBrainDatabase = {
   artistRelations: Record<string, MusicBrainArtistRelation>;
 };
 
+
+type AcademyLogEntry = {
+  at: number;
+  level: "info" | "success" | "warning" | "error";
+  message: string;
+  artist?: string;
+  query?: string;
+  songsAdded?: number;
+};
+
+type AcademySession = {
+  id: string;
+  startedAt: number;
+  finishedAt?: number;
+  cycleKey: string;
+  callsPlanned: number;
+  callsUsed: number;
+  songsAdded: number;
+  artistsTouched: string[];
+  status: "running" | "completed" | "stopped" | "quota_exhausted" | "failed";
+  reason?: string;
+};
+
+type AcademyArtistProgress = {
+  attempts: number;
+  lastAttemptAt?: number;
+  lastQueryVariant?: number;
+};
+
+type AcademyState = {
+  version: 1;
+  updatedAt: number;
+  quota: {
+    cycleKey: string;
+    used: number;
+    lastResetAt: number;
+  };
+  running: boolean;
+  lastCheckAt?: number;
+  lastSessionAt?: number;
+  artistProgress: Record<string, AcademyArtistProgress>;
+  logs: AcademyLogEntry[];
+  sessions: AcademySession[];
+};
+
 type Participant = { id:string; name:string; avatar?:string; lastSeen:number };
 
 type Party = {
@@ -640,6 +685,7 @@ function musicBrainStats() {
       youtubeCalls: youtubeSearchStats.youtubeCalls,
       quotaSaved: youtubeSearchStats.quotaSaved,
     },
+    academy: academyDashboard(),
     topArtists,
     topSongs,
     topTransitions,
@@ -1257,8 +1303,8 @@ type SearchCacheEntry = {
   results: YoutubeSearchResult[];
 };
 
-const YOUTUBE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-const YOUTUBE_CACHE_MAX_ENTRIES = 500;
+const YOUTUBE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const YOUTUBE_CACHE_MAX_ENTRIES = 2000;
 const youtubeCacheFilePath = path.resolve(persistentDataDir, "youtube-search-cache.json");
 const youtubeSearchCache = new Map<string, SearchCacheEntry>();
 const youtubeSearchesInFlight = new Map<string, Promise<YoutubeSearchResult[]>>();
@@ -1272,6 +1318,179 @@ const youtubeSearchStats = {
   inFlightHits: 0,
   quotaSaved: 0,
 };
+
+
+const academyFilePath = path.resolve(persistentDataDir, "partybrain-academy.json");
+const academyEnabled = String(process.env.PARTYBRAIN_ACADEMY_ENABLED || "false").toLowerCase() === "true";
+const academyDailyLimit = Math.max(1, Number(process.env.PARTYBRAIN_QUOTA_DAILY_LIMIT || 100));
+const academyMinutesBeforeReset = Math.max(2, Number(process.env.PARTYBRAIN_ACADEMY_MINUTES_BEFORE_RESET || 15));
+const academyTargetSongs = Math.max(8, Number(process.env.PARTYBRAIN_ACADEMY_TARGET_SONGS || 24));
+const academyTimeZone = process.env.PARTYBRAIN_QUOTA_TIMEZONE || "America/Los_Angeles";
+
+function pacificCycleKey(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: academyTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function timeZoneOffsetMs(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const asUtc = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day),
+    Number(values.hour),
+    Number(values.minute),
+    Number(values.second)
+  );
+  return asUtc - date.getTime();
+}
+
+function nextQuotaResetAt(now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: academyTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(now);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const localMidnightUtcGuess = Date.UTC(
+    Number(values.year),
+    Number(values.month) - 1,
+    Number(values.day) + 1,
+    0,
+    0,
+    0
+  );
+  let candidate = new Date(localMidnightUtcGuess);
+  for (let iteration = 0; iteration < 3; iteration += 1) {
+    candidate = new Date(localMidnightUtcGuess - timeZoneOffsetMs(candidate, academyTimeZone));
+  }
+  return candidate.getTime();
+}
+
+function createAcademyState(): AcademyState {
+  const now = Date.now();
+  return {
+    version: 1,
+    updatedAt: now,
+    quota: {
+      cycleKey: pacificCycleKey(new Date(now)),
+      used: 0,
+      lastResetAt: now,
+    },
+    running: false,
+    artistProgress: {},
+    logs: [],
+    sessions: [],
+  };
+}
+
+let academyState: AcademyState = createAcademyState();
+
+function saveAcademyState() {
+  academyState.updatedAt = Date.now();
+  try {
+    fs.writeFileSync(academyFilePath, JSON.stringify(academyState, null, 2), "utf-8");
+  } catch (error) {
+    console.warn("PartyBrain Academy non sauvegardée :", error);
+  }
+}
+
+function loadAcademyState() {
+  if (fs.existsSync(academyFilePath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(academyFilePath, "utf-8"));
+      academyState = {
+        ...createAcademyState(),
+        ...parsed,
+        quota: { ...createAcademyState().quota, ...(parsed?.quota || {}) },
+        artistProgress: parsed?.artistProgress || {},
+        logs: Array.isArray(parsed?.logs) ? parsed.logs.slice(-400) : [],
+        sessions: Array.isArray(parsed?.sessions) ? parsed.sessions.slice(-50) : [],
+        running: false,
+      };
+    } catch (error) {
+      console.warn("Etat Academy illisible, nouvel état créé :", error);
+      academyState = createAcademyState();
+    }
+  }
+  ensureAcademyQuotaCycle();
+  saveAcademyState();
+}
+
+function addAcademyLog(
+  level: AcademyLogEntry["level"],
+  message: string,
+  details: Partial<AcademyLogEntry> = {}
+) {
+  academyState.logs.push({ at: Date.now(), level, message, ...details });
+  academyState.logs = academyState.logs.slice(-400);
+  saveAcademyState();
+  const prefix = level === "error" ? "❌" : level === "warning" ? "⚠️" : level === "success" ? "✅" : "🧠";
+  console.log(`${prefix} Academy : ${message}`);
+}
+
+function ensureAcademyQuotaCycle() {
+  const currentKey = pacificCycleKey();
+  if (academyState.quota.cycleKey !== currentKey) {
+    academyState.quota = {
+      cycleKey: currentKey,
+      used: 0,
+      lastResetAt: Date.now(),
+    };
+    addAcademyLog("info", `Nouveau cycle de quota ${currentKey} : compteur remis à zéro.`);
+  }
+}
+
+function registerYoutubeApiCall(source: "user" | "academy") {
+  ensureAcademyQuotaCycle();
+  youtubeSearchStats.youtubeCalls += 1;
+  academyState.quota.used += 1;
+  academyState.updatedAt = Date.now();
+  saveAcademyState();
+  if (source === "academy") {
+    console.log(`🧠 Academy utilise l'appel YouTube ${academyState.quota.used}/${academyDailyLimit}`);
+  }
+}
+
+function academyQuotaSnapshot() {
+  ensureAcademyQuotaCycle();
+  const now = Date.now();
+  const resetAt = nextQuotaResetAt(new Date(now));
+  const remaining = Math.max(0, academyDailyLimit - academyState.quota.used);
+  const msUntilReset = Math.max(0, resetAt - now);
+  return {
+    enabled: academyEnabled,
+    running: academyState.running,
+    dailyLimit: academyDailyLimit,
+    used: academyState.quota.used,
+    remaining,
+    cycleKey: academyState.quota.cycleKey,
+    resetAt,
+    msUntilReset,
+    minutesUntilReset: Math.ceil(msUntilReset / 60_000),
+    launchWindowMinutes: academyMinutesBeforeReset,
+    inLaunchWindow: msUntilReset <= academyMinutesBeforeReset * 60_000 && msUntilReset > 20_000,
+    targetSongsPerArtist: academyTargetSongs,
+    timeZone: academyTimeZone,
+  };
+}
 
 function logYoutubeSearchDiagnostic(params: {
   query: string;
@@ -1474,14 +1693,19 @@ function scoreMusicResult(result: YoutubeSearchResult, query: string) {
   return score;
 }
 
-async function requestYoutubeMusic(query: string): Promise<YoutubeSearchResult[]> {
+async function requestYoutubeMusic(
+  query: string,
+  source: "user" | "academy" = "user"
+): Promise<YoutubeSearchResult[]> {
   const apiKey = process.env.YOUTUBE_API_KEY?.trim();
   if (!apiKey) throw new Error("YOUTUBE_API_KEY manquante");
+
+  registerYoutubeApiCall(source);
 
   const searchParams = new URLSearchParams({
     part: "snippet",
     type: "video",
-    maxResults: "15",
+    maxResults: "50",
     q: query,
     key: apiKey,
     videoCategoryId: "10",
@@ -1576,7 +1800,7 @@ async function requestYoutubeMusic(query: string): Promise<YoutubeSearchResult[]
       .sort((a: YoutubeSearchResult, b: YoutubeSearchResult) =>
         scoreMusicResult(b, query) - scoreMusicResult(a, query)
       )
-      .slice(0, 8)
+      .slice(0, 40)
       .map((result: any): YoutubeSearchResult => ({
         id: result.id,
         title: result.title,
@@ -1595,7 +1819,291 @@ async function requestYoutubeMusic(query: string): Promise<YoutubeSearchResult[]
   }
 }
 
+
+function trackIdentity(result: YoutubeSearchResult) {
+  const artist = normalizeMusicQuery(result.artistName || result.channelTitle || "");
+  const title = normalizeMusicQuery(result.title || result.rawTitle || "")
+    .replace(/\b(remix|live|version|audio|official|clip|lyrics|paroles)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return `${artist}::${title}`;
+}
+
+function deduplicateMusicResults(results: YoutubeSearchResult[]) {
+  const byVideoId = new Map<string, YoutubeSearchResult>();
+  for (const result of results) {
+    if (!result.id || byVideoId.has(result.id)) continue;
+    byVideoId.set(result.id, result);
+  }
+
+  const bestByTrack = new Map<string, YoutubeSearchResult>();
+  for (const result of byVideoId.values()) {
+    const identity = trackIdentity(result);
+    if (!identity || identity === "::") continue;
+    const current = bestByTrack.get(identity);
+    if (!current || scoreMusicResult(result, result.artistName || result.title) > scoreMusicResult(current, current.artistName || current.title)) {
+      bestByTrack.set(identity, result);
+    }
+  }
+  return [...bestByTrack.values()];
+}
+
+function musicBrainResultsForQuery(query: string) {
+  const normalized = normalizeMusicQuery(query);
+  const compact = compactMusicQuery(query);
+  if (!normalized) return [] as YoutubeSearchResult[];
+
+  return Object.values(musicBrain.songs)
+    .filter((song) => {
+      const artist = normalizeMusicQuery(song.artistName || "");
+      const title = normalizeMusicQuery(song.title || "");
+      const artistCompact = artist.replace(/\s+/g, "");
+      return artist.includes(normalized) || normalized.includes(artist) || artistCompact === compact || title.includes(normalized);
+    })
+    .map((song): YoutubeSearchResult => ({
+      id: song.videoId,
+      title: song.title,
+      rawTitle: song.rawTitle,
+      thumbnail: song.thumbnail,
+      channelTitle: song.channelTitle,
+      durationSeconds: song.durationSeconds,
+      artistName: song.artistName,
+      featuredArtistNames: song.featuredArtistNames,
+      albumName: song.albumName,
+      metadataSource: song.metadataSource,
+      metadataConfidence: song.metadataConfidence,
+    }))
+    .sort((a, b) => scoreMusicResult(b, query) - scoreMusicResult(a, query));
+}
+
+async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResult[]> {
+  const known = musicBrainResultsForQuery(query);
+  // Une base déjà riche répond sans consommer de quota.
+  if (known.length >= 20) {
+    youtubeSearchStats.quotaSaved += 1;
+    return deduplicateMusicResults(known).slice(0, 40);
+  }
+
+  const primary = await requestYoutubeMusic(query, "user");
+  let combined = [...known, ...primary];
+
+  // Une seconde requête ciblée seulement si la première page reste pauvre.
+  // Cela évite le cas "PLK = seulement 8 titres" sans multiplier les appels à chaque recherche.
+  if (deduplicateMusicResults(combined).length < 16) {
+    const fallbackQuery = `${query} official audio topic`;
+    const fallback = await requestYoutubeMusic(fallbackQuery, "user");
+    combined = [...combined, ...fallback];
+  }
+
+  return deduplicateMusicResults(combined)
+    .sort((a, b) => scoreMusicResult(b, query) - scoreMusicResult(a, query))
+    .slice(0, 40);
+}
+
 loadYoutubeCache();
+loadAcademyState();
+
+const ACADEMY_QUERY_VARIANTS = [
+  (artist: string) => `${artist} official audio`,
+  (artist: string) => `${artist} topic`,
+  (artist: string) => `${artist} chansons`,
+  (artist: string) => `${artist} album`,
+  (artist: string) => `${artist} art track`,
+  (artist: string) => `${artist} meilleurs titres`,
+];
+
+function academyMissionCandidates() {
+  const now = Date.now();
+  return Object.values(musicBrain.artists)
+    .filter((artist) => artist.key && artist.name && artist.key !== "unknown")
+    .map((artist) => {
+      const songCount = Object.keys(artist.songs || {}).length;
+      const progress = academyState.artistProgress[artist.key] || { attempts: 0 };
+      const searchedRecently = now - Number(artist.lastSeenAt || 0) < 7 * 24 * 60 * 60 * 1000;
+      const incompleteBonus = Math.max(0, academyTargetSongs - songCount) * 12;
+      const demandScore = Number(artist.searchCount || 0) * 20;
+      const recencyScore = searchedRecently ? 80 : 0;
+      const retryPenalty = Number(progress.attempts || 0) * 7;
+      return {
+        key: artist.key,
+        name: artist.name,
+        songCount,
+        priority: demandScore + incompleteBonus + recencyScore - retryPenalty,
+        progress,
+      };
+    })
+    .filter((candidate) => candidate.songCount < academyTargetSongs || candidate.progress.attempts < 2)
+    .sort((a, b) => b.priority - a.priority || a.songCount - b.songCount);
+}
+
+function nextAcademyMission() {
+  const candidates = academyMissionCandidates();
+  if (!candidates.length) return null;
+
+  const candidate = candidates[0];
+  const variantIndex = Number(candidate.progress.lastQueryVariant ?? -1) + 1;
+  const normalizedVariant = variantIndex % ACADEMY_QUERY_VARIANTS.length;
+  return {
+    ...candidate,
+    variantIndex: normalizedVariant,
+    query: ACADEMY_QUERY_VARIANTS[normalizedVariant](candidate.name),
+  };
+}
+
+async function runPartyBrainAcademy(trigger: "scheduler" | "manual" = "scheduler") {
+  if (academyState.running) return;
+  const initialSnapshot = academyQuotaSnapshot();
+
+  if (!academyEnabled && trigger !== "manual") return;
+  if (trigger === "scheduler" && !initialSnapshot.inLaunchWindow) return;
+  if (initialSnapshot.remaining <= 0) return;
+
+  academyState.running = true;
+  const session: AcademySession = {
+    id: randomUUID(),
+    startedAt: Date.now(),
+    cycleKey: initialSnapshot.cycleKey,
+    callsPlanned: initialSnapshot.remaining,
+    callsUsed: 0,
+    songsAdded: 0,
+    artistsTouched: [],
+    status: "running",
+  };
+  academyState.sessions.push(session);
+  academyState.sessions = academyState.sessions.slice(-50);
+  academyState.lastSessionAt = session.startedAt;
+  addAcademyLog(
+    "info",
+    `Session lancée : ${initialSnapshot.remaining} appel(s) disponible(s) avant la réinitialisation.`,
+  );
+
+  try {
+    while (true) {
+      const snapshot = academyQuotaSnapshot();
+      if (snapshot.remaining <= 0) {
+        session.status = "completed";
+        session.reason = "Quota restant entièrement transformé en connaissances.";
+        break;
+      }
+      if (trigger === "scheduler" && snapshot.msUntilReset <= 20_000) {
+        session.status = "stopped";
+        session.reason = "Arrêt de sécurité 20 secondes avant la réinitialisation.";
+        break;
+      }
+
+      const mission = nextAcademyMission();
+      if (!mission) {
+        session.status = "completed";
+        session.reason = "Aucune mission utile restante.";
+        break;
+      }
+
+      const beforeSongs = Object.keys(musicBrain.songs).length;
+      const progress = academyState.artistProgress[mission.key] || { attempts: 0 };
+      progress.attempts += 1;
+      progress.lastAttemptAt = Date.now();
+      progress.lastQueryVariant = mission.variantIndex;
+      academyState.artistProgress[mission.key] = progress;
+
+      addAcademyLog("info", `Recherche ${session.callsUsed + 1}/${session.callsPlanned} : ${mission.query}`, {
+        artist: mission.name,
+        query: mission.query,
+      });
+
+      session.callsUsed += 1;
+
+      try {
+        const results = await requestYoutubeMusic(mission.query, "academy");
+        recordMusicBrainSearch(mission.name, results);
+
+        const normalizedQuery = normalizeMusicQuery(mission.query);
+        youtubeSearchCache.set(normalizedQuery, {
+          query: mission.query,
+          normalizedQuery,
+          createdAt: Date.now(),
+          results,
+        });
+        saveYoutubeCache();
+
+        const added = Math.max(0, Object.keys(musicBrain.songs).length - beforeSongs);
+        session.songsAdded += added;
+        if (!session.artistsTouched.includes(mission.name)) session.artistsTouched.push(mission.name);
+        addAcademyLog("success", `${mission.name} enrichi : +${added} nouveau(x) morceau(x).`, {
+          artist: mission.name,
+          query: mission.query,
+          songsAdded: added,
+        });
+      } catch (error: any) {
+        const status = Number(error?.status || 500);
+        if (status === 429) {
+          session.status = "quota_exhausted";
+          session.reason = "YouTube a signalé que le quota réel était épuisé.";
+          addAcademyLog("warning", "Quota YouTube réel épuisé : session arrêtée immédiatement.");
+          break;
+        }
+        addAcademyLog("error", `Échec pour ${mission.name} : ${error?.message || "erreur inconnue"}.`, {
+          artist: mission.name,
+          query: mission.query,
+        });
+      }
+
+      session.finishedAt = Date.now();
+      saveAcademyState();
+      await new Promise((resolve) => setTimeout(resolve, 650));
+    }
+  } catch (error: any) {
+    session.status = "failed";
+    session.reason = error?.message || "Erreur Academy inconnue";
+    addAcademyLog("error", `Session interrompue : ${session.reason}`);
+  } finally {
+    session.finishedAt = Date.now();
+    if (session.status === "running") session.status = "completed";
+    academyState.running = false;
+    saveAcademyState();
+    addAcademyLog(
+      session.status === "completed" ? "success" : "warning",
+      `Session terminée : ${session.callsUsed} recherche(s), +${session.songsAdded} morceau(x), ${session.artistsTouched.length} artiste(s) touché(s).`,
+    );
+  }
+}
+
+function academyDashboard() {
+  const snapshot = academyQuotaSnapshot();
+  const missions = academyMissionCandidates().slice(0, 12).map((mission) => ({
+    artistKey: mission.key,
+    artistName: mission.name,
+    knownSongs: mission.songCount,
+    targetSongs: academyTargetSongs,
+    priority: Math.max(0, Math.round(mission.priority)),
+    attempts: Number(mission.progress.attempts || 0),
+    nextQuery: ACADEMY_QUERY_VARIANTS[(Number(mission.progress.lastQueryVariant ?? -1) + 1) % ACADEMY_QUERY_VARIANTS.length](mission.name),
+  }));
+  return {
+    ...snapshot,
+    lastCheckAt: academyState.lastCheckAt,
+    lastSessionAt: academyState.lastSessionAt,
+    missions,
+    currentSession: [...academyState.sessions].reverse().find((session) => session.status === "running") || null,
+    lastSession: [...academyState.sessions].reverse().find((session) => session.status !== "running") || null,
+    sessions: [...academyState.sessions].reverse().slice(0, 20),
+    logs: [...academyState.logs].reverse().slice(0, 150),
+  };
+}
+
+setInterval(() => {
+  academyState.lastCheckAt = Date.now();
+  ensureAcademyQuotaCycle();
+  saveAcademyState();
+  const snapshot = academyQuotaSnapshot();
+  if (academyEnabled && snapshot.inLaunchWindow && snapshot.remaining > 0 && !academyState.running) {
+    const alreadyRanThisCycle = academyState.sessions.some(
+      (session) => session.cycleKey === snapshot.cycleKey && session.status !== "failed"
+    );
+    if (!alreadyRanThisCycle) {
+      void runPartyBrainAcademy("scheduler");
+    }
+  }
+}, 30_000);
 
 
 
@@ -1611,6 +2119,15 @@ app.get("/musicbrain/artists/:key", (req, res) => {
 });
 
 app.get("/partybrain/stats", (_req, res) => res.json(musicBrainStats()));
+app.get("/partybrain/academy", (_req, res) => res.json(academyDashboard()));
+app.post("/partybrain/academy/run", async (_req, res) => {
+  if (String(process.env.PARTYBRAIN_ACADEMY_ALLOW_MANUAL || "false").toLowerCase() !== "true") {
+    return res.status(403).json({ error: "Lancement manuel désactivé" });
+  }
+  if (academyState.running) return res.status(409).json({ error: "Academy déjà en cours" });
+  void runPartyBrainAcademy("manual");
+  return res.status(202).json({ ok: true, message: "Session Academy lancée" });
+});
 app.get("/partybrain/graph", (_req, res) => {
   const stats = musicBrainStats();
   const nodes = Object.values(musicBrain.artists).map((artist) => ({
@@ -1703,8 +2220,7 @@ app.get("/search/youtube", async (req, res) => {
   let inFlight = youtubeSearchesInFlight.get(normalizedQuery);
   const reusedInFlight = Boolean(inFlight);
   if (!inFlight) {
-    youtubeSearchStats.youtubeCalls += 1;
-    inFlight = requestYoutubeMusic(query);
+    inFlight = smartYoutubeMusicSearch(query);
     youtubeSearchesInFlight.set(normalizedQuery, inFlight);
   } else {
     youtubeSearchStats.inFlightHits += 1;

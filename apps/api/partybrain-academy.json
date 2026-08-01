@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "updatedAt": 1785580373176,
+  "quota": {
+    "cycleKey": "2026-08-01",
+    "used": 3,
+    "lastResetAt": 1785580163113
+  },
+  "running": false,
+  "artistProgress": {},
+  "logs": [],
+  "sessions": [],
+  "lastCheckAt": 1785580373175
+}

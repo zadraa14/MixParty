@@ -161,3 +161,20 @@ Priorités :
 ## 01/08/2026 — Build 1.3 Mode DJ permanent
 
 Ajout d'un mode de diffusion dédié : écran maintenu allumé, plein écran, reconnexion réseau, protection contre la fermeture accidentelle, reprise manuelle de lecture et indicateurs de santé de l'appareil DJ.
+
+## 01/08/2026 — Build 1.4 PartyBrain Academy V1
+
+- Ajout de l'apprentissage automatique avant la remise à zéro réelle du quota YouTube.
+- Suppression de la réserve fixe : Academy utilise le quota estimé restant dans la dernière fenêtre.
+- Ajout d'un compteur de quota persistant partagé entre les recherches utilisateur et Academy.
+- Ajout des missions d'enrichissement priorisées selon les artistes réellement demandés.
+- Ajout du journal, des rapports de session et du tableau de bord Academy dans `/admin/musicbrain`.
+- Arrêt automatique en cas d'erreur 429 ou quelques secondes avant la réinitialisation.
+
+## 01/08/2026 — Build 1.4.1
+
+- Ajout du tableau de bord complet PartyBrain Academy.
+- Historique des 7 dernières sessions.
+- Statistiques de recherches, morceaux, artistes et incidents.
+- Graphique de progression récente.
+- Rafraîchissement automatique pendant l'apprentissage.

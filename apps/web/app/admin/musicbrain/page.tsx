@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, Database, Music2, Network, RefreshCw, Search, Sparkles, ThumbsUp, type LucideIcon } from "lucide-react";
+import { Activity, AlertTriangle, BarChart3, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Clock3, Database, Music2, Network, RefreshCw, Search, Sparkles, ThumbsUp, Timer, type LucideIcon } from "lucide-react";
 import { getApiBaseUrl } from "../../../lib/config";
 
 type Stats = {
@@ -11,6 +11,69 @@ type Stats = {
   updatedAt: number;
   brain: { name: string; level: number; levelProgress: number; knowledgePoints: number };
   storage: { mode: string; path: string; persistent: boolean };
+  academy: {
+    enabled: boolean;
+    running: boolean;
+    dailyLimit: number;
+    used: number;
+    remaining: number;
+    resetAt: number;
+    minutesUntilReset: number;
+    launchWindowMinutes: number;
+    inLaunchWindow: boolean;
+    timeZone: string;
+    targetSongsPerArtist: number;
+    lastCheckAt?: number;
+    lastSessionAt?: number;
+    currentSession?: {
+      id: string;
+      startedAt: number;
+      callsPlanned: number;
+      callsUsed: number;
+      songsAdded: number;
+      artistsTouched: string[];
+      status: string;
+    } | null;
+    lastSession?: {
+      id: string;
+      startedAt: number;
+      finishedAt?: number;
+      callsPlanned: number;
+      callsUsed: number;
+      songsAdded: number;
+      artistsTouched: string[];
+      status: string;
+      reason?: string;
+    } | null;
+    missions: Array<{
+      artistKey: string;
+      artistName: string;
+      knownSongs: number;
+      targetSongs: number;
+      priority: number;
+      attempts: number;
+      nextQuery: string;
+    }>;
+    sessions: Array<{
+      id: string;
+      startedAt: number;
+      finishedAt?: number;
+      callsPlanned: number;
+      callsUsed: number;
+      songsAdded: number;
+      artistsTouched: string[];
+      status: string;
+      reason?: string;
+    }>;
+    logs: Array<{
+      at: number;
+      level: "info" | "success" | "warning" | "error";
+      message: string;
+      artist?: string;
+      query?: string;
+      songsAdded?: number;
+    }>;
+  };
   totals: {
     searches: number;
     additions: number;
@@ -81,6 +144,14 @@ export default function MusicBrainAdminPage() {
     loadStats();
   }, []);
 
+  useEffect(() => {
+    const refreshDelay = stats?.academy.running ? 5_000 : 60_000;
+    const timer = window.setInterval(() => {
+      void loadStats();
+    }, refreshDelay);
+    return () => window.clearInterval(timer);
+  }, [stats?.academy.running]);
+
   const visibleSongs = useMemo(() => {
     const query = filter.trim().toLowerCase();
     if (!query) return stats?.topSongs || [];
@@ -95,6 +166,19 @@ export default function MusicBrainAdminPage() {
     ["Recherches", stats.totals.searches, Search],
     ["Quota économisé", stats.totals.quotaSaved, Sparkles],
   ] : [];
+
+  const academyHistory = stats?.academy.sessions.slice(0, 7) || [];
+  const academyTotals = academyHistory.reduce(
+    (acc, session) => ({
+      calls: acc.calls + session.callsUsed,
+      songs: acc.songs + session.songsAdded,
+      artists: acc.artists + session.artistsTouched.length,
+      completed: acc.completed + (session.status === "completed" ? 1 : 0),
+      errors: acc.errors + (session.status === "failed" ? 1 : 0),
+    }),
+    { calls: 0, songs: 0, artists: 0, completed: 0, errors: 0 },
+  );
+  const chartMax = Math.max(1, ...academyHistory.map((session) => session.songsAdded));
 
   return (
     <main className="min-h-screen bg-[#07040f] px-4 py-6 text-white sm:px-8 lg:px-12">
@@ -153,6 +237,212 @@ export default function MusicBrainAdminPage() {
                   <p className={`mt-3 text-xs font-bold ${stats.storage.persistent ? "text-emerald-300" : "text-amber-300"}`}>
                     {stats.storage.persistent ? "● Stockage persistant Railway actif" : "● Stockage local — ajouter un volume Railway avant production"}
                   </p>
+                </div>
+              </div>
+            </section>
+
+            <section className="mb-7 rounded-[28px] border border-cyan-400/20 bg-gradient-to-br from-cyan-500/10 via-violet-500/10 to-fuchsia-500/10 p-5 backdrop-blur-xl sm:p-7">
+              <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                <div className="max-w-2xl">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-11 w-11 place-items-center rounded-2xl bg-cyan-400/15 text-cyan-200">
+                      <BookOpen className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[.24em] text-cyan-300">PartyBrain Academy</p>
+                      <h2 className="mt-1 text-2xl font-black">
+                        {stats.academy.running ? "Apprentissage en cours" : stats.academy.enabled ? "En attente de la fenêtre Academy" : "Academy désactivée"}
+                      </h2>
+                    </div>
+                  </div>
+                  <p className="mt-4 text-sm leading-6 text-white/55">
+                    Academy utilise automatiquement tout le quota YouTube restant juste avant sa réinitialisation, puis conserve un journal complet de chaque recherche et de chaque morceau appris.
+                  </p>
+                </div>
+
+                <div className="grid min-w-0 gap-3 sm:grid-cols-3 xl:min-w-[520px]">
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-[11px] font-black uppercase tracking-[.18em] text-white/40">Quota estimé</p>
+                    <p className="mt-2 text-2xl font-black">{stats.academy.remaining}<span className="text-sm text-white/35"> / {stats.academy.dailyLimit}</span></p>
+                    <p className="mt-1 text-xs text-white/40">{stats.academy.used} appel(s) utilisé(s)</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-[11px] font-black uppercase tracking-[.18em] text-white/40">Réinitialisation</p>
+                    <p className="mt-2 text-lg font-black">{new Date(stats.academy.resetAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</p>
+                    <p className="mt-1 text-xs text-white/40">dans {stats.academy.minutesUntilReset} min</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-[11px] font-black uppercase tracking-[.18em] text-white/40">Fenêtre Academy</p>
+                    <p className={`mt-2 text-lg font-black ${stats.academy.inLaunchWindow ? "text-emerald-300" : "text-fuchsia-200"}`}>
+                      {stats.academy.inLaunchWindow ? "Ouverte" : `${stats.academy.launchWindowMinutes} min avant`}
+                    </p>
+                    <p className="mt-1 text-xs text-white/40">{stats.academy.timeZone}</p>
+                  </div>
+                </div>
+              </div>
+
+              {stats.academy.running && stats.academy.currentSession ? (
+                <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 font-black text-emerald-200">
+                      <Activity className="h-4 w-4 animate-pulse" />
+                      Session en cours
+                    </div>
+                    <span className="text-xs text-white/55">
+                      {stats.academy.currentSession.callsUsed}/{stats.academy.currentSession.callsPlanned} recherches
+                    </span>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all"
+                      style={{ width: `${Math.min(100, (stats.academy.currentSession.callsUsed / Math.max(1, stats.academy.currentSession.callsPlanned)) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-white/50">
+                    +{stats.academy.currentSession.songsAdded} morceau(x) • {stats.academy.currentSession.artistsTouched.length} artiste(s)
+                  </p>
+                </div>
+              ) : stats.academy.lastSession ? (
+                <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[.18em] text-violet-300">Dernière session</p>
+                      <p className="mt-1 font-black">
+                        {new Date(stats.academy.lastSession.startedAt).toLocaleString("fr-FR")}
+                      </p>
+                    </div>
+                    <div className="text-sm text-white/55">
+                      {stats.academy.lastSession.callsUsed} recherches • +{stats.academy.lastSession.songsAdded} morceaux • {stats.academy.lastSession.artistsTouched.length} artistes
+                    </div>
+                  </div>
+                  {stats.academy.lastSession.reason ? <p className="mt-2 text-xs text-white/40">{stats.academy.lastSession.reason}</p> : null}
+                </div>
+              ) : (
+                <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4 text-sm text-white/45">
+                  Aucune session Academy enregistrée pour le moment. La première démarrera automatiquement dans la fenêtre précédant la prochaine réinitialisation.
+                </div>
+              )}
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-center gap-2 text-emerald-300"><CheckCircle2 className="h-4 w-4" /><span className="text-[11px] font-black uppercase tracking-[.16em]">Sessions réussies</span></div>
+                  <p className="mt-3 text-2xl font-black">{academyTotals.completed}</p>
+                  <p className="mt-1 text-xs text-white/35">sur les 7 dernières</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-center gap-2 text-cyan-300"><Search className="h-4 w-4" /><span className="text-[11px] font-black uppercase tracking-[.16em]">Recherches Academy</span></div>
+                  <p className="mt-3 text-2xl font-black">{academyTotals.calls}</p>
+                  <p className="mt-1 text-xs text-white/35">appels transformés en savoir</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-center gap-2 text-fuchsia-300"><Music2 className="h-4 w-4" /><span className="text-[11px] font-black uppercase tracking-[.16em]">Morceaux appris</span></div>
+                  <p className="mt-3 text-2xl font-black">+{academyTotals.songs}</p>
+                  <p className="mt-1 text-xs text-white/35">sur les sessions affichées</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex items-center gap-2 text-violet-300"><BrainCircuit className="h-4 w-4" /><span className="text-[11px] font-black uppercase tracking-[.16em]">Artistes touchés</span></div>
+                  <p className="mt-3 text-2xl font-black">{academyTotals.artists}</p>
+                  <p className="mt-1 text-xs text-white/35">enrichissements cumulés</p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className={`flex items-center gap-2 ${academyTotals.errors ? "text-amber-300" : "text-emerald-300"}`}><AlertTriangle className="h-4 w-4" /><span className="text-[11px] font-black uppercase tracking-[.16em]">Incidents</span></div>
+                  <p className="mt-3 text-2xl font-black">{academyTotals.errors}</p>
+                  <p className="mt-1 text-xs text-white/35">session(s) interrompue(s)</p>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
+                <section className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-5">
+                  <div className="mb-4 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2"><CalendarDays className="h-4 w-4 text-fuchsia-300" /><h3 className="font-black">Historique des sessions</h3></div>
+                    <span className="text-[11px] text-white/35">7 dernières sessions</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[620px] text-left text-sm">
+                      <thead className="text-[10px] font-black uppercase tracking-[.16em] text-white/35">
+                        <tr><th className="pb-3">Date</th><th className="pb-3">État</th><th className="pb-3">Recherches</th><th className="pb-3">Morceaux</th><th className="pb-3">Artistes</th><th className="pb-3">Durée</th></tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/5">
+                        {academyHistory.map((session) => {
+                          const durationSeconds = session.finishedAt ? Math.max(0, Math.round((session.finishedAt - session.startedAt) / 1000)) : 0;
+                          return (
+                            <tr key={session.id} className="text-white/70">
+                              <td className="py-3 font-bold text-white/85">{new Date(session.startedAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })} <span className="text-white/35">{new Date(session.startedAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}</span></td>
+                              <td className="py-3"><span className={`rounded-full px-2 py-1 text-[10px] font-black uppercase ${session.status === "completed" ? "bg-emerald-500/15 text-emerald-300" : session.status === "failed" ? "bg-red-500/15 text-red-300" : "bg-amber-500/15 text-amber-300"}`}>{session.status === "completed" ? "Terminée" : session.status === "failed" ? "Erreur" : session.status}</span></td>
+                              <td className="py-3">{session.callsUsed}/{session.callsPlanned}</td>
+                              <td className="py-3 font-black text-fuchsia-200">+{session.songsAdded}</td>
+                              <td className="py-3">{session.artistsTouched.length}</td>
+                              <td className="py-3">{durationSeconds ? `${durationSeconds}s` : "—"}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    {!academyHistory.length ? <p className="py-5 text-sm text-white/45">Aucune session enregistrée pour le moment.</p> : null}
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-white/10 bg-black/20 p-4 sm:p-5">
+                  <div className="mb-4 flex items-center gap-2"><BarChart3 className="h-4 w-4 text-cyan-300" /><h3 className="font-black">Progression récente</h3></div>
+                  <div className="flex h-44 items-end gap-2 rounded-2xl border border-white/5 bg-white/[0.025] p-4">
+                    {[...academyHistory].reverse().map((session) => (
+                      <div key={session.id} className="group flex min-w-0 flex-1 flex-col items-center justify-end gap-2">
+                        <span className="text-[10px] font-black text-white/45 opacity-0 transition group-hover:opacity-100">+{session.songsAdded}</span>
+                        <div className="w-full rounded-t-lg bg-gradient-to-t from-violet-600 via-fuchsia-500 to-cyan-400 transition-all group-hover:brightness-125" style={{ height: `${Math.max(6, (session.songsAdded / chartMax) * 120)}px` }} />
+                        <span className="text-[9px] text-white/30">{new Date(session.startedAt).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })}</span>
+                      </div>
+                    ))}
+                    {!academyHistory.length ? <div className="m-auto text-center text-sm text-white/35"><Timer className="mx-auto mb-2 h-6 w-6" />La courbe apparaîtra après la première session.</div> : null}
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-white/40">Chaque barre représente le nombre de nouveaux morceaux appris pendant une session Academy.</p>
+                </section>
+              </div>
+
+              <div className="mt-5 grid gap-5 xl:grid-cols-2">
+                <div>
+                  <div className="mb-3 flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-fuchsia-300" />
+                    <h3 className="font-black">Prochaines missions</h3>
+                  </div>
+                  <div className="space-y-2">
+                    {stats.academy.missions.slice(0, 6).map((mission, index) => (
+                      <div key={mission.artistKey} className="flex items-center gap-3 rounded-2xl border border-white/8 bg-black/20 p-3">
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-violet-500/15 text-xs font-black text-violet-200">{index + 1}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-black">{mission.artistName}</p>
+                          <p className="truncate text-xs text-white/35">{mission.nextQuery}</p>
+                        </div>
+                        <div className="text-right text-xs">
+                          <p className="font-black text-cyan-200">{mission.knownSongs}/{mission.targetSongs}</p>
+                          <p className="text-white/35">morceaux</p>
+                        </div>
+                      </div>
+                    ))}
+                    {!stats.academy.missions.length ? <p className="text-sm text-white/45">Aucune mission utile en attente.</p> : null}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="mb-3 flex items-center gap-2">
+                    <Clock3 className="h-4 w-4 text-cyan-300" />
+                    <h3 className="font-black">Journal Academy</h3>
+                  </div>
+                  <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                    {stats.academy.logs.slice(0, 20).map((entry, index) => (
+                      <div key={`${entry.at}-${index}`} className="rounded-2xl border border-white/8 bg-black/20 p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <p className={`text-sm font-bold ${
+                            entry.level === "error" ? "text-red-200" :
+                            entry.level === "warning" ? "text-amber-200" :
+                            entry.level === "success" ? "text-emerald-200" : "text-white/75"
+                          }`}>{entry.message}</p>
+                          <span className="shrink-0 text-[10px] text-white/30">{new Date(entry.at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</span>
+                        </div>
+                        {entry.query ? <p className="mt-1 truncate text-xs text-white/30">{entry.query}</p> : null}
+                      </div>
+                    ))}
+                    {!stats.academy.logs.length ? <p className="text-sm text-white/45">Le journal se remplira lors de la première session.</p> : null}
+                  </div>
                 </div>
               </div>
             </section>
