@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, BarChart3, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Clock3, Database, Music2, Network, RefreshCw, Search, Sparkles, ThumbsUp, Timer, type LucideIcon } from "lucide-react";
+import { Activity, AlertTriangle, BarChart3, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Clock3, Database, KeyRound, Music2, Network, RefreshCw, Search, ShieldCheck, Sparkles, ThumbsUp, Timer, Trash2, type LucideIcon } from "lucide-react";
 import { getApiBaseUrl } from "../../../lib/config";
 
 type Stats = {
@@ -124,6 +124,10 @@ export default function MusicBrainAdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState("");
+  const [adminToken, setAdminToken] = useState("");
+  const [maintenanceLoading, setMaintenanceLoading] = useState(false);
+  const [maintenanceMessage, setMaintenanceMessage] = useState("");
+  const [maintenanceError, setMaintenanceError] = useState("");
 
   async function loadStats() {
     setLoading(true);
@@ -143,6 +147,41 @@ export default function MusicBrainAdminPage() {
   useEffect(() => {
     loadStats();
   }, []);
+
+  async function clearYoutubeCache() {
+    setMaintenanceMessage("");
+    setMaintenanceError("");
+
+    if (!adminToken.trim()) {
+      setMaintenanceError("Entre le code administrateur Railway avant de vider le cache.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Vider uniquement le cache des recherches YouTube ? La mémoire PartyBrain, les artistes et les morceaux appris seront conservés."
+    );
+    if (!confirmed) return;
+
+    setMaintenanceLoading(true);
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/maintenance/youtube-cache/clear`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-partybrain-admin-token": adminToken.trim(),
+        },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Impossible de vider le cache YouTube");
+      setMaintenanceMessage(data?.message || "Cache YouTube vidé.");
+      setAdminToken("");
+      await loadStats();
+    } catch (err) {
+      setMaintenanceError(err instanceof Error ? err.message : "Impossible de vider le cache YouTube");
+    } finally {
+      setMaintenanceLoading(false);
+    }
+  }
 
   useEffect(() => {
     const refreshDelay = stats?.academy.running ? 5_000 : 60_000;
@@ -529,6 +568,51 @@ export default function MusicBrainAdminPage() {
                 </div>
               </section>
             </div>
+
+            <section className="mt-7 rounded-[28px] border border-amber-400/20 bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-fuchsia-500/5 p-5 backdrop-blur-xl sm:p-6">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                <div className="max-w-2xl">
+                  <div className="flex items-center gap-3">
+                    <div className="grid h-11 w-11 place-items-center rounded-2xl bg-amber-400/15 text-amber-200">
+                      <ShieldCheck className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[.22em] text-amber-300">Maintenance sécurisée</p>
+                      <h2 className="mt-1 text-2xl font-black">Cache des recherches YouTube</h2>
+                    </div>
+                  </div>
+                  <p className="mt-4 text-sm leading-6 text-white/55">
+                    Ce bouton supprime uniquement les anciennes recherches mises en cache. Les artistes, morceaux, scores et connaissances de PartyBrain restent intacts.
+                  </p>
+                </div>
+
+                <div className="w-full max-w-xl rounded-2xl border border-white/10 bg-black/25 p-4">
+                  <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-3 py-3">
+                    <KeyRound className="h-4 w-4 text-amber-300" />
+                    <input
+                      type="password"
+                      value={adminToken}
+                      onChange={(event) => setAdminToken(event.target.value)}
+                      placeholder="Code administrateur Railway"
+                      autoComplete="off"
+                      className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-white/30"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={clearYoutubeCache}
+                    disabled={maintenanceLoading}
+                    className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm font-black text-red-100 transition hover:bg-red-500/15 disabled:cursor-wait disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {maintenanceLoading ? "Nettoyage en cours…" : "Vider le cache YouTube"}
+                  </button>
+                  {maintenanceMessage ? <p className="mt-3 text-sm font-bold text-emerald-300">{maintenanceMessage}</p> : null}
+                  {maintenanceError ? <p className="mt-3 text-sm font-bold text-red-300">{maintenanceError}</p> : null}
+                  <p className="mt-3 text-xs text-white/35">Protection : variable Railway <code className="text-amber-200">PARTYBRAIN_ADMIN_TOKEN</code>.</p>
+                </div>
+              </div>
+            </section>
 
             <section className="mt-7 rounded-[28px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl sm:p-6">
               <p className="text-xs font-black uppercase tracking-[.22em] text-violet-300">Apprentissage</p>

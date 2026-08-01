@@ -2119,6 +2119,40 @@ app.get("/musicbrain/artists/:key", (req, res) => {
 });
 
 app.get("/partybrain/stats", (_req, res) => res.json(musicBrainStats()));
+app.get("/partybrain/maintenance/youtube-cache", (_req, res) => {
+  return res.json({
+    entries: youtubeSearchCache.size,
+    filePath: youtubeCacheFilePath,
+    persistent: Boolean(process.env.PERSISTENT_DATA_DIR?.trim()),
+    protected: Boolean(process.env.PARTYBRAIN_ADMIN_TOKEN?.trim()),
+  });
+});
+app.post("/partybrain/maintenance/youtube-cache/clear", (req, res) => {
+  const expectedToken = String(process.env.PARTYBRAIN_ADMIN_TOKEN || "").trim();
+  if (!expectedToken) {
+    return res.status(503).json({
+      error: "Maintenance désactivée : configure PARTYBRAIN_ADMIN_TOKEN sur Railway.",
+    });
+  }
+
+  const providedToken = String(req.header("x-partybrain-admin-token") || "").trim();
+  if (!providedToken || providedToken !== expectedToken) {
+    return res.status(401).json({ error: "Code administrateur incorrect." });
+  }
+
+  const deletedEntries = youtubeSearchCache.size;
+  youtubeSearchCache.clear();
+  youtubeSearchesInFlight.clear();
+  saveYoutubeCache();
+
+  console.log(`🧹 Cache YouTube vidé depuis l'administration : ${deletedEntries} entrée(s) supprimée(s).`);
+  return res.json({
+    ok: true,
+    deletedEntries,
+    remainingEntries: youtubeSearchCache.size,
+    message: `Cache YouTube vidé : ${deletedEntries} entrée(s) supprimée(s). PartyBrain est conservé.`,
+  });
+});
 app.get("/partybrain/academy", (_req, res) => res.json(academyDashboard()));
 app.post("/partybrain/academy/run", async (_req, res) => {
   if (String(process.env.PARTYBRAIN_ACADEMY_ALLOW_MANUAL || "false").toLowerCase() !== "true") {
