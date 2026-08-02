@@ -172,7 +172,7 @@ export default function PartyPage() {
   const [resumeRequired, setResumeRequired] = useState(false);
   const [playerHostElement, setPlayerHostElement] = useState<HTMLDivElement | null>(null);
   const [playerAudit, setPlayerAudit] = useState<Array<{ at: number; event: string; detail?: string }>>([]);
-
+  const DEBUG_PLAYER = false;
   const wakeLockRef = useRef<any>(null);
   const playerRef = useRef<any>(null);
   const playerReadyRef = useRef(false);
@@ -1231,22 +1231,34 @@ export default function PartyPage() {
                   <div className="overflow-hidden rounded-[24px] border border-white/10 bg-black/30 p-2">
                     {isPlaybackController ? (
                       <div>
-                        <div className="mb-2 max-h-44 overflow-auto rounded-xl border border-cyan-300/25 bg-black/90 p-2 font-mono text-[10px] leading-4 text-cyan-100 shadow-2xl">
-                          <div className="mb-1 flex items-center justify-between gap-2 font-black text-cyan-300">
-                            <span>PLAYER AUDIT — ACTIF</span>
-                            <span>{playerRef.current ? "lecteur créé" : "lecteur en attente"}</span>
-                          </div>
-                          {playerAudit.length === 0 ? (
-                            <div className="text-cyan-100/55">En attente du premier événement…</div>
-                          ) : (
-                            playerAudit.slice(-12).map((entry, index) => (
-                              <div key={`${entry.at}-${index}`} className="border-t border-white/5 py-0.5">
-                                {new Date(entry.at).toLocaleTimeString("fr-FR", { hour12: false })} — {entry.event}
-                                {entry.detail ? ` — ${entry.detail}` : ""}
-                              </div>
-                            ))
-                          )}
-                        </div>
+                        {DEBUG_PLAYER && (
+  <div className="mb-2 max-h-44 overflow-auto rounded-xl border border-cyan-300/25 bg-black/90 p-2 font-mono text-[10px] leading-4 text-cyan-100 shadow-2xl">
+    <div className="mb-1 flex items-center justify-between gap-2 font-black text-cyan-300">
+      <span>PLAYER AUDIT — ACTIF</span>
+      <span>{playerRef.current ? "lecteur créé" : "lecteur en attente"}</span>
+    </div>
+
+    {playerAudit.length === 0 ? (
+      <div className="text-cyan-100/55">
+        En attente du premier événement…
+      </div>
+    ) : (
+      playerAudit.slice(-12).map((entry, index) => (
+        <div
+          key={`${entry.at}-${index}`}
+          className="border-t border-white/5 py-0.5"
+        >
+          {new Date(entry.at).toLocaleTimeString("fr-FR", {
+            hour12: false,
+          })}
+          {" — "}
+          {entry.event}
+          {entry.detail ? ` — ${entry.detail}` : ""}
+        </div>
+      ))
+    )}
+  </div>
+)}
                         <div className="relative aspect-video w-full overflow-hidden rounded-[18px] bg-black">
                         <div
                           ref={setPlayerHostElement}
@@ -1943,7 +1955,8 @@ export default function PartyPage() {
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-orange-400/20 bg-orange-400/10 shadow-[0_0_28px_rgba(251,146,60,0.12)]">
                   <Headphones className="h-5 w-5 text-orange-300" />
                 </div>
-                {djModeActive && (
+
+{djModeActive && (
                   <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-black text-emerald-300">
                     <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
                     Mode DJ actif
