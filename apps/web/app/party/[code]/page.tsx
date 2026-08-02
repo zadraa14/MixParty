@@ -170,14 +170,26 @@ export default function PartyPage() {
   const [networkOnline, setNetworkOnline] = useState(true);
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
   const [resumeRequired, setResumeRequired] = useState(false);
+  const [playerHostElement, setPlayerHostElement] = useState<HTMLDivElement | null>(null);
+  const [playerAudit, setPlayerAudit] = useState<Array<{ at: number; event: string; detail?: string }>>([]);
 
   const wakeLockRef = useRef<any>(null);
   const playerRef = useRef<any>(null);
-  const playerHostRef = useRef<HTMLDivElement | null>(null);
+  const playerReadyRef = useRef(false);
+  const loadedVideoIdRef = useRef("");
+  const pendingVideoIdRef = useRef("");
+  const currentVideoIdRef = useRef("");
+  const djModeActiveRef = useRef(false);
   const socketRef = useRef<any>(null);
   const isPlaybackControllerRef = useRef(false);
   const applyingRemotePlaybackRef = useRef(false);
   const changingSongRef = useRef(false);
+
+  function addPlayerAudit(event: string, detail?: string) {
+    const entry = { at: Date.now(), event, detail };
+    console.log(`[PlayerAudit] ${event}${detail ? ` — ${detail}` : ""}`);
+    setPlayerAudit((previous) => [...previous.slice(-39), entry]);
+  }
 
   useEffect(() => {
     const saved = localStorage.getItem("playerName");
@@ -206,6 +218,10 @@ export default function PartyPage() {
       setShareUrl(`${getAppBaseUrl()}/party/${code}`);
     }
   }, [code]);
+
+  useEffect(() => {
+    djModeActiveRef.current = djModeActive;
+  }, [djModeActive]);
 
   useEffect(() => {
     if (!code || !playerName || !participantId) return;
@@ -686,43 +702,42 @@ export default function PartyPage() {
   }
 
   useEffect(() => {
-    const videoId = party?.currentSong?.videoId;
-    if (!videoId || !isPlaybackController) return;
+    if (!isPlaybackController || !playerHostElement) return;
 
     let cancelled = false;
-    const host = playerHostRef.current;
-    setYoutubeError(null);
+    const playerHost = playerHostElement;
 
-    function clearPlayer() {
+    setYoutubeError(null);
+    addPlayerAudit("PLAYER_EFFECT_START", "conteneur prêt");
+
+    function destroyPlayer() {
       const player = playerRef.current;
       playerRef.current = null;
+      playerReadyRef.current = false;
+      loadedVideoIdRef.current = "";
 
       if (player) {
         try {
+          addPlayerAudit("DESTROY_PLAYER", "fin de session ou changement de contrôleur");
           player.destroy?.();
         } catch (error) {
           console.warn("Nettoyage du lecteur YouTube ignoré", error);
         }
       }
 
-      // React ne gère que ce conteneur. L'API YouTube peut librement
-      // remplacer son enfant sans provoquer de conflit removeChild.
-      try {
-        host?.replaceChildren();
-      } catch {}
+      try { playerHost.replaceChildren(); } catch {}
     }
 
     function createPlayer() {
-      if (cancelled || !window.YT?.Player || !host) return;
+      if (cancelled || !window.YT?.Player || playerRef.current) return;
 
-      clearPlayer();
-
+      const firstVideoId = currentVideoIdRef.current || pendingVideoIdRef.current || party?.currentSong?.videoId || "";
       const mount = document.createElement("div");
-      mount.dataset.youtubeMount = videoId;
-      host.appendChild(mount);
+      mount.dataset.youtubeMount = "persistent";
+      playerHost.replaceChildren(mount);
+      addPlayerAudit("CREATE_PLAYER", firstVideoId ? `iframe unique avec ${firstVideoId}` : "iframe vide");
 
-      playerRef.current = new window.YT.Player(mount, {
-        videoId,
+      const options: any = {
         width: "100%",
         height: "100%",
         host: "https://www.youtube.com",
@@ -736,71 +751,85 @@ export default function PartyPage() {
         events: {
           onReady: (event: any) => {
             if (cancelled) return;
+            playerReadyRef.current = true;
             setYoutubeError(null);
+            addPlayerAudit("READY", firstVideoId || "sans vidéo");
 
             const iframe = event.target?.getIframe?.();
             if (iframe) {
-              iframe.setAttribute(
-                "allow",
-                "autoplay; encrypted-media; picture-in-picture; fullscreen"
-              );
+              iframe.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture; fullscreen");
               iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
             }
 
+            const pending = pendingVideoIdRef.current || currentVideoIdRef.current;
+            if (pending && pending !== loadedVideoIdRef.current) {
+              pendingVideoIdRef.current = "";
+              loadedVideoIdRef.current = pending;
+              addPlayerAudit("LOAD_PENDING", pending);
+              event.target?.loadVideoById?.(pending);
+            }
+
             socketRef.current?.emit("request_playback_sync", code);
-            if (djModeActive) {
+            if (djModeActiveRef.current) {
+              addPlayerAudit("PLAY_REQUEST", "onReady + mode DJ");
               try { event.target?.playVideo?.(); } catch {}
             }
           },
-
           onStateChange: (event: any) => {
             if (cancelled) return;
+            const labels: Record<number, string> = { [-1]: "UNSTARTED", 0: "ENDED", 1: "PLAYING", 2: "PAUSED", 3: "BUFFERING", 5: "CUED" };
+            addPlayerAudit(labels[event.data] || `STATE_${event.data}`, currentVideoIdRef.current || loadedVideoIdRef.current);
 
             if (!applyingRemotePlaybackRef.current && isPlaybackControllerRef.current) {
               socketRef.current?.emit("playback_sync", {
                 code,
-                videoId,
+                videoId: currentVideoIdRef.current || loadedVideoIdRef.current,
                 state: event.data,
                 time: playerRef.current?.getCurrentTime?.() ?? 0,
               });
             }
 
             if (event.data === 1) setResumeRequired(false);
-            if (djModeActive && isPlaybackControllerRef.current && (event.data === 2 || event.data === 5)) {
+            if (djModeActiveRef.current && isPlaybackControllerRef.current && (event.data === 2 || event.data === 5)) {
               window.setTimeout(() => {
                 const state = playerRef.current?.getPlayerState?.();
-                if (state !== 1 && party?.currentSong) setResumeRequired(true);
+                if (state !== 1 && currentVideoIdRef.current) {
+                  addPlayerAudit("AUTOPLAY_NOT_STARTED", `état ${state}`);
+                  setResumeRequired(true);
+                }
               }, 1200);
             }
             if (event.data === 0 && isPlaybackControllerRef.current) {
+              addPlayerAudit("NEXT_SONG_REQUEST", "événement ENDED");
               nextSong();
             }
           },
-
           onError: (event: any) => {
             if (cancelled) return;
             const errorCode = Number(event.data);
-            // console.error déclenche l'écran rouge de Next.js en développement.
-            console.warn("Erreur lecteur YouTube", { errorCode, videoId });
+            console.warn("Erreur lecteur YouTube", { errorCode, videoId: currentVideoIdRef.current });
+            addPlayerAudit("ERROR", String(errorCode));
             setYoutubeError(Number.isFinite(errorCode) ? errorCode : -1);
           },
         },
-      });
+      };
+
+      if (firstVideoId) {
+        options.videoId = firstVideoId;
+        loadedVideoIdRef.current = firstVideoId;
+      }
+      playerRef.current = new window.YT.Player(mount, options);
     }
 
     if (window.YT?.Player) {
       createPlayer();
     } else {
-      const existingScript = document.querySelector<HTMLScriptElement>(
-        'script[src="https://www.youtube.com/iframe_api"]'
-      );
-
+      const existingScript = document.querySelector<HTMLScriptElement>('script[src="https://www.youtube.com/iframe_api"]');
       const previousReady = window.onYouTubeIframeAPIReady;
       window.onYouTubeIframeAPIReady = () => {
         if (typeof previousReady === "function") previousReady();
         createPlayer();
       };
-
       if (!existingScript) {
         const tag = document.createElement("script");
         tag.src = "https://www.youtube.com/iframe_api";
@@ -811,9 +840,39 @@ export default function PartyPage() {
 
     return () => {
       cancelled = true;
-      clearPlayer();
+      destroyPlayer();
     };
-  }, [party?.currentSong?.videoId, isPlaybackController, code, djModeActive]);
+  }, [isPlaybackController, playerHostElement, code]);
+
+  useEffect(() => {
+    const nextVideoId = party?.currentSong?.videoId || "";
+    if (!nextVideoId || !isPlaybackController) return;
+
+    currentVideoIdRef.current = nextVideoId;
+    setYoutubeError(null);
+
+    const player = playerRef.current;
+    if (!player || !playerReadyRef.current) {
+      pendingVideoIdRef.current = nextVideoId;
+      addPlayerAudit("QUEUE_VIDEO", `${nextVideoId} en attente du lecteur`);
+      return;
+    }
+
+    if (loadedVideoIdRef.current === nextVideoId) {
+      addPlayerAudit("KEEP_PLAYER", `déjà chargé ${nextVideoId}`);
+      return;
+    }
+
+    loadedVideoIdRef.current = nextVideoId;
+    pendingVideoIdRef.current = "";
+    addPlayerAudit("LOAD_VIDEO_BY_ID", nextVideoId);
+    try {
+      player.loadVideoById(nextVideoId);
+    } catch (error) {
+      console.warn("Chargement de la vidéo suivante impossible", error);
+      addPlayerAudit("LOAD_VIDEO_FAILED", nextVideoId);
+    }
+  }, [party?.currentSong?.videoId, isPlaybackController]);
 
   useEffect(() => {
     if (!party?.currentSong?.videoId) return;
@@ -1171,9 +1230,26 @@ export default function PartyPage() {
 
                   <div className="overflow-hidden rounded-[24px] border border-white/10 bg-black/30 p-2">
                     {isPlaybackController ? (
-                      <div className="relative aspect-video w-full overflow-hidden rounded-[18px] bg-black">
+                      <div>
+                        <div className="mb-2 max-h-44 overflow-auto rounded-xl border border-cyan-300/25 bg-black/90 p-2 font-mono text-[10px] leading-4 text-cyan-100 shadow-2xl">
+                          <div className="mb-1 flex items-center justify-between gap-2 font-black text-cyan-300">
+                            <span>PLAYER AUDIT — ACTIF</span>
+                            <span>{playerRef.current ? "lecteur créé" : "lecteur en attente"}</span>
+                          </div>
+                          {playerAudit.length === 0 ? (
+                            <div className="text-cyan-100/55">En attente du premier événement…</div>
+                          ) : (
+                            playerAudit.slice(-12).map((entry, index) => (
+                              <div key={`${entry.at}-${index}`} className="border-t border-white/5 py-0.5">
+                                {new Date(entry.at).toLocaleTimeString("fr-FR", { hour12: false })} — {entry.event}
+                                {entry.detail ? ` — ${entry.detail}` : ""}
+                              </div>
+                            ))
+                          )}
+                        </div>
+                        <div className="relative aspect-video w-full overflow-hidden rounded-[18px] bg-black">
                         <div
-                          ref={playerHostRef}
+                          ref={setPlayerHostElement}
                           className="absolute inset-0 h-full w-full"
                         />
                         {youtubeError !== null && (
@@ -1203,6 +1279,7 @@ export default function PartyPage() {
                             </button>
                           </div>
                         )}
+                        </div>
                       </div>
                     ) : (
                       <div className="relative aspect-video overflow-hidden rounded-[18px] bg-[#0d0d18]">

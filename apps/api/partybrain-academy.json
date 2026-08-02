@@ -1,14 +1,20 @@
 {
   "version": 1,
-  "updatedAt": 1785580373176,
+  "updatedAt": 1785693886691,
   "quota": {
-    "cycleKey": "2026-08-01",
-    "used": 3,
-    "lastResetAt": 1785580163113
+    "cycleKey": "2026-08-02",
+    "used": 1,
+    "lastResetAt": 1785690595957
   },
   "running": false,
   "artistProgress": {},
-  "logs": [],
+  "logs": [
+    {
+      "at": 1785690595957,
+      "level": "info",
+      "message": "Nouveau cycle de quota 2026-08-02 : compteur remis à zéro."
+    }
+  ],
   "sessions": [],
-  "lastCheckAt": 1785580373175
+  "lastCheckAt": 1785693886691
 }
