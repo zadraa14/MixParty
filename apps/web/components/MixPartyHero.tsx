@@ -1,68 +1,59 @@
-import { ArrowUp, Music4, Sparkles } from "lucide-react";
+"use client";
+
+import { Headphones, QrCode, Radio, Sparkles, UsersRound } from "lucide-react";
+import { GlowButton, GradientText, NeonBadge } from "./ui";
+
+type MixPartyHeroProps = {
+  creatingParty: boolean;
+  onCreateParty: () => void;
+  onJoinClick: () => void;
+};
 
 const FEATURES = [
-  { title: "Ajoute", text: "Recherche les morceaux de ton choix.", icon: Music4, accent: "purple" },
-  { title: "Vote", text: "Fais monter tes titres préférés.", icon: ArrowUp, accent: "pink" },
-  { title: "Profite", text: "Le DJ automatique gère la suite.", icon: Sparkles, accent: "orange" },
+  { title: "Invités illimités", text: "Tout le monde peut participer", icon: UsersRound, accent: "purple" },
+  { title: "Vote en temps réel", text: "Les meilleurs titres passent devant", icon: Radio, accent: "pink" },
+  { title: "PartyBrain", text: "Suggestions intelligentes", icon: Sparkles, accent: "cyan" },
+  { title: "Ambiance garantie", text: "Le DJ automatique enchaîne", icon: Headphones, accent: "orange" },
 ] as const;
 
-const ACCENTS = {
-  purple: {
-    card: "hover:border-purple-400/25 hover:bg-purple-500/[0.07] hover:shadow-[0_20px_50px_rgba(124,58,237,0.12)]",
-    glow: "bg-purple-500/10",
-    iconBox: "border-purple-400/10 bg-purple-500/15 group-hover:border-purple-400/25 group-hover:bg-purple-500/25",
-    icon: "text-purple-300",
-  },
-  pink: {
-    card: "hover:border-pink-400/25 hover:bg-pink-500/[0.07] hover:shadow-[0_20px_50px_rgba(236,72,153,0.12)]",
-    glow: "bg-pink-500/10",
-    iconBox: "border-pink-400/10 bg-pink-500/15 group-hover:border-pink-400/25 group-hover:bg-pink-500/25",
-    icon: "text-pink-300",
-  },
-  orange: {
-    card: "hover:border-orange-400/25 hover:bg-orange-500/[0.07] hover:shadow-[0_20px_50px_rgba(249,115,22,0.12)]",
-    glow: "bg-orange-500/10",
-    iconBox: "border-orange-400/10 bg-orange-500/15 group-hover:border-orange-400/25 group-hover:bg-orange-500/25",
-    icon: "text-orange-300",
-  },
-} as const;
-
-export default function MixPartyHero() {
+export default function MixPartyHero({ creatingParty, onCreateParty, onJoinClick }: MixPartyHeroProps) {
   return (
-    <section className="text-center lg:text-left">
-      <div className="mixparty-reveal mixparty-reveal-delay-1 mb-3 inline-flex items-center gap-2 rounded-full border border-purple-400/20 bg-purple-500/10 px-4 py-2 text-sm font-bold text-purple-300 sm:mb-6">
-        <span className="mixparty-spark">✦</span>
+    <section className="relative z-10 text-center lg:text-left">
+      <NeonBadge accent="purple" className="mixparty-reveal mixparty-reveal-delay-1 mixparty-hero-badge">
+        <Sparkles className="h-3.5 w-3.5" />
         La playlist devient collective
-      </div>
+      </NeonBadge>
 
-      <h1 className="mixparty-reveal mixparty-reveal-delay-2 mx-auto max-w-3xl text-[2.15rem] font-black leading-[0.98] tracking-tight sm:text-6xl lg:mx-0 lg:text-7xl">
-        La musique de la soirée appartient à
-        <span className="mixparty-hero-gradient block bg-gradient-to-r from-purple-400 via-pink-400 to-orange-300 bg-clip-text pb-2 text-transparent">tout le monde.</span>
+      <h1 className="mixparty-hero-title mixparty-reveal mixparty-reveal-delay-2 mx-auto mt-7 max-w-[760px] font-[family:var(--font-exo-2)] text-[3rem] font-black leading-[0.98] tracking-[-0.055em] sm:text-6xl lg:mx-0 lg:text-[5.25rem]">
+        <span className="block">La musique de la soirée</span>
+        <span className="block">appartient à</span>
+        <GradientText className="mt-1 block pb-2">tout le monde.</GradientText>
       </h1>
 
-      <p className="mixparty-reveal mixparty-reveal-delay-3 mx-auto mt-3 max-w-xl text-[0.95rem] leading-relaxed text-white/50 sm:text-lg lg:mx-0 lg:mt-6 lg:max-w-2xl lg:text-xl">
+      <p className="mixparty-reveal mixparty-reveal-delay-3 mx-auto mt-6 max-w-[690px] text-base leading-7 text-white/62 sm:text-lg lg:mx-0">
         Crée une soirée, partage le QR Code et laisse tes invités ajouter leurs morceaux préférés.
-        <span className="font-bold text-white/80"> Les titres les plus votés passent en premier.</span>
+        <span className="font-black text-white"> Les titres les plus votés passent en premier.</span>
       </p>
 
-      <div className="mx-auto mt-5 hidden max-w-2xl gap-3 lg:mx-0 lg:mt-9 lg:grid sm:grid-cols-3">
-        {FEATURES.map(({ title, text, icon: Icon, accent }, index) => {
-          const styles = ACCENTS[accent];
-          return (
-            <div
-              key={title}
-              className={`mixparty-reveal group relative overflow-hidden rounded-[22px] border border-white/[0.07] bg-white/[0.04] p-4 backdrop-blur-xl transition duration-300 hover:-translate-y-1 ${styles.card}`}
-              style={{ animationDelay: `${760 + index * 120}ms` }}
-            >
-              <div className={`pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full opacity-0 blur-2xl transition duration-500 group-hover:opacity-100 ${styles.glow}`} />
-              <div className={`relative mb-3 flex h-10 w-10 items-center justify-center rounded-xl border shadow-[0_0_20px_rgba(168,85,247,0.08)] transition duration-300 group-hover:scale-110 ${styles.iconBox}`}>
-                <Icon className={`h-5 w-5 ${styles.icon}`} />
-              </div>
-              <p className="relative font-black">{title}</p>
-              <p className="relative mt-1 text-sm text-white/35 transition duration-300 group-hover:text-white/50">{text}</p>
-            </div>
-          );
-        })}
+      <div className="mixparty-reveal mixparty-reveal-delay-4 mx-auto mt-8 flex max-w-[620px] flex-col gap-3 sm:flex-row lg:mx-0">
+        <GlowButton accent="orange" size="lg" loading={creatingParty} onClick={onCreateParty} className="mixparty-main-cta min-h-14 flex-1">
+          <Sparkles className="h-4 w-4" />
+          Créer une soirée
+        </GlowButton>
+        <button type="button" onClick={onJoinClick} className="mixparty-secondary-cta min-h-14 flex-1">
+          <QrCode className="h-4 w-4" />
+          Rejoindre avec un code
+        </button>
+      </div>
+
+      <div className="mixparty-feature-row mx-auto mt-9 grid max-w-[760px] grid-cols-2 gap-4 lg:mx-0 lg:grid-cols-4">
+        {FEATURES.map(({ title, text, icon: Icon, accent }, index) => (
+          <div key={title} className="mixparty-feature-item mixparty-reveal" style={{ animationDelay: `${700 + index * 90}ms` }}>
+            <div className={`mixparty-feature-icon mixparty-feature-icon--${accent}`}><Icon className="h-5 w-5" /></div>
+            <p className="mt-3 text-sm font-black text-white">{title}</p>
+            <p className="mt-1 text-xs leading-5 text-white/42">{text}</p>
+          </div>
+        ))}
       </div>
     </section>
   );

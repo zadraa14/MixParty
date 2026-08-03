@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "updatedAt": 1785695547846,
+  "updatedAt": 1785798148900,
   "quota": {
-    "cycleKey": "2026-08-02",
-    "used": 1,
-    "lastResetAt": 1785690595957
+    "cycleKey": "2026-08-03",
+    "used": 0,
+    "lastResetAt": 1785776295917
   },
   "running": false,
   "artistProgress": {},
@@ -13,8 +13,13 @@
       "at": 1785690595957,
       "level": "info",
       "message": "Nouveau cycle de quota 2026-08-02 : compteur remis à zéro."
+    },
+    {
+      "at": 1785776295918,
+      "level": "info",
+      "message": "Nouveau cycle de quota 2026-08-03 : compteur remis à zéro."
     }
   ],
   "sessions": [],
-  "lastCheckAt": 1785695547846
+  "lastCheckAt": 1785798148899
 }

@@ -5,6 +5,7 @@ import {
   Geist_Mono,
 } from "next/font/google";
 import "./globals.css";
+import InstallMixParty from "../components/InstallMixParty";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -23,9 +24,26 @@ const exo2 = Exo_2({
 });
 
 export const metadata: Metadata = {
-  title: "MixParty",
-  description:
-    "La playlist collaborative de tes soirées.",
+  title: {
+    default: "MixParty",
+    template: "%s | MixParty",
+  },
+  description: "La musique appartient à tout le monde.",
+  applicationName: "MixParty",
+
+  icons: {
+    icon: [
+      { url: "/branding/icon.png", sizes: "32x32", type: "image/png" },
+      { url: "/branding/icon.png", sizes: "192x192", type: "image/png" },
+      { url: "/branding/icon.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/branding/icon.png",
+    shortcut: "/branding/icon.png",
+  },
+
+  manifest: "/manifest.json",
+
+  themeColor: "#090711",
 };
 
 export default function RootLayout({
@@ -41,6 +59,7 @@ export default function RootLayout({
     >
       <body suppressHydrationWarning className="flex min-h-full flex-col">
         {children}
+        <InstallMixParty />
       </body>
     </html>
   );

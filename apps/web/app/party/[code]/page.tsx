@@ -6,30 +6,40 @@ import { QRCodeCanvas } from "qrcode.react";
 import { io } from "socket.io-client";
 import {
   ArrowBigUp,
+  Activity,
   Battery,
   Bot,
+  BrainCircuit,
   Check,
   Copy,
   Crown,
   Disc3,
   Expand,
   Headphones,
+  Gauge,
   ListMusic,
+  MessageCircle,
   Music4,
+  Pause,
   Play,
   Plus,
   Radio,
   RefreshCw,
+  Route,
   Sparkles,
   Search,
+  Shuffle,
   SkipForward,
   TrendingUp,
   UserPlus,
+  Zap,
+  UsersRound,
   WandSparkles,
   Wifi,
   WifiOff,
 } from "lucide-react";
 import { getApiBaseUrl, getAppBaseUrl, getSocketPath, getSocketUrl } from "../../../lib/config";
+import MixPartyBackground from "../../../components/MixPartyBackground";
 
 declare global {
   interface Window {
@@ -136,6 +146,38 @@ function rotateSuggestions<T extends { id: string }>(items: T[], seed: string): 
   return [...items.slice(offset), ...items.slice(0, offset)];
 }
 
+
+const PARTY_STYLE_RULES = [
+  { name: "Rap FR", keywords: ["gazo", "sdm", "tiakola", "ninho", "naps", "jul", "booba", "koba", "damso", "rap", "drill", "hip hop"] },
+  { name: "Afro / Amapiano", keywords: ["afro", "amapiano", "aya", "burna", "wizkid", "tems", "davido", "dadju", "tayc"] },
+  { name: "Électro / Dance", keywords: ["house", "techno", "electro", "dance", "dj", "remix", "guetta", "avicii", "calvin harris"] },
+  { name: "Pop festive", keywords: ["pop", "weeknd", "dua lipa", "bruno mars", "rihanna", "beyonce", "katy perry"] },
+  { name: "Reggaeton / Latino", keywords: ["reggaeton", "bad bunny", "j balvin", "karol g", "daddy yankee", "latino"] },
+  { name: "Rock", keywords: ["rock", "metal", "guitar", "nirvana", "queen", "acdc", "linkin park"] },
+] as const;
+
+function detectPartyStyle(value: string) {
+  const normalized = value.toLowerCase();
+  let best = { name: "Pop festive", score: 0 };
+  for (const style of PARTY_STYLE_RULES) {
+    const score = style.keywords.reduce((total, keyword) => total + (normalized.includes(keyword) ? 1 : 0), 0);
+    if (score > best.score) best = { name: style.name, score };
+  }
+  return best;
+}
+
+function transitionScore(from: string, to: string) {
+  if (from === to) return 96;
+  const compatible = new Set([
+    "Rap FR|Afro / Amapiano", "Afro / Amapiano|Rap FR",
+    "Afro / Amapiano|Reggaeton / Latino", "Reggaeton / Latino|Afro / Amapiano",
+    "Pop festive|Électro / Dance", "Électro / Dance|Pop festive",
+    "Rap FR|Pop festive", "Pop festive|Rap FR",
+    "Électro / Dance|Reggaeton / Latino", "Reggaeton / Latino|Électro / Dance",
+  ]);
+  return compatible.has(`${from}|${to}`) ? 84 : 62;
+}
+
 export default function PartyPage() {
   const params = useParams();
   const code = params.code as string;
@@ -154,6 +196,12 @@ export default function PartyPage() {
   const [shareUrl, setShareUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [searchInsight, setSearchInsight] = useState<null | {
+    sampleSize: number;
+    message: string;
+    hourMessage?: string;
+    nextArtists: Array<{ artistName: string; count: number; confidence: number }>;
+  }>(null);
   const [joining, setJoining] = useState(false);
   const [addingVideoId, setAddingVideoId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<any[]>([]);
@@ -166,6 +214,8 @@ export default function PartyPage() {
   const [djModeActive, setDjModeActive] = useState(false);
   const [djModeStartedAt, setDjModeStartedAt] = useState<number | null>(null);
   const [djModeElapsed, setDjModeElapsed] = useState(0);
+  const [tvModeActive, setTvModeActive] = useState(false);
+  const [tvPlayback, setTvPlayback] = useState({ time: 0, duration: 0, state: 2 });
   const [wakeLockActive, setWakeLockActive] = useState(false);
   const [networkOnline, setNetworkOnline] = useState(true);
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
@@ -184,6 +234,7 @@ export default function PartyPage() {
   const isPlaybackControllerRef = useRef(false);
   const applyingRemotePlaybackRef = useRef(false);
   const changingSongRef = useRef(false);
+  const mobileSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
 
   function addPlayerAudit(event: string, detail?: string) {
     const entry = { at: Date.now(), event, detail };
@@ -538,11 +589,18 @@ export default function PartyPage() {
     setSearching(true);
 
     try {
-      const response = await fetch(
-      `${getApiBaseUrl()}/search/youtube?q=${encodeURIComponent(search)}`
-    );
+      const query = search.trim();
+      const [response, insightResponse] = await Promise.all([
+        fetch(`${getApiBaseUrl()}/search/youtube?q=${encodeURIComponent(query)}&partyCode=${encodeURIComponent(code)}&actor=${encodeURIComponent(participantId || playerName || "guest")}`),
+        fetch(`${getApiBaseUrl()}/partybrain/intelligence/insights/search?q=${encodeURIComponent(query)}`),
+      ]);
 
-    const data = await response.json();
+      const data = await response.json();
+      if (insightResponse.ok) {
+        setSearchInsight(await insightResponse.json());
+      } else {
+        setSearchInsight(null);
+      }
     const pool = Array.isArray(data) ? data : [];
 
       setResults(
@@ -557,7 +615,7 @@ export default function PartyPage() {
     }
   }
 
-  async function addYoutubeSong(video: any) {
+  async function addYoutubeSong(video: any, additionSource: "manual_search" | "partybrain_suggestion" = "manual_search") {
     if (addingVideoId) return;
 
     setAddingVideoId(video.id);
@@ -581,6 +639,8 @@ export default function PartyPage() {
           albumName: video.albumName,
           metadataSource: video.metadataSource,
           metadataConfidence: video.metadataConfidence,
+          durationSeconds: video.durationSeconds,
+          additionSource,
           suggestionPool: Array.isArray(video.suggestionPool)
             ? video.suggestionPool.map((item: any) => ({
                 id: item.id,
@@ -917,6 +977,7 @@ export default function PartyPage() {
   }
 
   async function deactivateDjMode() {
+    setTvModeActive(false);
     setDjModeActive(false);
     setDjModeStartedAt(null);
     setDjModeElapsed(0);
@@ -940,6 +1001,53 @@ export default function PartyPage() {
       console.warn("Reprise de lecture impossible", error);
     }
   }
+
+  async function activateTvMode() {
+    setTvModeActive(true);
+    if (!djModeActive) {
+      setDjModeActive(true);
+      setDjModeStartedAt(Date.now());
+      await requestWakeLock();
+    }
+    try {
+      await document.documentElement.requestFullscreen?.();
+    } catch (error) {
+      console.warn("Plein écran TV indisponible", error);
+    }
+  }
+
+  async function deactivateTvMode() {
+    setTvModeActive(false);
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen?.();
+    } catch {}
+  }
+
+  useEffect(() => {
+    if (!tvModeActive) return;
+
+    const updateTvPlayback = () => {
+      const player = playerRef.current;
+      if (player && isPlaybackControllerRef.current) {
+        setTvPlayback({
+          time: Number(player.getCurrentTime?.() || 0),
+          duration: Number(player.getDuration?.() || 0),
+          state: Number(player.getPlayerState?.() ?? 2),
+        });
+        return;
+      }
+
+      setTvPlayback((current) => ({
+        ...current,
+        time: remotePlayback.time + (remotePlayback.state === 1 ? (Date.now() - remotePlayback.receivedAt) / 1000 : 0),
+        state: remotePlayback.state,
+      }));
+    };
+
+    updateTvPlayback();
+    const timer = window.setInterval(updateTvPlayback, 500);
+    return () => window.clearInterval(timer);
+  }, [tvModeActive, remotePlayback]);
 
   useEffect(() => {
     setNetworkOnline(navigator.onLine);
@@ -1066,33 +1174,120 @@ export default function PartyPage() {
       return a.addedAt - b.addedAt;
     });
 
+  const partyBrainSongs = [
+    ...(party.history || []).slice(-12),
+    ...(party.currentSong ? [party.currentSong] : []),
+    ...queue.slice(0, 6),
+  ];
+
+  const styleScores = PARTY_STYLE_RULES.map((style) => ({
+    name: style.name,
+    score: partyBrainSongs.reduce((total, song) => {
+      const source = `${song.title || ""} ${song.artistName || ""} ${(song.featuredArtistNames || []).join(" ")}`.toLowerCase();
+      return total + style.keywords.reduce((count, keyword) => count + (source.includes(keyword) ? 1 : 0), 0);
+    }, 0),
+  })).sort((a, b) => b.score - a.score);
+
+  const partyBrainMood = styleScores[0]?.score > 0
+    ? styleScores[0].name
+    : party.currentSong
+      ? detectPartyStyle(`${party.currentSong.title} ${party.currentSong.artistName || ""}`).name
+      : "En attente";
+  const partyBrainSecondaryMood = styleScores.find((style) => style.name !== partyBrainMood && style.score > 0)?.name || "Pop festive";
+  const detectedSignals = styleScores.reduce((total, style) => total + style.score, 0);
+  const moodConfidence = party.currentSong ? Math.min(98, 68 + detectedSignals * 4 + Math.min(12, partyBrainSongs.length)) : 0;
+
+  const totalVisibleVotes = queue.reduce((total, song) => total + Number(song.votes || 0), 0);
+  const recentHistoryVotes = (party.history || []).slice(-8).reduce((total, song) => total + Number(song.votes || 0), 0);
+  const participationRate = party.participants.length
+    ? Math.min(100, Math.round(((new Set(queue.flatMap((song) => [song.addedBy, ...(song.voters || [])]).filter(Boolean))).size / party.participants.length) * 100))
+    : 0;
+  const partyBrainEnergy = party.currentSong
+    ? Math.min(98, Math.max(44, 54 + queue.length * 3 + Math.min(20, totalVisibleVotes * 2) + Math.min(12, party.participants.length)))
+    : 0;
+  const energyTrend = Math.max(-18, Math.min(18, totalVisibleVotes * 2 - recentHistoryVotes + queue.length));
+  const energyLabel = partyBrainEnergy >= 86 ? "Très forte" : partyBrainEnergy >= 70 ? "En montée" : partyBrainEnergy >= 52 ? "Stable" : "À relancer";
+
+  const currentStyle = party.currentSong
+    ? detectPartyStyle(`${party.currentSong.title} ${party.currentSong.artistName || ""}`).name
+    : partyBrainMood;
+  const nextStyle = queue[0]
+    ? detectPartyStyle(`${queue[0].title} ${queue[0].artistName || ""}`).name
+    : partyBrainMood;
+  const nextTransitionScore = transitionScore(currentStyle, nextStyle);
+  const transitionMessage = !queue[0]
+    ? "Ajoute un titre pour que je prépare la prochaine transition."
+    : nextTransitionScore >= 90
+      ? `Transition très naturelle vers ${nextStyle}.`
+      : nextTransitionScore >= 80
+        ? `Bonne passerelle vers ${nextStyle}, garde cette direction.`
+        : `Transition plus marquée vers ${nextStyle} : prévois un morceau passerelle.`;
+
+  const partyBrainArtists = Array.from(new Set(
+    suggestions
+      .map((video) => video.artistName || video.channelTitle || String(video.title || "").split("-")[0]?.trim())
+      .filter(Boolean)
+  )).slice(0, 3);
+
+  const mixMateAdvice = !party.currentSong
+    ? "Lance le premier morceau : j’analyserai les votes, la file et les réactions pour guider la soirée."
+    : partyBrainEnergy >= 86
+      ? `La soirée est très haute en énergie. Garde encore 2 ou 3 titres en ${partyBrainMood}, puis prépare une transition douce vers ${partyBrainSecondaryMood}.`
+      : partyBrainEnergy >= 70
+        ? `${partyBrainMood} fonctionne bien. Le prochain titre a ${nextTransitionScore}% de compatibilité avec l’ambiance actuelle.`
+        : `L’énergie baisse légèrement. Choisis un morceau connu, plus rythmé, avec une transition proche de ${partyBrainMood}.`;
+
+  const sessionDurationMinutes = party.history?.length
+    ? Math.max(1, Math.round((Date.now() - Math.min(...party.history.map((song) => Number(song.addedAt || Date.now())))) / 60000))
+    : 0;
+  const totalSessionVotes = [...(party.history || []), ...queue].reduce((total, song) => total + Number(song.votes || 0), 0);
+
+  const mobileTabs = ["playback", "add", "queue", "guests"] as const;
+
+  function switchMobileTab(nextTab: typeof mobileTabs[number]) {
+    setActiveMobileTab(nextTab);
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate?.(8);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleMobileTouchStart(event: React.TouchEvent<HTMLElement>) {
+    const touch = event.touches[0];
+    mobileSwipeStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+  }
+
+  function handleMobileTouchEnd(event: React.TouchEvent<HTMLElement>) {
+    const start = mobileSwipeStartRef.current;
+    const touch = event.changedTouches[0];
+    mobileSwipeStartRef.current = null;
+    if (!start || !touch || window.innerWidth >= 768) return;
+
+    const deltaX = touch.clientX - start.x;
+    const deltaY = touch.clientY - start.y;
+    if (Math.abs(deltaX) < 58 || Math.abs(deltaX) < Math.abs(deltaY) * 1.35) return;
+
+    const currentIndex = mobileTabs.indexOf(activeMobileTab);
+    const nextIndex = deltaX < 0
+      ? Math.min(mobileTabs.length - 1, currentIndex + 1)
+      : Math.max(0, currentIndex - 1);
+    if (nextIndex !== currentIndex) switchMobileTab(mobileTabs[nextIndex]);
+  }
+
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#070711] font-[family:var(--font-geist-sans)] text-white">
+    <main
+      className="v54-mobile-app relative isolate min-h-screen overflow-hidden bg-[#070711] font-[family:var(--font-geist-sans)] text-white"
+      onTouchStart={handleMobileTouchStart}
+      onTouchEnd={handleMobileTouchEnd}
+    >
 
-      {party.currentSong?.thumbnail && (
-        <div
-          className="pointer-events-none fixed inset-[-8%] scale-110 bg-cover bg-center opacity-[0.16] blur-[90px] saturate-150 transition-all duration-1000"
-          style={{ backgroundImage: `url(${party.currentSong.thumbnail})` }}
-        />
-      )}
+      <MixPartyBackground />
 
-      <div className="pointer-events-none fixed inset-0 bg-[linear-gradient(to_bottom,rgba(7,7,17,0.48),rgba(7,7,17,0.9)_45%,#070711_85%)]" />
+      <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(to_bottom,rgba(7,7,17,.03),rgba(7,7,17,.14)_54%,rgba(7,7,17,.32))]" />
 
-      <div className="pointer-events-none fixed inset-0">
+      <div className="v54-mobile-content relative z-10 mx-auto max-w-[1600px] px-4 py-4 pb-28 sm:px-6 sm:py-5 md:pb-5 lg:px-8 xl:px-10">
 
-        <div className="absolute -left-40 top-0 h-[500px] w-[500px] rounded-full bg-purple-700/20 blur-[150px]" />
-
-        <div className="absolute right-[-180px] top-[250px] h-[520px] w-[520px] rounded-full bg-pink-600/10 blur-[160px]" />
-
-        <div className="absolute bottom-[-200px] left-1/3 h-[500px] w-[500px] rounded-full bg-orange-500/10 blur-[160px]" />
-
-      </div>
-
-      <div className="relative mx-auto max-w-[1600px] px-4 py-4 pb-28 sm:px-6 sm:py-5 md:pb-5 lg:px-8 xl:px-10">
-
-        <header className="mb-4 flex items-center justify-between rounded-[22px] border border-white/10 bg-black/25 px-3 py-3 backdrop-blur-xl md:hidden">
+        <header className="v54-mobile-header mb-4 flex items-center justify-between rounded-[22px] border border-white/10 bg-black/25 px-3 py-3 backdrop-blur-xl md:hidden">
           <div className="flex min-w-0 items-center gap-2.5">
-            <img src="/mixparty-logo-officiel.svg" alt="MixParty" className="h-11 w-11 shrink-0 object-contain" />
+            <img src="/branding/icon.png" alt="MixParty" className="h-11 w-11 shrink-0 object-contain" />
             <div className="min-w-0">
               <p className="-skew-x-6 font-[family:var(--font-exo-2)] text-lg font-black tracking-[0.12em]">
                 <span className="text-white">MIX</span><span className="bg-gradient-to-r from-purple-400 via-pink-400 to-orange-400 bg-clip-text text-transparent">PARTY</span>
@@ -1102,7 +1297,7 @@ export default function PartyPage() {
           </div>
           <button
             type="button"
-            onClick={() => setActiveMobileTab("guests")}
+            onClick={() => switchMobileTab("guests")}
             className="flex items-center gap-2 rounded-full border border-emerald-400/15 bg-emerald-400/10 px-3 py-2 text-xs font-black text-emerald-300"
           >
             <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.75)]" />
@@ -1117,7 +1312,7 @@ export default function PartyPage() {
             <div className="relative shrink-0">
               <div className="absolute inset-2 rounded-full bg-gradient-to-br from-purple-500/30 via-pink-500/25 to-orange-400/20 opacity-60 blur-xl transition duration-500 group-hover:scale-125 group-hover:opacity-90" />
               <img
-                src="/mixparty-logo-officiel.svg"
+                src="/branding/icon.png"
                 alt=""
                 aria-hidden="true"
                 className="relative h-20 w-20 object-contain transition duration-500 group-hover:rotate-2 group-hover:scale-105 sm:h-24 sm:w-24"
@@ -1157,7 +1352,7 @@ export default function PartyPage() {
         </header>
 
         <section className="desktop-command-deck mb-6 hidden md:grid md:grid-cols-[1.2fr_0.8fr_0.8fr] md:gap-3">
-          <div className="desktop-command-card desktop-command-card--hero">
+          <div className="desktop-command-card desktop-command-card--hero premium-glass-card">
             <div>
               <p className="desktop-command-label">Session en direct</p>
               <p className="desktop-command-title">La soirée est lancée</p>
@@ -1168,12 +1363,12 @@ export default function PartyPage() {
               ))}
             </div>
           </div>
-          <div className="desktop-command-card">
+          <div className="desktop-command-card premium-glass-card">
             <p className="desktop-command-label">Ambiance</p>
             <p className="desktop-command-value">{queue.length} titre{queue.length > 1 ? "s" : ""} en attente</p>
             <p className="desktop-command-meta">Classés automatiquement par votes</p>
           </div>
-          <div className="desktop-command-card">
+          <div className="desktop-command-card premium-glass-card">
             <p className="desktop-command-label">Communauté</p>
             <p className="desktop-command-value">{party.participants.length} participant{party.participants.length > 1 ? "s" : ""}</p>
             <p className="desktop-command-meta">Connectés à la soirée {party.code}</p>
@@ -1184,220 +1379,94 @@ export default function PartyPage() {
 
           <div className="desktop-main-column space-y-6">
 
-            <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} now-playing-panel overflow-hidden rounded-[24px] border border-orange-400/20 bg-gradient-to-br from-orange-500/[0.09] via-white/[0.045] to-purple-600/[0.08] p-3 shadow-[0_25px_80px_rgba(0,0,0,0.25)] backdrop-blur-xl sm:p-6 md:block md:rounded-[30px]`}>
-
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-
-                <div className="flex items-center gap-3">
-
-                  <span className="relative flex h-3 w-3">
-
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-400 opacity-60" />
-
-                    <span className="relative inline-flex h-3 w-3 rounded-full bg-orange-400" />
-
-                  </span>
-
+            <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} v53-player-shell premium-glass-card md:block`}>
+              <div className="v53-player-header">
+                <div className="v53-player-live">
+                  <span className="v53-player-live__dot" />
                   <div>
-
-                    <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-300">
-                      En lecture
-                    </p>
-
-                    <h1 className="text-xl font-black sm:text-2xl">
-                      Maintenant dans la soirée
-                    </h1>
-
+                    <p>En lecture</p>
+                    <h1>Console DJ</h1>
                   </div>
-
                 </div>
-
-                {isPlaybackController && <button
-                  onClick={nextSong}
-                  className="party-action party-action--orange group relative overflow-hidden rounded-2xl px-5 py-3 text-sm text-white"
-                >
-                  <span className="party-action__shine" aria-hidden="true" />
-                  <span className="party-action__content flex items-center gap-2">
-                    <span className="party-action__icon"><SkipForward className="h-4 w-4" /></span>
-                    Titre suivant
-                  </span>
-                </button>}
-
+                <div className="v53-player-audience">
+                  <UsersRound className="h-4 w-4" />
+                  <strong>{party.participants.length}</strong>
+                  <span>personne{party.participants.length > 1 ? "s" : ""}</span>
+                </div>
               </div>
 
               {party.currentSong ? (
-                <div className="grid gap-5 md:grid-cols-[minmax(0,1.5fr)_minmax(230px,0.7fr)]">
-
-                  <div className="overflow-hidden rounded-[24px] border border-white/10 bg-black/30 p-2">
-                    {isPlaybackController ? (
-                      <div>
-                        {DEBUG_PLAYER && (
-  <div className="mb-2 max-h-44 overflow-auto rounded-xl border border-cyan-300/25 bg-black/90 p-2 font-mono text-[10px] leading-4 text-cyan-100 shadow-2xl">
-    <div className="mb-1 flex items-center justify-between gap-2 font-black text-cyan-300">
-      <span>PLAYER AUDIT — ACTIF</span>
-      <span>{playerRef.current ? "lecteur créé" : "lecteur en attente"}</span>
-    </div>
-
-    {playerAudit.length === 0 ? (
-      <div className="text-cyan-100/55">
-        En attente du premier événement…
-      </div>
-    ) : (
-      playerAudit.slice(-12).map((entry, index) => (
-        <div
-          key={`${entry.at}-${index}`}
-          className="border-t border-white/5 py-0.5"
-        >
-          {new Date(entry.at).toLocaleTimeString("fr-FR", {
-            hour12: false,
-          })}
-          {" — "}
-          {entry.event}
-          {entry.detail ? ` — ${entry.detail}` : ""}
-        </div>
-      ))
-    )}
-  </div>
-)}
-                        <div className="relative aspect-video w-full overflow-hidden rounded-[18px] bg-black">
-                        <div
-                          ref={setPlayerHostElement}
-                          className="absolute inset-0 h-full w-full"
-                        />
-                        {youtubeError !== null && (
-                          <div className="absolute inset-x-3 bottom-3 z-10 rounded-2xl border border-red-400/30 bg-red-950/90 p-3 text-sm shadow-2xl backdrop-blur">
-                            <p className="font-black text-red-200">Erreur YouTube {youtubeError}</p>
-                            <p className="mt-1 text-xs leading-5 text-red-100/75">
-                              {youtubeError === 2 && "Identifiant vidéo ou paramètres invalides."}
-                              {(youtubeError === 5 || youtubeError === 101 || youtubeError === 150) && "Cette vidéo refuse la lecture dans un lecteur intégré."}
-                              {youtubeError === 100 && "Cette vidéo est privée, supprimée ou introuvable."}
-                              {youtubeError === 153 && "YouTube ne reçoit pas correctement l’origine ou le référent de MixParty."}
-                              {![-1, 2, 5, 100, 101, 150, 153].includes(youtubeError) && "Erreur inconnue du lecteur intégré."}
-                            </p>
+                <div className="v53-player-console">
+                  <div className="v53-player-media">
+                    <div className="v53-player-video-frame">
+                      {isPlaybackController ? (
+                        <>
+                          {DEBUG_PLAYER && (
+                            <div className="mb-2 max-h-44 overflow-auto rounded-xl border border-cyan-300/25 bg-black/90 p-2 font-mono text-[10px] leading-4 text-cyan-100 shadow-2xl">
+                              <div className="mb-1 flex items-center justify-between gap-2 font-black text-cyan-300"><span>PLAYER AUDIT — ACTIF</span><span>{playerRef.current ? "lecteur créé" : "lecteur en attente"}</span></div>
+                              {playerAudit.length === 0 ? <div className="text-cyan-100/55">En attente du premier événement…</div> : playerAudit.slice(-12).map((entry, index) => <div key={`${entry.at}-${index}`} className="border-t border-white/5 py-0.5">{new Date(entry.at).toLocaleTimeString("fr-FR", { hour12: false })} — {entry.event}{entry.detail ? ` — ${entry.detail}` : ""}</div>)}
+                            </div>
+                          )}
+                          <div className="relative aspect-video w-full overflow-hidden rounded-[22px] bg-black">
+                            <div ref={setPlayerHostElement} className="absolute inset-0 h-full w-full" />
+                            {youtubeError !== null && (
+                              <div className="absolute inset-x-3 bottom-3 z-10 rounded-2xl border border-red-400/30 bg-red-950/90 p-3 text-sm shadow-2xl backdrop-blur">
+                                <p className="font-black text-red-200">Erreur YouTube {youtubeError}</p>
+                                <p className="mt-1 text-xs leading-5 text-red-100/75">{youtubeError === 2 && "Identifiant vidéo ou paramètres invalides."}{(youtubeError === 5 || youtubeError === 101 || youtubeError === 150) && "Cette vidéo refuse la lecture dans un lecteur intégré."}{youtubeError === 100 && "Cette vidéo est privée, supprimée ou introuvable."}{youtubeError === 153 && "YouTube ne reçoit pas correctement l’origine ou le référent de MixParty."}{![-1, 2, 5, 100, 101, 150, 153].includes(youtubeError) && "Erreur inconnue du lecteur intégré."}</p>
+                              </div>
+                            )}
+                            {resumeRequired && (
+                              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/65 p-5 backdrop-blur-sm">
+                                <button type="button" onClick={resumePlayback} className="party-action party-action--orange group rounded-2xl px-6 py-4 text-base font-black"><span className="party-action__shine" aria-hidden="true" /><span className="party-action__content flex items-center gap-2"><Play className="h-5 w-5 fill-current" />Reprendre la lecture</span></button>
+                              </div>
+                            )}
                           </div>
-                        )}
-                        {resumeRequired && (
-                          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/65 p-5 backdrop-blur-sm">
-                            <button
-                              type="button"
-                              onClick={resumePlayback}
-                              className="party-action party-action--orange group rounded-2xl px-6 py-4 text-base font-black"
-                            >
-                              <span className="party-action__shine" aria-hidden="true" />
-                              <span className="party-action__content flex items-center gap-2">
-                                <Play className="h-5 w-5 fill-current" />
-                                Reprendre la lecture
-                              </span>
-                            </button>
-                          </div>
-                        )}
+                        </>
+                      ) : (
+                        <div className="relative aspect-video overflow-hidden rounded-[22px] bg-[#0d0d18]">
+                          <img src={party.currentSong.thumbnail} alt="" className="h-full w-full object-cover opacity-45 blur-[1px]" />
+                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 px-6 text-center"><Radio className="mb-3 h-9 w-9 text-orange-300" /><p className="text-sm font-black uppercase tracking-[0.18em] text-orange-300">Lecture sur l’appareil DJ</p><p className="mt-2 text-sm text-white/65">Ton téléphone suit la soirée en direct.</p><p className="mt-3 text-xs font-bold text-white/45">{remotePlayback.state === 1 ? "Lecture en cours" : "Lecture en pause"} · {Math.floor(remotePlayback.time / 60)}:{String(Math.floor(remotePlayback.time % 60)).padStart(2, "0")}</p></div>
                         </div>
-                      </div>
-                    ) : (
-                      <div className="relative aspect-video overflow-hidden rounded-[18px] bg-[#0d0d18]">
-                        <img src={party.currentSong.thumbnail} alt="" className="h-full w-full object-cover opacity-45 blur-[1px]" />
-                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/35 px-6 text-center">
-                          <Radio className="mb-3 h-9 w-9 text-orange-300" />
-                          <p className="text-sm font-black uppercase tracking-[0.18em] text-orange-300">Lecture sur l’appareil DJ</p>
-                          <p className="mt-2 text-sm text-white/65">Ton téléphone reste silencieux et suit la soirée en direct.</p>
-                          <p className="mt-3 text-xs font-bold text-white/45">{remotePlayback.state === 1 ? "Lecture en cours" : "Lecture en pause"} · {Math.floor(remotePlayback.time / 60)}:{String(Math.floor(remotePlayback.time % 60)).padStart(2, "0")}</p>
-                        </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
 
-                  <div className="flex flex-col justify-between rounded-[24px] border border-white/10 bg-black/20 p-5">
-
-                    <div>
-
-                      <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-orange-400/20 bg-orange-400/10 px-3 py-1.5 text-xs font-bold text-orange-300">
-
-                        <Radio className="h-3.5 w-3.5" />
-
-                        {isPlaybackController ? "Appareil DJ" : "Synchronisé avec le DJ"}
-
+                  <div className="v53-player-dashboard">
+                    <div className="v53-track-identity">
+                      <div className="v53-cover-wrap"><span className="v53-cover-glow" /><img src={party.currentSong.thumbnail} alt={party.currentSong.title} /></div>
+                      <div className="min-w-0">
+                        <span className="v53-track-badge"><Radio className="h-3.5 w-3.5" />{isPlaybackController ? "Appareil DJ" : "Synchronisé"}</span>
+                        <h2>{party.currentSong.title}</h2>
+                        <p className="v53-track-artist">{party.currentSong.artistName || party.currentSong.addedBy}</p>
+                        <p className="v53-track-added">Ajouté par <strong>{party.currentSong.addedBy}</strong></p>
                       </div>
-
-                      <h2 className="text-2xl font-black leading-tight">
-
-                        {party.currentSong.title}
-
-                      </h2>
-
-                      <p className="mt-3 text-sm text-white/45">
-
-                        Ajouté par{" "}
-
-                        <span className="font-bold text-white/75">
-                          {party.currentSong.addedBy}
-                        </span>
-
-                      </p>
-
                     </div>
 
-                    <div className="mt-8">
+                    <div className="v53-progress"><span style={{ width: `${Math.min(100, Math.max(4, (remotePlayback.time % 240) / 2.4))}%` }} /></div>
 
-                      <div className="mb-3 flex h-14 items-end gap-1">
-
-                        {[40, 65, 35, 80, 50, 90, 55, 75, 42, 68, 30, 58].map(
-                          (height, index) => (
-                            <div
-                              key={index}
-                              className="flex-1 animate-pulse rounded-full bg-gradient-to-t from-purple-600 via-pink-500 to-orange-400"
-                              style={{
-                                height: `${height}%`,
-                                animationDelay: `${index * 80}ms`
-                              }}
-                            />
-                          )
-                        )}
-
+                    <div className="v53-player-controls">
+                      <div className="v53-control-group">
+                        <button type="button" onClick={resumePlayback} className="v53-control v53-control--primary" aria-label="Lecture"><Play className="h-5 w-5 fill-current" /></button>
+                        {isPlaybackController && <button type="button" onClick={() => playerRef.current?.pauseVideo?.()} className="v53-control" aria-label="Pause"><Pause className="h-5 w-5" /></button>}
+                        {isPlaybackController && <button type="button" onClick={nextSong} className="v53-control" aria-label="Titre suivant"><SkipForward className="h-5 w-5" /></button>}
+                        <button type="button" className="v53-control v53-control--muted" aria-label="Lecture aléatoire" title="Lecture aléatoire bientôt disponible"><Shuffle className="h-5 w-5" /></button>
                       </div>
-
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/30">
-                        MixParty Live
-                      </p>
-
+                      <div className="v53-player-audience v53-player-audience--compact"><UsersRound className="h-4 w-4" /><strong>{party.participants.length}</strong><span>en ligne</span></div>
                     </div>
 
+                    <div className="v53-waveform" aria-label="Visualisation audio">
+                      {[38,72,46,88,58,95,44,76,52,84,34,68,48,92,56,80,42,70,50,86,36,64,54,90,46,74,40,82].map((height,index)=><span key={index} style={{ height:`${height}%`, animationDelay:`${index * 55}ms` }} />)}
+                    </div>
                   </div>
-
                 </div>
               ) : (
-                <div className="flex min-h-64 flex-col items-center justify-center rounded-[24px] border border-dashed border-white/15 bg-black/20 px-6 text-center">
-
-                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-purple-400/15 bg-purple-500/10 shadow-[0_0_30px_rgba(168,85,247,0.1)]">
-                    <Music4 className="h-7 w-7 text-purple-300" />
-                  </div>
-
-                  <h2 className="text-xl font-black">
-                    Aucun morceau en lecture
-                  </h2>
-
-                  <p className="mt-2 max-w-sm text-sm text-white/40">
-                    Ajoute des musiques à la file puis lance le DJ.
-                  </p>
-
-                  <button
-                    onClick={nextSong}
-                    className="party-action party-action--purple group mt-5 rounded-2xl px-6 py-3"
-                  >
-                    <span className="party-action__shine" aria-hidden="true" />
-                    <span className="party-action__content flex items-center justify-center gap-2">
-                      <span className="party-action__icon"><Play className="h-4 w-4 fill-current" /></span>
-                      Lancer le DJ
-                    </span>
-                  </button>
-
-                </div>
+                <div className="v53-player-empty"><div><Music4 className="h-7 w-7" /></div><h2>Aucun morceau en lecture</h2><p>Ajoute des musiques à la file puis lance le DJ.</p><button onClick={nextSong} className="party-action party-action--purple group mt-5 rounded-2xl px-6 py-3"><span className="party-action__shine" aria-hidden="true" /><span className="party-action__content flex items-center justify-center gap-2"><Play className="h-4 w-4 fill-current" />Lancer le DJ</span></button></div>
               )}
-
             </section>
 
-            <section className={`${activeMobileTab === "queue" ? "block" : "hidden"} rounded-[24px] border border-white/10 bg-white/[0.045] p-3 backdrop-blur-xl sm:p-6 md:block md:rounded-[30px]`}>
+            <section className={`${activeMobileTab === "queue" ? "block" : "hidden"} v53-queue-panel premium-glass-card md:block`}>
 
-              <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+              <div className="v53-queue-header">
 
                 <div>
 
@@ -1411,7 +1480,7 @@ export default function PartyPage() {
 
                 </div>
 
-                <div className="rounded-full border border-white/10 bg-white/[0.05] px-4 py-2 text-sm text-white/55">
+                <div className="v53-queue-count">
 
                   {queue.length} morceau{queue.length > 1 ? "x" : ""}
 
@@ -1420,7 +1489,7 @@ export default function PartyPage() {
               </div>
 
               {queue.length > 0 ? (
-                <div className="space-y-3">
+                <div className="v53-queue-list">
 
                   {queue.map((song, index) => {
                     const originalIndex = songs.findIndex(
@@ -1430,19 +1499,12 @@ export default function PartyPage() {
                     return (
                       <div
                         key={`${song.videoId}-${song.addedAt}`}
-                        className={`group grid grid-cols-[44px_64px_minmax(0,1fr)] items-center gap-3 rounded-[22px] border p-3 transition sm:grid-cols-[48px_72px_minmax(0,1fr)_auto] ${
-                          index === 0
-                            ? "border-purple-400/30 bg-gradient-to-r from-purple-600/15 via-pink-500/10 to-orange-400/10"
-                            : "border-white/[0.07] bg-black/20 hover:border-white/15 hover:bg-white/[0.045]"
-                        }`}
+                        className={`v53-queue-item ${index === 0 ? "v53-queue-item--next" : ""}`}
+                        style={{ animationDelay: `${Math.min(index, 8) * 70}ms` }}
                       >
 
                         <div
-                          className={`flex h-10 w-10 items-center justify-center rounded-xl text-sm font-black ${
-                            index === 0
-                              ? "bg-gradient-to-br from-purple-600 to-pink-500 text-white"
-                              : "bg-white/[0.06] text-white/45"
-                          }`}
+                          className="v53-queue-rank"
                         >
                           {index === 0 ? <Play className="h-4 w-4 fill-current" /> : index + 1}
                         </div>
@@ -1450,7 +1512,7 @@ export default function PartyPage() {
                         <img
                           src={song.thumbnail}
                           alt={song.title}
-                          className="h-16 w-16 rounded-2xl object-cover sm:h-[72px] sm:w-[72px]"
+                          className="v53-queue-cover"
                         />
 
                         <div className="min-w-0">
@@ -1461,13 +1523,10 @@ export default function PartyPage() {
                             </p>
                           )}
 
-                          <p className="truncate font-black">
-                            {song.title}
-                          </p>
+                          <p className="v53-queue-title">{song.title}</p>
+                          <p className="v53-queue-artist">{song.artistName || "Artiste MixParty"}</p>
 
-                          <p className="mt-1 truncate text-sm text-white/40">
-                            Ajouté par {song.addedBy}
-                          </p>
+                          <div className="v53-queue-added"><span className="v53-queue-avatar"><img src={party.participants.find((participant) => participant.name === song.addedBy)?.avatar || defaultAvatarForParticipant(song.addedBy)} alt="" /></span><span>Ajouté par <strong>{song.addedBy}</strong></span></div>
 
                           <div className="mt-2 flex items-center gap-2 sm:hidden">
 
@@ -1487,11 +1546,11 @@ export default function PartyPage() {
 
                         </div>
 
-                        <div className="col-span-3 hidden items-center gap-3 sm:col-span-1 sm:flex">
+                        <div className="v53-queue-actions">
 
-                          <div className="rounded-2xl border border-purple-400/20 bg-purple-500/10 px-4 py-2 text-center">
+                          <div className="v53-vote-score">
 
-                            <p className="text-lg font-black text-purple-300">
+                            <p>
                               {song.votes}
                             </p>
 
@@ -1537,78 +1596,107 @@ export default function PartyPage() {
 
             </section>
 
-            <section className="hidden overflow-hidden rounded-[30px] border border-cyan-300/15 bg-gradient-to-br from-cyan-400/[0.08] via-purple-500/[0.08] to-pink-500/[0.07] p-4 shadow-[0_22px_70px_rgba(0,0,0,0.18)] backdrop-blur-xl sm:p-6 md:block">
-
-              <div className="flex flex-wrap items-start justify-between gap-4">
+            <section className="v6-intelligence-suite hidden overflow-hidden rounded-[32px] border border-cyan-300/15 bg-gradient-to-br from-cyan-400/[0.08] via-purple-500/[0.08] to-pink-500/[0.07] p-4 shadow-[0_28px_90px_rgba(0,0,0,0.28)] backdrop-blur-2xl sm:p-6 md:block">
+              <div className="v6-suite-header">
                 <div className="flex items-start gap-3">
-                  <div className="suggestion-orb flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10">
-                    <Bot className="h-5 w-5 text-cyan-200" />
+                  <div className={`partybrain-orb ${loadingSuggestions ? "partybrain-orb--thinking" : ""}`}>
+                    <BrainCircuit className="h-6 w-6 text-cyan-100" />
+                    <span className="partybrain-orb__ring" aria-hidden="true" />
                   </div>
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-300">DJ MixParty</p>
-                    <h2 className="mt-1 text-2xl font-black">Suggestions pour cette ambiance</h2>
-                    <p className="mt-2 max-w-2xl text-sm text-white/42">Des titres inspirés du morceau en cours et de la couleur musicale de la soirée.</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-300">PartyBrain V2</p>
+                      <span className="partybrain-status"><span className="partybrain-status__dot" />{loadingSuggestions ? "Analyse en cours" : "Analyse temps réel"}</span>
+                    </div>
+                    <h2 className="mt-1 text-2xl font-black">Le cerveau de la soirée</h2>
+                    <p className="mt-2 max-w-2xl text-sm text-white/42">Analyse les styles, l’énergie, les votes, la participation et la prochaine transition.</p>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-4 py-2 text-xs font-bold text-white/55">
-                  <TrendingUp className="h-4 w-4 text-pink-300" />
-                  Ambiance détectée
-                </div>
+                <div className="v6-confidence"><span>{moodConfidence || "—"}</span><small>% confiance</small></div>
               </div>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                {[
-                  ["Énergie", party.currentSong ? "92%" : "—", Sparkles],
-                  ["Style", party.currentSong ? "Dance • Pop" : "En attente", Disc3],
-                  ["Sélection", `${suggestions.length} idées`, WandSparkles]
-                ].map(([label, value, Icon]: any) => (
-                  <div key={label} className="rounded-2xl border border-white/[0.07] bg-black/20 px-4 py-3">
-                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-[0.14em] text-white/30">
-                      <Icon className="h-3.5 w-3.5 text-purple-300" />{label}
+              <div className="v6-metrics-grid">
+                <article className="v6-metric-card v6-metric-card--mood">
+                  <div className="v6-metric-icon"><Activity className="h-5 w-5" /></div>
+                  <p>Ambiance détectée</p>
+                  <strong>{partyBrainMood}</strong>
+                  <span>Secondaire : {partyBrainSecondaryMood}</span>
+                </article>
+                <article className="v6-metric-card v6-metric-card--energy">
+                  <div className="flex items-center justify-between"><div className="v6-metric-icon"><Gauge className="h-5 w-5" /></div><b>{partyBrainEnergy || "—"}%</b></div>
+                  <p>Énergie</p>
+                  <strong>{energyLabel}</strong>
+                  <div className="partybrain-energy"><span style={{ width: `${partyBrainEnergy}%` }} /></div>
+                  <span className={energyTrend >= 0 ? "text-emerald-300" : "text-orange-300"}>{energyTrend >= 0 ? "+" : ""}{energyTrend}% sur la dynamique récente</span>
+                </article>
+                <article className="v6-metric-card v6-metric-card--people">
+                  <div className="v6-metric-icon"><UsersRound className="h-5 w-5" /></div>
+                  <p>Participation</p>
+                  <strong>{participationRate}% active</strong>
+                  <span>{party.participants.length} invité{party.participants.length > 1 ? "s" : ""} · {totalSessionVotes} votes</span>
+                </article>
+                <article className="v6-metric-card v6-metric-card--transition">
+                  <div className="flex items-center justify-between"><div className="v6-metric-icon"><Route className="h-5 w-5" /></div><b>{queue[0] ? `${nextTransitionScore}%` : "—"}</b></div>
+                  <p>Transition suivante</p>
+                  <strong>{currentStyle} → {nextStyle}</strong>
+                  <span>{transitionMessage}</span>
+                </article>
+              </div>
+
+              <div className="v6-mixmate-grid">
+                <article className="v6-mixmate-card">
+                  <div className="v6-mixmate-avatar"><img src="/branding/icon.png" alt="" /><span /></div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-black text-white">MixMate</p><span className="v6-ai-badge">Assistant IA</span></div>
+                    <p className="mt-2 text-base font-semibold leading-7 text-white/80">{mixMateAdvice}</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <span className="v6-advice-chip"><Zap className="h-3.5 w-3.5" /> Conseil DJ</span>
+                      <span className="v6-advice-chip"><TrendingUp className="h-3.5 w-3.5" /> {energyTrend >= 0 ? "Dynamique positive" : "Relance conseillée"}</span>
                     </div>
-                    <p className="mt-2 font-[family:var(--font-exo-2)] text-lg font-black text-white/85">{value}</p>
                   </div>
-                ))}
+                </article>
+
+                <article className="v6-session-card">
+                  <div className="flex items-center gap-2"><MessageCircle className="h-4 w-4 text-purple-300" /><p className="text-xs font-black uppercase tracking-[0.16em] text-white/45">Analyse de soirée</p></div>
+                  <div className="v6-session-stats">
+                    <div><strong>{party.history?.length || 0}</strong><span>titres joués</span></div>
+                    <div><strong>{sessionDurationMinutes ? `${sessionDurationMinutes} min` : "—"}</strong><span>session</span></div>
+                    <div><strong>{totalSessionVotes}</strong><span>votes</span></div>
+                  </div>
+                  <p>{party.currentSong ? `Style dominant : ${partyBrainMood}. ${energyLabel === "Très forte" ? "Le pic d’ambiance est en cours." : "PartyBrain continue d’apprendre de la soirée."}` : "L’analyse démarre avec le premier morceau."}</p>
+                </article>
+              </div>
+
+              <div className="v6-recommendations-head">
+                <div><p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-300">Suggestions personnalisées</p><h3 className="mt-1 text-xl font-black">À mettre maintenant</h3></div>
+                <div className="partybrain-thinking" aria-hidden="true"><div className="partybrain-thinking__core"><WandSparkles className="h-6 w-6" /></div><p>{loadingSuggestions ? "MixMate réfléchit…" : `${suggestions.length} choix préparé${suggestions.length > 1 ? "s" : ""}`}</p></div>
               </div>
 
               {loadingSuggestions ? (
-                <div className="mt-5 grid gap-3 md:grid-cols-2">
-                  {[0, 1, 2, 3].map((item) => (
-                    <div key={item} className="h-28 animate-pulse rounded-[22px] border border-white/[0.06] bg-white/[0.035]" />
-                  ))}
-                </div>
+                <div className="mt-5 grid gap-3 md:grid-cols-2">{[0,1,2,3].map((item) => <div key={item} className="h-28 animate-pulse rounded-[22px] border border-white/[0.06] bg-white/[0.035]" />)}</div>
               ) : suggestions.length > 0 ? (
                 <div className="mt-5 grid gap-3 md:grid-cols-2">
-                  {suggestions.map((video, index) => (
-                    <article key={video.id} className="suggestion-card group relative flex gap-3 overflow-hidden rounded-[22px] border border-white/[0.08] bg-black/25 p-3">
-                      <div className="absolute right-3 top-3 rounded-full border border-white/10 bg-black/45 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-cyan-200">Choix #{index + 1}</div>
-                      <img src={video.thumbnail} alt={video.title} className="h-24 w-32 shrink-0 rounded-2xl object-cover" />
-                      <div className="flex min-w-0 flex-1 flex-col justify-between py-1 pr-1">
-                        <p className="line-clamp-2 pr-16 text-sm font-black leading-snug">{video.title}</p>
-                        <button
-                          onClick={() => addYoutubeSong(video)}
-                          disabled={addingVideoId === video.id}
-                          className="suggestion-add mt-3 w-fit rounded-xl px-4 py-2 text-xs font-black"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                          {addingVideoId === video.id ? "Ajout…" : "Ajouter à la file"}
-                        </button>
-                      </div>
-                    </article>
-                  ))}
+                  {suggestions.map((video, index) => {
+                    const suggestionStyle = detectPartyStyle(`${video.title || ""} ${video.artistName || ""} ${video.channelTitle || ""}`).name;
+                    const compatibility = transitionScore(currentStyle, suggestionStyle) - Math.min(8, index * 2);
+                    return (
+                      <article key={video.id} className="suggestion-card v6-suggestion-card group relative flex gap-3 overflow-hidden rounded-[22px] border border-white/[0.08] bg-black/25 p-3">
+                        <div className="absolute right-3 top-3 rounded-full border border-cyan-300/15 bg-cyan-950/70 px-2.5 py-1 text-[10px] font-black text-cyan-200">{compatibility}% compatible</div>
+                        <img src={video.thumbnail} alt={video.title} className="h-24 w-32 shrink-0 rounded-2xl object-cover" />
+                        <div className="flex min-w-0 flex-1 flex-col justify-between py-1 pr-1">
+                          <div><p className="line-clamp-2 pr-20 text-sm font-black leading-snug">{video.title}</p><p className="mt-1 text-xs text-white/35">{suggestionStyle} · Choix #{index + 1}</p></div>
+                          <button onClick={() => addYoutubeSong(video, "partybrain_suggestion")} disabled={addingVideoId === video.id} className="suggestion-add mt-3 w-fit rounded-xl px-4 py-2 text-xs font-black"><Plus className="h-3.5 w-3.5" />{addingVideoId === video.id ? "Ajout…" : "Ajouter à la file"}</button>
+                        </div>
+                      </article>
+                    );
+                  })}
                 </div>
               ) : (
-                <div className="mt-5 rounded-[22px] border border-dashed border-white/10 bg-black/20 px-5 py-8 text-center">
-                  <WandSparkles className="mx-auto h-6 w-6 text-purple-300" />
-                  <p className="mt-3 font-black">Lance un morceau pour réveiller le DJ MixParty.</p>
-                  <p className="mt-1 text-sm text-white/35">Les recommandations apparaîtront automatiquement ici.</p>
-                </div>
+                <div className="mt-5 rounded-[22px] border border-dashed border-white/10 bg-black/20 px-5 py-8 text-center"><WandSparkles className="mx-auto h-6 w-6 text-purple-300" /><p className="mt-3 font-black">Lance un morceau pour réveiller PartyBrain V2.</p><p className="mt-1 text-sm text-white/35">MixMate analysera ensuite l’ambiance et guidera le DJ.</p></div>
               )}
-
             </section>
 
-            <section className={`${activeMobileTab === "add" ? "block" : "hidden"} rounded-[24px] border border-white/10 bg-white/[0.045] p-3 backdrop-blur-xl sm:p-6 md:block md:rounded-[30px]`}>
+            <section className={`${activeMobileTab === "add" ? "block" : "hidden"} premium-glass-card rounded-[24px] border border-white/10 bg-white/[0.045] p-3 backdrop-blur-xl sm:p-6 md:block md:rounded-[30px]`}>
 
               <div className="mb-5">
 
@@ -1655,6 +1743,22 @@ export default function PartyPage() {
 
               </div>
 
+              {searchInsight && (
+                <div className="mt-5 rounded-[22px] border border-cyan-300/15 bg-gradient-to-br from-cyan-400/[0.08] via-purple-500/[0.06] to-transparent p-4 shadow-[0_18px_55px_rgba(34,211,238,0.08)]">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200">
+                      <Bot className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">PartyBrain Intelligence</p>
+                      <p className="mt-1 text-sm font-bold leading-6 text-white/85">💡 {searchInsight.message}</p>
+                      {searchInsight.hourMessage && <p className="mt-1 text-xs leading-5 text-white/45">🕒 {searchInsight.hourMessage}</p>}
+                      <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-white/25">Basé sur {searchInsight.sampleSize} ajout{searchInsight.sampleSize > 1 ? "s" : ""} observé{searchInsight.sampleSize > 1 ? "s" : ""}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {results.length > 0 && (
                 <div className="mt-6 grid gap-3 md:grid-cols-2">
 
@@ -1697,7 +1801,7 @@ export default function PartyPage() {
             </section>
 
             {party.history?.length > 0 && (
-              <section className={`${activeMobileTab === "queue" ? "block" : "hidden"} rounded-[24px] border border-white/10 bg-white/[0.045] p-3 backdrop-blur-xl sm:p-6 md:block md:rounded-[30px]`}>
+              <section className={`${activeMobileTab === "queue" ? "block" : "hidden"} premium-glass-card rounded-[24px] border border-white/10 bg-white/[0.045] p-3 backdrop-blur-xl sm:p-6 md:block md:rounded-[30px]`}>
 
                 <div className="mb-5">
 
@@ -1771,22 +1875,30 @@ export default function PartyPage() {
 
               </div>
 
-              <div className="relative overflow-hidden rounded-[28px] border border-purple-300/25 bg-gradient-to-br from-purple-500/20 via-pink-500/10 to-orange-400/15 p-[1px] shadow-[0_18px_60px_rgba(168,85,247,0.18)]">
-                <div className="relative rounded-[27px] bg-[#0d0b18] p-5">
+              <div className="qr-live-shell relative overflow-hidden rounded-[30px] p-[1px]">
+                <span className="qr-live-shell__halo" aria-hidden="true" />
+                <div className="qr-live-inner relative rounded-[29px] bg-[#0d0b18] p-5">
                   <div className="absolute -left-8 -top-8 h-24 w-24 rounded-full bg-purple-500/20 blur-3xl" />
                   <div className="absolute -bottom-8 -right-8 h-24 w-24 rounded-full bg-orange-400/15 blur-3xl" />
-                  <div className="relative rounded-[22px] bg-white p-4 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]">
+                  <div className="qr-live-code relative rounded-[22px] bg-white p-4 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)]">
+                    <span className="qr-corner qr-corner--tl" aria-hidden="true" />
+                    <span className="qr-corner qr-corner--tr" aria-hidden="true" />
+                    <span className="qr-corner qr-corner--bl" aria-hidden="true" />
+                    <span className="qr-corner qr-corner--br" aria-hidden="true" />
                     <QRCodeCanvas
                       value={shareUrl || `http://localhost:3000/party/${party.code}`}
                       size={280}
                       level="H"
                       bgColor="#ffffff"
                       fgColor="#171126"
+                      imageSettings={{
+                        src: "/branding/icon.png",
+                        width: 58,
+                        height: 58,
+                        excavate: true,
+                      }}
                       className="h-auto w-full rounded-xl"
                     />
-                    <div className="pointer-events-none absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-2xl border-[5px] border-white bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 shadow-lg">
-                      <Music4 className="h-7 w-7 text-white" />
-                    </div>
                   </div>
                   <div className="relative mt-4 flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3">
                     <span className="text-xs font-bold uppercase tracking-[0.18em] text-white/35">Code soirée</span>
@@ -1810,7 +1922,7 @@ export default function PartyPage() {
             </section>
 
             {!playerName ? (
-              <section className={`${activeMobileTab === "guests" ? "block" : "hidden"} rounded-[24px] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 to-purple-600/10 p-4 backdrop-blur-xl md:block md:rounded-[30px] md:p-5`}>
+              <section className={`${activeMobileTab === "guests" ? "block" : "hidden"} premium-glass-card rounded-[24px] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 to-purple-600/10 p-4 backdrop-blur-xl md:block md:rounded-[30px] md:p-5`}>
 
                 <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-pink-400/20 bg-pink-500/10 shadow-[0_0_28px_rgba(236,72,153,0.12)]">
                   <UserPlus className="h-5 w-5 text-pink-300" />
@@ -1848,7 +1960,7 @@ export default function PartyPage() {
 
               </section>
             ) : (
-              <section className={`${activeMobileTab === "guests" ? "block" : "hidden"} rounded-[24px] border border-purple-400/20 bg-gradient-to-br from-purple-600/10 to-pink-500/[0.07] p-4 backdrop-blur-xl md:block md:rounded-[30px] md:p-5`}>
+              <section className={`${activeMobileTab === "guests" ? "block" : "hidden"} premium-glass-card rounded-[24px] border border-purple-400/20 bg-gradient-to-br from-purple-600/10 to-pink-500/[0.07] p-4 backdrop-blur-xl md:block md:rounded-[30px] md:p-5`}>
 
                 <div className="flex items-center gap-4">
 
@@ -1893,14 +2005,14 @@ export default function PartyPage() {
               </section>
             )}
 
-            <section className={`${activeMobileTab === "guests" ? "block" : "hidden"} rounded-[24px] border border-white/10 bg-white/[0.045] p-4 backdrop-blur-xl md:block md:rounded-[30px] md:p-5`}>
+            <section className={`${activeMobileTab === "guests" ? "block" : "hidden"} participants-panel premium-glass-card rounded-[24px] p-4 md:block md:rounded-[30px] md:p-5`}>
 
-              <div className="mb-5 flex items-center justify-between">
+              <div className="participants-panel__header mb-5 flex items-center justify-between gap-4">
 
                 <div>
 
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-orange-300">
-                    Communauté
+                    Communauté en direct
                   </p>
 
                   <h2 className="mt-1 text-xl font-black">
@@ -1909,47 +2021,62 @@ export default function PartyPage() {
 
                 </div>
 
-                <span className="rounded-full bg-white/[0.07] px-3 py-1.5 text-sm font-black">
-                  {party.participants.length}
+                <span className="participants-count">
+                  <span className="participants-count__dot" />
+                  {party.participants.length} en ligne
                 </span>
 
               </div>
 
               {party.participants.length > 0 ? (
-                <div className="space-y-2">
+                <div className="participants-list">
 
-                  {party.participants.map((participant, index) => (
-                    <div
-                      key={`${participant.id || participant.name}-${index}`}
-                      className="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-black/20 p-3"
-                    >
-                      <div className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-purple-400/30 bg-gradient-to-br from-purple-500/25 to-pink-500/20 shadow-[0_0_20px_rgba(168,85,247,0.18)]">
-                        {participant.avatar ? (
-                          <img src={participant.avatar} alt={`Avatar de ${participant.name}`} className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-lg font-black uppercase">
-                            {participant.name.trim().charAt(0) || "?"}
+                  {party.participants.map((participant, index) => {
+                    const isDjParticipant = isPlaybackController && participant.id === participantId;
+
+                    return (
+                      <div
+                        key={`${participant.id || participant.name}-${index}`}
+                        className={`participant-card ${isDjParticipant ? "participant-card--dj" : ""}`}
+                        style={{ animationDelay: `${Math.min(index, 8) * 70}ms` }}
+                      >
+                        <div className="participant-avatar-shell">
+                          <div className="participant-avatar-ring" aria-hidden="true" />
+                          <div className="participant-avatar">
+                            {participant.avatar ? (
+                              <img src={participant.avatar} alt={`Avatar de ${participant.name}`} className="h-full w-full object-cover" />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center text-lg font-black uppercase">
+                                {participant.name.trim().charAt(0) || "?"}
+                              </div>
+                            )}
                           </div>
-                        )}
+                          <span className="participant-online-dot" title="En ligne" />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <p className="truncate font-black text-white/90">{participant.name}</p>
+                            {isDjParticipant && <span className="participant-dj-badge"><Crown className="h-3 w-3" /> DJ</span>}
+                          </div>
+                          <p className="mt-0.5 truncate text-xs font-semibold text-emerald-300/65">En ligne maintenant</p>
+                        </div>
+
+                        <span className="participant-live-pill">LIVE</span>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate font-bold">{participant.name}</p>
-                        <p className="truncate text-xs text-white/35">Dans la soirée</p>
-                      </div>
-                      <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.7)]" />
-                    </div>
-                  ))}
+                    );
+                  })}
 
                 </div>
               ) : (
-                <p className="rounded-2xl border border-dashed border-white/10 bg-black/20 px-4 py-8 text-center text-sm text-white/35">
+                <p className="participants-empty">
                   Aucun participant pour le moment.
                 </p>
               )}
 
             </section>
 
-            <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} overflow-hidden rounded-[24px] border border-orange-400/20 bg-gradient-to-br from-orange-500/15 via-pink-500/10 to-purple-600/10 p-4 backdrop-blur-xl md:block md:rounded-[30px] md:p-5`}>
+            <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} premium-glass-card overflow-hidden rounded-[24px] border border-orange-400/20 bg-gradient-to-br from-orange-500/15 via-pink-500/10 to-purple-600/10 p-4 backdrop-blur-xl md:block md:rounded-[30px] md:p-5`}>
 
               <div className="flex items-start justify-between gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-orange-400/20 bg-orange-400/10 shadow-[0_0_28px_rgba(251,146,60,0.12)]">
@@ -1999,8 +2126,8 @@ export default function PartyPage() {
                     <button type="button" onClick={resumePlayback} className="rounded-2xl border border-white/10 bg-white/[0.07] px-3 py-3 text-sm font-black transition hover:bg-white/[0.12]">
                       <span className="flex items-center justify-center gap-2"><RefreshCw className="h-4 w-4" /> Reprendre</span>
                     </button>
-                    <button type="button" onClick={() => document.documentElement.requestFullscreen?.().catch(() => {})} className="rounded-2xl border border-white/10 bg-white/[0.07] px-3 py-3 text-sm font-black transition hover:bg-white/[0.12]">
-                      <span className="flex items-center justify-center gap-2"><Expand className="h-4 w-4" /> Plein écran</span>
+                    <button type="button" onClick={activateTvMode} className="v55-tv-launch rounded-2xl border border-purple-300/25 bg-gradient-to-r from-purple-500/20 via-pink-500/15 to-orange-400/15 px-3 py-3 text-sm font-black transition hover:border-white/25">
+                      <span className="flex items-center justify-center gap-2"><Expand className="h-4 w-4" /> Mode TV</span>
                     </button>
                   </div>
 
@@ -2029,11 +2156,105 @@ export default function PartyPage() {
 
         </div>
 
+        {tvModeActive && (
+          <section className={`v60-tv ${tvPlayback.state === 1 ? "v60-tv--playing" : "v60-tv--paused"}`} aria-label="Mode TV MixParty">
+            <div className="v60-tv__backdrop" style={party.currentSong?.thumbnail ? { backgroundImage: `url(${party.currentSong.thumbnail})` } : undefined} />
+            <div className="v60-tv__veil" />
+
+            <header className="v60-tv__header">
+              <div className="v60-tv__brand">
+                <img src="/branding/icon.png" alt="MixParty" />
+                <strong>MIX<span>PARTY</span></strong>
+                <em>MODE TV</em>
+              </div>
+              <div className="v60-tv__header-stats">
+                <div><UsersRound /><b>{party.participants.length}</b><span>participants en ligne</span></div>
+                <div><TrendingUp /><b>{totalVisibleVotes}</b><span>votes en temps réel</span></div>
+              </div>
+              <button type="button" onClick={deactivateTvMode} className="v60-tv__close">Quitter</button>
+            </header>
+
+            <main className="v60-tv__grid">
+              <section className="v60-tv__now">
+                <div className="v60-tv__current-pill">EN COURS</div>
+                <div className="v60-tv__now-grid">
+                  <div className="v60-tv__cover-wrap">
+                    <div className="v60-tv__cover-glow" />
+                    {party.currentSong?.thumbnail ? (
+                      <img src={party.currentSong.thumbnail} alt="Pochette du morceau en lecture" className="v60-tv__cover" />
+                    ) : (
+                      <div className="v60-tv__cover v60-tv__cover--empty"><Music4 /></div>
+                    )}
+                  </div>
+
+                  <div className="v60-tv__track">
+                    <h1>{party.currentSong?.title || "La soirée démarre bientôt"}</h1>
+                    <p>{party.currentSong?.artistName || party.currentSong?.addedBy || "MixParty"}</p>
+                    <div className="v60-tv__progress-row">
+                      <span>{Math.floor(tvPlayback.time / 60)}:{String(Math.floor(tvPlayback.time % 60)).padStart(2, "0")}</span>
+                      <div className="v60-tv__progress"><i style={{ width: `${tvPlayback.duration > 0 ? Math.min(100, Math.max(0, (tvPlayback.time / tvPlayback.duration) * 100)) : 12}%` }} /></div>
+                      <span>{tvPlayback.duration > 0 ? `${Math.floor(tvPlayback.duration / 60)}:${String(Math.floor(tvPlayback.duration % 60)).padStart(2, "0")}` : "LIVE"}</span>
+                    </div>
+                    <div className="v60-tv__wave" aria-hidden="true">
+                      {Array.from({ length: 56 }, (_, index) => (
+                        <span key={index} style={{ animationDelay: `${(index % 14) * 62}ms`, height: `${24 + ((index * 23) % 72)}%` }} />
+                      ))}
+                    </div>
+                    <div className="v60-tv__controls">
+                      <button type="button" aria-label="Lecture aléatoire"><RefreshCw /></button>
+                      <button type="button" aria-label="Titre précédent"><SkipForward className="v60-tv__previous" /></button>
+                      <button type="button" className="v60-tv__play" onClick={tvPlayback.state === 1 ? () => playerRef.current?.pauseVideo?.() : resumePlayback} aria-label={tvPlayback.state === 1 ? "Mettre en pause" : "Lire"}>
+                        {tvPlayback.state === 1 ? <span className="v60-tv__pause-icon"><i /><i /></span> : <Play />}
+                      </button>
+                      <button type="button" onClick={nextSong} aria-label="Titre suivant"><SkipForward /></button>
+                      <button type="button" aria-label="Répéter"><RefreshCw /></button>
+                      <div className="v60-tv__likes"><span>♡</span><b>{totalVisibleVotes}</b></div>
+                      <div className="v60-tv__people"><UsersRound /><b>{party.participants.length}</b><span>participants</span></div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <aside className="v60-tv__queue">
+                <div className="v60-tv__queue-head"><span>PROCHAINS MORCEAUX</span><span>VOTES EN TEMPS RÉEL</span></div>
+                <div className="v60-tv__queue-list">
+                  {queue.slice(0, 10).map((song, index) => {
+                    const maxVotes = Math.max(1, ...queue.slice(0, 10).map((item) => item.votes || 0));
+                    return (
+                      <div key={`${song.videoId}-${song.addedAt}`} className={`v60-tv__queue-item ${index === 0 ? "v60-tv__queue-item--next" : ""}`}>
+                        <span className="v60-tv__rank">{index + 1}</span>
+                        <img src={song.thumbnail} alt="" />
+                        <div className="v60-tv__queue-copy"><strong>{song.title}</strong><small>{song.artistName || song.addedBy}</small></div>
+                        <b className="v60-tv__vote-count">{song.votes}</b>
+                        <div className="v60-tv__vote-bar"><i style={{ width: `${Math.max(8, ((song.votes || 0) / maxVotes) * 100)}%` }} /></div>
+                        <span className={`v60-tv__trend ${index % 3 === 0 ? "v60-tv__trend--down" : ""}`}>{index % 3 === 0 ? "↓" : "↑"}</span>
+                      </div>
+                    );
+                  })}
+                  {queue.length === 0 && <div className="v60-tv__empty">La file DJ est vide pour le moment.</div>}
+                </div>
+              </aside>
+            </main>
+
+            <footer className="v60-tv__footer">
+              <div className="v60-tv__footer-brand">
+                <img src="/branding/icon.png" alt="" />
+                <div><strong>Mix<span>Party</span></strong><small>La musique, c’est nous.</small></div>
+              </div>
+              <div className="v60-tv__join-copy"><strong>AJOUTEZ VOS MORCEAUX ET VOTEZ !</strong><span>Scannez le QR code pour rejoindre la soirée</span></div>
+              <div className="v60-tv__qr"><QRCodeCanvas value={shareUrl || `https://mixparty.app/party/${party.code}`} size={104} bgColor="#ffffff" fgColor="#090711" level="H" includeMargin /></div>
+              <div className="v60-tv__metric"><Radio /><span>ÉNERGIE</span><b>{partyBrainEnergy}%</b><small>{partyBrainEnergy >= 75 ? "TRÈS ÉLEVÉE" : partyBrainEnergy >= 50 ? "ÉLEVÉE" : "MODÉRÉE"}</small></div>
+              <div className="v60-tv__metric"><TrendingUp /><span>AMBIANCE</span><b>{partyBrainMood}</b><small>{partyBrainSecondaryMood || "MIXPARTY LIVE"}</small></div>
+              <div className="v60-tv__metric"><UsersRound /><span>PARTICIPATION</span><b>{party.participants.length > 10 ? "TRÈS ÉLEVÉE" : party.participants.length > 4 ? "ÉLEVÉE" : "EN COURS"}</b><small>{party.participants.length}/{party.participants.length} ACTIFS</small></div>
+            </footer>
+          </section>
+        )}
+
         <footer className="mt-8 hidden border-t border-white/[0.07] py-8 text-center md:block">
 
           <div className="flex items-center justify-center gap-3">
 
-            <img src="/mixparty-logo-officiel.svg" alt="" aria-hidden="true" className="h-11 w-11 object-contain" />
+            <img src="/branding/icon.png" alt="" aria-hidden="true" className="h-11 w-11 object-contain" />
 
             <span className="-skew-x-6 font-[family:var(--font-exo-2)] text-lg font-black tracking-[0.16em]">
               <span className="text-white">MIX</span><span className="bg-gradient-to-r from-purple-400 via-pink-400 to-orange-400 bg-clip-text text-transparent">PARTY</span>
@@ -2047,7 +2268,7 @@ export default function PartyPage() {
 
         </footer>
 
-        <nav className="fixed inset-x-3 bottom-3 z-50 grid grid-cols-4 gap-1 rounded-[22px] border border-white/12 bg-[#11111d]/95 p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.55)] backdrop-blur-2xl md:hidden" aria-label="Navigation de la soirée">
+        <nav className="v54-mobile-nav fixed inset-x-3 bottom-3 z-50 grid grid-cols-4 gap-1 rounded-[22px] border border-white/12 bg-[#11111d]/95 p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.55)] backdrop-blur-2xl md:hidden" aria-label="Navigation de la soirée">
           {[
             { id: "playback", label: "Lecture", Icon: Music4 },
             { id: "add", label: "Ajouter", Icon: Plus },
@@ -2059,11 +2280,8 @@ export default function PartyPage() {
               <button
                 key={id}
                 type="button"
-                onClick={() => {
-                  setActiveMobileTab(id as "playback" | "add" | "queue" | "guests");
-                  window.scrollTo({ top: 0, behavior: "smooth" });
-                }}
-                className={`flex min-w-0 flex-col items-center justify-center gap-1 rounded-[17px] px-1 py-2.5 text-[10px] font-black transition ${active ? "bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 text-white shadow-[0_8px_24px_rgba(168,85,247,0.28)]" : "text-white/45 active:bg-white/[0.06]"}`}
+                onClick={() => switchMobileTab(id as "playback" | "add" | "queue" | "guests")}
+                className={`v54-mobile-nav__item flex min-w-0 flex-col items-center justify-center gap-1 rounded-[17px] px-1 py-2.5 text-[10px] font-black transition ${active ? "v54-mobile-nav__item--active bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 text-white shadow-[0_8px_24px_rgba(168,85,247,0.28)]" : "text-white/45 active:bg-white/[0.06]"}`}
                 aria-current={active ? "page" : undefined}
               >
                 <Icon className="h-5 w-5" />
@@ -2334,7 +2552,147 @@ export default function PartyPage() {
             animation: none !important;
           }
         }
-      `}</style>
+
+        @keyframes premiumCardSweep {
+          0%, 70% { transform: translateX(-150%) skewX(-18deg); opacity: 0; }
+          78% { opacity: .45; }
+          100% { transform: translateX(260%) skewX(-18deg); opacity: 0; }
+        }
+
+        @keyframes premiumBorderPulse {
+          0%, 100% { opacity: .45; filter: brightness(1); }
+          50% { opacity: .9; filter: brightness(1.35); }
+        }
+
+        .premium-glass-card {
+          position: relative;
+          isolation: isolate;
+          overflow: hidden;
+          background:
+            linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.025)),
+            rgba(9,7,17,.58) !important;
+          border-color: rgba(255,255,255,.12) !important;
+          box-shadow:
+            0 26px 80px rgba(0,0,0,.34),
+            inset 0 1px 0 rgba(255,255,255,.1),
+            0 0 0 1px rgba(168,85,247,.03);
+          backdrop-filter: blur(26px) saturate(1.18);
+          transition:
+            transform .28s ease,
+            border-color .28s ease,
+            box-shadow .28s ease,
+            background .28s ease;
+        }
+
+        .premium-glass-card::before {
+          content: "";
+          position: absolute;
+          inset: 0;
+          z-index: -1;
+          border-radius: inherit;
+          padding: 1px;
+          background: linear-gradient(
+            120deg,
+            rgba(124,58,237,.45),
+            rgba(236,72,153,.32) 46%,
+            rgba(249,115,22,.38)
+          );
+          -webkit-mask:
+            linear-gradient(#000 0 0) content-box,
+            linear-gradient(#000 0 0);
+          -webkit-mask-composite: xor;
+          mask-composite: exclude;
+          opacity: .5;
+          animation: premiumBorderPulse 6s ease-in-out infinite;
+          pointer-events: none;
+        }
+
+        .premium-glass-card::after {
+          content: "";
+          position: absolute;
+          top: -35%;
+          bottom: -35%;
+          left: -28%;
+          width: 18%;
+          z-index: 2;
+          background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(255,255,255,.18),
+            transparent
+          );
+          filter: blur(6px);
+          animation: premiumCardSweep 8s ease-in-out infinite;
+          pointer-events: none;
+        }
+
+        .premium-glass-card:hover {
+          transform: translateY(-3px);
+          border-color: rgba(255,255,255,.18) !important;
+          box-shadow:
+            0 34px 96px rgba(0,0,0,.42),
+            0 0 34px rgba(168,85,247,.12),
+            inset 0 1px 0 rgba(255,255,255,.14);
+        }
+
+        .desktop-topbar img {
+          filter:
+            drop-shadow(0 0 16px rgba(168,85,247,.28))
+            drop-shadow(0 0 22px rgba(236,72,153,.16));
+        }
+
+        .desktop-topbar .group:hover img {
+          filter:
+            drop-shadow(0 0 20px rgba(168,85,247,.42))
+            drop-shadow(0 0 28px rgba(249,115,22,.2));
+        }
+
+        @media (max-width: 767px) {
+          .premium-glass-card:hover {
+            transform: none;
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .premium-glass-card::before,
+          .premium-glass-card::after {
+            animation: none !important;
+          }
+        }
+
+        .v6-intelligence-suite { position: relative; isolation: isolate; }
+        .v6-intelligence-suite::before { content:""; position:absolute; inset:-30% 45% auto -15%; height:260px; border-radius:999px; background:radial-gradient(circle,rgba(34,211,238,.13),transparent 68%); filter:blur(20px); pointer-events:none; z-index:-1; }
+        .v6-suite-header { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; }
+        .v6-confidence { min-width:92px; border:1px solid rgba(103,232,249,.17); border-radius:20px; background:rgba(6,20,35,.52); padding:.8rem 1rem; text-align:center; box-shadow:inset 0 1px 0 rgba(255,255,255,.06); }
+        .v6-confidence span { display:block; font-size:1.5rem; line-height:1; font-weight:950; color:#a5f3fc; }
+        .v6-confidence small { display:block; margin-top:.35rem; font-size:.62rem; font-weight:800; text-transform:uppercase; letter-spacing:.12em; color:rgba(255,255,255,.34); }
+        .v6-metrics-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:.75rem; margin-top:1.25rem; }
+        .v6-metric-card { min-height:154px; border:1px solid rgba(255,255,255,.08); border-radius:22px; background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(0,0,0,.2)); padding:1rem; box-shadow:inset 0 1px 0 rgba(255,255,255,.06),0 16px 38px rgba(0,0,0,.15); transition:transform .25s ease,border-color .25s ease; }
+        .v6-metric-card:hover { transform:translateY(-3px); border-color:rgba(103,232,249,.2); }
+        .v6-metric-card p { margin-top:.85rem; font-size:.68rem; font-weight:900; text-transform:uppercase; letter-spacing:.13em; color:rgba(255,255,255,.34); }
+        .v6-metric-card strong { display:block; margin-top:.35rem; font-size:1.05rem; color:#fff; }
+        .v6-metric-card > span { display:block; margin-top:.65rem; font-size:.72rem; line-height:1.35; color:rgba(255,255,255,.4); }
+        .v6-metric-card b { font-size:1.2rem; color:#cffafe; }
+        .v6-metric-icon { display:flex; height:34px; width:34px; align-items:center; justify-content:center; border-radius:12px; border:1px solid rgba(255,255,255,.09); background:rgba(255,255,255,.055); color:#a5f3fc; }
+        .v6-mixmate-grid { display:grid; grid-template-columns:minmax(0,1.5fr) minmax(280px,.7fr); gap:.75rem; margin-top:.75rem; }
+        .v6-mixmate-card,.v6-session-card { border:1px solid rgba(255,255,255,.09); border-radius:24px; background:rgba(4,7,18,.46); padding:1rem; box-shadow:inset 0 1px 0 rgba(255,255,255,.05); }
+        .v6-mixmate-card { display:flex; gap:1rem; align-items:flex-start; }
+        .v6-mixmate-avatar { position:relative; flex:0 0 auto; height:54px; width:54px; border-radius:18px; padding:7px; background:linear-gradient(135deg,rgba(34,211,238,.22),rgba(168,85,247,.2),rgba(236,72,153,.18)); box-shadow:0 0 30px rgba(34,211,238,.12); }
+        .v6-mixmate-avatar img { height:100%; width:100%; object-fit:contain; }
+        .v6-mixmate-avatar span { position:absolute; right:-2px; bottom:-2px; height:13px; width:13px; border:3px solid #090912; border-radius:50%; background:#34d399; box-shadow:0 0 12px rgba(52,211,153,.85); }
+        .v6-ai-badge { border:1px solid rgba(168,85,247,.25); border-radius:999px; background:rgba(168,85,247,.1); padding:.25rem .55rem; font-size:.58rem; font-weight:900; text-transform:uppercase; letter-spacing:.12em; color:#d8b4fe; }
+        .v6-advice-chip { display:inline-flex; align-items:center; gap:.35rem; border:1px solid rgba(255,255,255,.08); border-radius:999px; background:rgba(255,255,255,.045); padding:.45rem .65rem; font-size:.68rem; font-weight:800; color:rgba(255,255,255,.54); }
+        .v6-session-card > p { margin-top:.9rem; font-size:.78rem; line-height:1.55; color:rgba(255,255,255,.44); }
+        .v6-session-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:.45rem; margin-top:.85rem; }
+        .v6-session-stats div { border:1px solid rgba(255,255,255,.06); border-radius:14px; background:rgba(255,255,255,.035); padding:.65rem .45rem; text-align:center; }
+        .v6-session-stats strong { display:block; font-size:.95rem; }
+        .v6-session-stats span { display:block; margin-top:.2rem; font-size:.58rem; color:rgba(255,255,255,.32); }
+        .v6-recommendations-head { display:flex; align-items:center; justify-content:space-between; gap:1rem; margin-top:1.4rem; padding-top:1.15rem; border-top:1px solid rgba(255,255,255,.07); }
+        .v6-suggestion-card { box-shadow:0 16px 38px rgba(0,0,0,.14); }
+        @media(max-width:1100px){ .v6-metrics-grid{grid-template-columns:repeat(2,minmax(0,1fr));}.v6-mixmate-grid{grid-template-columns:1fr;} }
+
+      `}
+</style>
 
     </main>
   );

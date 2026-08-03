@@ -178,3 +178,94 @@ Ajout d'un mode de diffusion dédié : écran maintenu allumé, plein écran, re
 - Statistiques de recherches, morceaux, artistes et incidents.
 - Graphique de progression récente.
 - Rafraîchissement automatique pendant l'apprentissage.
+
+📖 MixParty Bible — Mise à jour (02 août 2026)
+🎉 Milestone majeur atteint : PlayerCore V2
+✅ Objectif
+
+Résoudre le plus gros problème de MixParty :
+
+Sur téléphone, le DJ devait appuyer sur Play à chaque changement de musique.
+
+Ce problème empêchait une utilisation naturelle de l'application pendant une soirée.
+
+🔍 Cause identifiée
+
+Le lecteur YouTube était détruit puis recréé à chaque changement de morceau.
+
+Conséquences :
+
+nouvelle iframe à chaque titre ;
+perte de l'autorisation d'autoplay ;
+obligation de relancer la lecture manuellement sur mobile.
+✅ Solution retenue
+
+Mise en place d'un lecteur YouTube persistant.
+
+Principe :
+
+une seule instance YT.Player est créée au lancement ;
+l'iframe reste vivante pendant toute la soirée ;
+les morceaux suivants sont chargés avec loadVideoById() ;
+aucune recréation du lecteur.
+✅ Résultats
+
+Tests validés sur Railway :
+
+✅ PC
+✅ iPhone
+
+Séquence validée :
+
+CREATE_PLAYER
+READY
+PLAY_REQUEST
+PLAYING
+ENDED
+NEXT_SONG_REQUEST
+LOAD_VIDEO_BY_ID
+BUFFERING
+PLAYING
+
+Le changement automatique fonctionne désormais sans intervention du DJ.
+
+🔧 Debug
+
+Le Player Audit est conservé dans le projet mais masqué via :
+
+const DEBUG_PLAYER = false;
+
+En cas de besoin :
+
+const DEBUG_PLAYER = true;
+
+Le panneau de diagnostic réapparaît immédiatement.
+
+🚀 Impact sur MixParty
+
+Le principal verrou technique du projet est levé.
+
+L'expérience utilisateur est désormais conforme à la vision initiale :
+
+le DJ connecte son téléphone à l'enceinte ;
+lance uniquement la première musique ;
+les invités ajoutent des titres et votent ;
+la playlist évolue automatiquement ;
+les morceaux s'enchaînent sans intervention.
+
+MixParty est désormais techniquement viable pour des tests en conditions réelles.
+
+📋 Prochaines priorités
+Tests longue durée (30 à 100 morceaux).
+Tests sur plusieurs appareils Android et iPhone.
+Validation de la stabilité.
+Reprise de la roadmap fonctionnelle (MixMate, IA, animations, statistiques, etc.).
+
+## V6.2 — PartyBrain Intelligence Event Engine
+
+- Ajout d'un journal d'événements comportementaux append-only.
+- Séparation confirmée entre PartyBrain Academy (connaissance musicale) et PartyBrain Intelligence (comportement des soirées).
+- Événements : création, arrivée/départ, ajout, vote, lecture, progression, fin et skip.
+- Participants pseudonymisés par hash ; aucun nom en clair dans le journal analytique.
+- Ajouts distingués entre recherche manuelle et suggestion PartyBrain.
+- API de statistiques, consultation et export JSONL.

@@ -2,13 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Bot, QrCode, Radio, Sparkles, UsersRound, Vote } from "lucide-react";
 import MixPartyBackground from "../components/MixPartyBackground";
 import MixPartyFooter from "../components/MixPartyFooter";
 import MixPartyHeader from "../components/MixPartyHeader";
 import MixPartyHero from "../components/MixPartyHero";
 import MixPartyLoader from "../components/MixPartyLoader";
 import PartyCard from "../components/PartyCard";
+import { GlassCard, GradientText, SectionTitle, StatCard } from "../components/ui";
 import { getApiBaseUrl } from "../lib/config";
+
+const STEPS = [
+  { number: "01", title: "Crée", text: "Lance ta salle MixParty en quelques secondes.", icon: Sparkles, accent: "purple" as const },
+  { number: "02", title: "Partage", text: "Tes invités rejoignent la soirée avec le QR Code.", icon: QrCode, accent: "cyan" as const },
+  { number: "03", title: "Vote", text: "Chaque participant influence la prochaine musique.", icon: Vote, accent: "pink" as const },
+  { number: "04", title: "Profite", text: "Le DJ automatique maintient l’ambiance toute la nuit.", icon: Radio, accent: "orange" as const },
+];
 
 export default function Home() {
   const router = useRouter();
@@ -18,9 +27,8 @@ export default function Home() {
   const [loaderVisible, setLoaderVisible] = useState(true);
 
   useEffect(() => {
-    const fadeTimer = window.setTimeout(() => setLoaderVisible(false), 1800);
-    const removeTimer = window.setTimeout(() => setShowLoader(false), 2300);
-
+    const fadeTimer = window.setTimeout(() => setLoaderVisible(false), 1900);
+    const removeTimer = window.setTimeout(() => setShowLoader(false), 2550);
     return () => {
       window.clearTimeout(fadeTimer);
       window.clearTimeout(removeTimer);
@@ -30,7 +38,6 @@ export default function Home() {
   async function createParty() {
     if (creatingParty) return;
     setCreatingParty(true);
-
     try {
       const response = await fetch(`${getApiBaseUrl()}/party`, { method: "POST" });
       if (!response.ok) throw new Error(`Erreur API ${response.status}`);
@@ -60,22 +67,61 @@ export default function Home() {
 
       <main className="relative isolate min-h-[100dvh] overflow-hidden bg-[#070711] text-white">
         <MixPartyBackground />
+        <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(to_bottom,rgba(7,7,17,.03),rgba(7,7,17,.14)_54%,rgba(7,7,17,.32))]" />
 
-        <div className="relative z-10 mx-auto flex min-h-[100dvh] max-w-7xl flex-col px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-6 sm:py-5 lg:px-8">
+        <div className="relative z-10 mx-auto max-w-7xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(.75rem,env(safe-area-inset-top))] sm:px-6 lg:px-8">
           <MixPartyHeader />
 
-          <div className="flex flex-1 items-center py-5 sm:py-10 lg:py-16">
-            <div className="grid w-full items-center gap-7 sm:gap-10 lg:grid-cols-[minmax(0,1.05fr)_minmax(420px,0.95fr)] lg:gap-12">
-              <MixPartyHero />
-              <PartyCard
-                partyCode={partyCode}
-                creatingParty={creatingParty}
-                onPartyCodeChange={setPartyCode}
-                onCreateParty={createParty}
-                onJoinParty={joinParty}
-              />
+          <section className="grid min-h-[calc(100dvh-110px)] items-center gap-9 py-8 sm:py-12 lg:grid-cols-[minmax(0,1.02fr)_minmax(470px,.98fr)] lg:gap-14 lg:py-16">
+            <MixPartyHero creatingParty={creatingParty} onCreateParty={createParty} onJoinClick={() => document.getElementById("mixparty-join")?.scrollIntoView({ behavior: "smooth", block: "center" })} />
+            <PartyCard />
+          </section>
+
+          <section id="mixparty-join" className="mixparty-join-strip py-10 sm:py-12">
+            <div className="mx-auto flex max-w-3xl flex-col items-center gap-3 rounded-[28px] border border-white/10 bg-white/[0.045] p-4 backdrop-blur-xl sm:flex-row">
+              <div className="flex-1 px-2">
+                <p className="text-sm font-black text-white">Tu as déjà un code ?</p>
+                <p className="mt-1 text-xs text-white/40">Entre-le ici pour rejoindre la soirée instantanément.</p>
+              </div>
+              <input value={partyCode} onChange={(event) => setPartyCode(event.target.value.toUpperCase())} onKeyDown={(event) => event.key === "Enter" && joinParty()} placeholder="CODE" maxLength={8} className="h-12 w-full rounded-2xl border border-white/10 bg-black/30 px-4 text-center text-sm font-black uppercase tracking-[.2em] outline-none focus:border-fuchsia-400/50 sm:w-48" />
+              <button type="button" onClick={joinParty} className="mixparty-secondary-cta h-12 w-full sm:w-auto">Rejoindre</button>
             </div>
-          </div>
+          </section>
+
+          <section className="py-14 sm:py-20">
+            <SectionTitle
+              eyebrow="Pourquoi MixParty"
+              title={<>Une soirée qui <GradientText animated>réagit en direct.</GradientText></>}
+              description="MixParty transforme chaque téléphone en télécommande musicale collective, sans compte et sans installation compliquée."
+              accent="purple"
+            />
+            <div className="mixparty-stats-grid mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <StatCard label="Temps réel" value="Instantané" description="Votes, file et participants synchronisés." icon={<Radio className="h-5 w-5" />} accent="orange" />
+              <StatCard label="Collaboratif" value="Tout le monde" description="Chaque invité peut participer à l’ambiance." icon={<UsersRound className="h-5 w-5" />} accent="purple" />
+              <StatCard label="PartyBrain" value="Plus malin" description="MixParty apprend et prépare de meilleures suggestions." icon={<Bot className="h-5 w-5" />} accent="cyan" />
+              <StatCard label="Accès" value="1 QR Code" description="Aucun compte nécessaire pour rejoindre." icon={<QrCode className="h-5 w-5" />} accent="pink" />
+            </div>
+          </section>
+
+          <section className="mixparty-how-section py-12 sm:py-16">
+            <SectionTitle
+              eyebrow="Comment ça marche"
+              title={<>Quatre étapes. <GradientText>Une seule ambiance.</GradientText></>}
+              description="De la création de la salle au passage automatique des morceaux, tout est pensé pour rester simple."
+              accent="pink"
+            />
+            <div className="mixparty-timeline relative mt-10 grid gap-5 lg:grid-cols-4">
+              <div className="mixparty-timeline-line pointer-events-none absolute left-[8%] right-[8%] top-10 hidden h-px lg:block" />
+              {STEPS.map(({ number, title, text, icon: Icon, accent }) => (
+                <GlassCard key={number} accent={accent} hoverable animatedBorder={number === "01"} className="mixparty-timeline-card relative">
+                  <div className={`mixparty-timeline-node mp-stat-icon mp-stat-icon--${accent}`}><Icon className="h-5 w-5" /></div>
+                  <p className="mt-5 text-[10px] font-black uppercase tracking-[0.22em] text-white/24">Étape {number}</p>
+                  <p className="mt-2 font-[family:var(--font-exo-2)] text-xl font-black">{title}</p>
+                  <p className="mt-2 text-sm leading-6 text-white/40">{text}</p>
+                </GlassCard>
+              ))}
+            </div>
+          </section>
 
           <MixPartyFooter />
         </div>

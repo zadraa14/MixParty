@@ -5,7 +5,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import fs from "fs";
 import path from "path";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import {
   cleanArtist as coreCleanArtist,
   cleanTitle as coreCleanTitle,
@@ -30,6 +30,7 @@ const persistentDataDir = path.resolve(
 );
 fs.mkdirSync(persistentDataDir, { recursive: true });
 const dataFilePath = path.resolve(persistentDataDir, "data.json");
+const partyEventsFilePath = path.resolve(persistentDataDir, "party-intelligence-events.jsonl");
 const configuredOrigins = process.env.CORS_ORIGINS
   ?.split(",")
   .map((origin) => origin.trim())
@@ -64,6 +65,7 @@ type Song = {
   title:string;
   videoId:string;
   thumbnail:string;
+  durationSeconds?:number;
   votes:number;
   addedBy:string;
   voters:string[];
@@ -197,6 +199,396 @@ type AcademyState = {
   logs: AcademyLogEntry[];
   sessions: AcademySession[];
 };
+
+
+
+type PartyIntelligenceEventType =
+  | "PARTY_CREATED"
+  | "PARTICIPANT_JOINED"
+  | "PARTICIPANT_LEFT"
+  | "SONG_SEARCHED"
+  | "SONG_ADDED"
+  | "SONG_VOTED"
+  | "SONG_DOWNVOTED"
+  | "SONG_PLAY_STARTED"
+  | "SONG_PROGRESS"
+  | "SONG_PLAY_COMPLETED"
+  | "SONG_SKIPPED"
+  | "SONG_REMOVED"
+  | "QUEUE_REORDERED"
+  | "PARTY_ENDED";
+
+type PartyIntelligenceEvent = {
+  id: string;
+  version: 1;
+  event: PartyIntelligenceEventType;
+  at: number;
+  partyCode: string;
+  partyAgeSeconds: number;
+  localHour: number;
+  participantCount: number;
+  song?: {
+    videoId: string;
+    title: string;
+    artistName?: string;
+    durationSeconds?: number;
+    votes?: number;
+    queuePosition?: number;
+  };
+  actorHash?: string;
+  source?: "manual_search" | "partybrain_suggestion" | "unknown";
+  playback?: {
+    elapsedSeconds: number;
+    completionRatio?: number;
+    reason?: "ended" | "dj_skip" | "song_change";
+  };
+  context?: Record<string, string | number | boolean | null>;
+};
+
+type PlaybackTelemetry = {
+  videoId: string;
+  startedAt: number;
+  lastTime: number;
+  lastState: number;
+  lastProgressBucket: number;
+  finalized: boolean;
+};
+
+const playbackTelemetry = new Map<string, PlaybackTelemetry>();
+
+function anonymizeActor(value: unknown) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return undefined;
+  return createHash("sha256").update(`mixparty:${normalized}`).digest("hex").slice(0, 20);
+}
+
+function queuePositionForSong(party: Party, song: Song) {
+  const queue = party.songs
+    .filter((item) => !item.played)
+    .sort((a, b) => b.votes !== a.votes ? b.votes - a.votes : a.addedAt - b.addedAt);
+  const index = queue.findIndex((item) => item.videoId === song.videoId && item.addedAt === song.addedAt);
+  return index >= 0 ? index + 1 : undefined;
+}
+
+function recordPartyEvent(
+  party: Party,
+  event: PartyIntelligenceEventType,
+  details: Partial<Omit<PartyIntelligenceEvent, "id" | "version" | "event" | "at" | "partyCode" | "partyAgeSeconds" | "localHour" | "participantCount">> = {}
+) {
+  const at = Date.now();
+  const payload: PartyIntelligenceEvent = {
+    id: randomUUID(),
+    version: 1,
+    event,
+    at,
+    partyCode: party.code,
+    partyAgeSeconds: Math.max(0, Math.round((at - party.createdAt) / 1000)),
+    localHour: new Date(at).getHours(),
+    participantCount: party.participants.length,
+    ...details,
+  };
+
+  try {
+    fs.appendFileSync(partyEventsFilePath, `${JSON.stringify(payload)}\n`, "utf8");
+  } catch (error) {
+    console.error("PartyBrain Intelligence: événement non enregistré", error);
+  }
+}
+
+function songEventSnapshot(party: Party, song: Song) {
+  return {
+    videoId: song.videoId,
+    title: song.title,
+    artistName: song.artistName,
+    durationSeconds: song.durationSeconds,
+    votes: song.votes,
+    queuePosition: queuePositionForSong(party, song),
+  };
+}
+
+function finalizePlayback(party: Party, reason: "ended" | "dj_skip" | "song_change") {
+  const telemetry = playbackTelemetry.get(party.code);
+  const song = party.currentSong;
+  if (!telemetry || !song || telemetry.finalized || telemetry.videoId !== song.videoId) return;
+
+  telemetry.finalized = true;
+  const duration = Number(song.durationSeconds || 0);
+  const completionRatio = duration > 0 ? Math.min(1, telemetry.lastTime / duration) : undefined;
+  const completed = reason === "ended" || (completionRatio !== undefined && completionRatio >= 0.9);
+
+  recordPartyEvent(party, completed ? "SONG_PLAY_COMPLETED" : "SONG_SKIPPED", {
+    song: songEventSnapshot(party, song),
+    playback: {
+      elapsedSeconds: Math.max(0, Math.round(telemetry.lastTime)),
+      completionRatio,
+      reason,
+    },
+  });
+}
+
+function startPlaybackTelemetry(party: Party, song: Song) {
+  const previous = playbackTelemetry.get(party.code);
+  if (previous && previous.videoId === song.videoId && !previous.finalized) return;
+  playbackTelemetry.set(party.code, {
+    videoId: song.videoId,
+    startedAt: Date.now(),
+    lastTime: 0,
+    lastState: -1,
+    lastProgressBucket: 0,
+    finalized: false,
+  });
+  recordPartyEvent(party, "SONG_PLAY_STARTED", { song: songEventSnapshot(party, song) });
+}
+
+function readPartyEvents(limit = 5000): PartyIntelligenceEvent[] {
+  if (!fs.existsSync(partyEventsFilePath)) return [];
+  const lines = fs.readFileSync(partyEventsFilePath, "utf8").trim().split("\n").filter(Boolean);
+  return lines.slice(-Math.max(1, Math.min(limit, 50000))).flatMap((line) => {
+    try { return [JSON.parse(line) as PartyIntelligenceEvent]; } catch { return []; }
+  });
+}
+
+
+
+type PartyBrainSearchInsight = {
+  query: string;
+  normalizedQuery: string;
+  sampleSize: number;
+  nextArtists: Array<{ artistName: string; count: number; confidence: number }>;
+  popularHours: Array<{ hour: number; additions: number; votes: number; score: number }>;
+  message: string;
+  hourMessage?: string;
+};
+
+function partyBrainSearchInsight(query: string): PartyBrainSearchInsight {
+  const normalizedQuery = normalizeMusicQuery(query);
+  const events = readPartyEvents(50000).sort((a, b) => a.at - b.at);
+  const matchingAdds = events.filter((entry) => {
+    if (entry.event !== "SONG_ADDED" || !entry.song) return false;
+    const artist = normalizeMusicQuery(entry.song.artistName || "");
+    const title = normalizeMusicQuery(entry.song.title || "");
+    return artist.includes(normalizedQuery) || normalizedQuery.includes(artist) || title.includes(normalizedQuery);
+  });
+
+  const nextArtistCounts = new Map<string, { artistName: string; count: number }>();
+  const hourCounts = new Map<number, { additions: number; votes: number }>();
+
+  for (const match of matchingAdds) {
+    const samePartyAdds = events.filter((entry) =>
+      entry.partyCode === match.partyCode &&
+      entry.event === "SONG_ADDED" &&
+      entry.at > match.at &&
+      entry.at <= match.at + 45 * 60 * 1000 &&
+      entry.song?.artistName
+    ).slice(0, 5);
+
+    const seen = new Set<string>();
+    for (const next of samePartyAdds) {
+      const artistName = String(next.song?.artistName || "").trim();
+      const key = normalizeMusicQuery(artistName);
+      if (!key || key === normalizedQuery || seen.has(key)) continue;
+      seen.add(key);
+      const current = nextArtistCounts.get(key) || { artistName, count: 0 };
+      current.count += 1;
+      nextArtistCounts.set(key, current);
+    }
+
+    const bucket = hourCounts.get(match.localHour) || { additions: 0, votes: 0 };
+    bucket.additions += 1;
+    hourCounts.set(match.localHour, bucket);
+  }
+
+  for (const vote of events) {
+    if (vote.event !== "SONG_VOTED" || !vote.song) continue;
+    const artist = normalizeMusicQuery(vote.song.artistName || "");
+    const title = normalizeMusicQuery(vote.song.title || "");
+    if (!(artist.includes(normalizedQuery) || normalizedQuery.includes(artist) || title.includes(normalizedQuery))) continue;
+    const bucket = hourCounts.get(vote.localHour) || { additions: 0, votes: 0 };
+    bucket.votes += 1;
+    hourCounts.set(vote.localHour, bucket);
+  }
+
+  const nextArtists = [...nextArtistCounts.values()]
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5)
+    .map((item) => ({
+      ...item,
+      confidence: matchingAdds.length ? Math.round((item.count / matchingAdds.length) * 100) : 0,
+    }));
+
+  const popularHours = [...hourCounts.entries()]
+    .map(([hour, values]) => ({ hour, ...values, score: values.additions * 2 + values.votes }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 4);
+
+  const artistNames = nextArtists.slice(0, 3).map((item) => item.artistName);
+  const message = artistNames.length
+    ? `Les utilisateurs qui ajoutent ${query} ajoutent ensuite souvent ${artistNames.join(", ")}.`
+    : `PartyBrain commence à apprendre les enchaînements après ${query}. Davantage de soirées amélioreront cette recommandation.`;
+  const bestHour = popularHours[0];
+  const hourMessage = bestHour
+    ? `${query} reçoit le plus d’ajouts et de votes autour de ${String(bestHour.hour).padStart(2, "0")} h.`
+    : undefined;
+
+  return { query, normalizedQuery, sampleSize: matchingAdds.length, nextArtists, popularHours, message, hourMessage };
+}
+
+function partyIntelligenceStats() {
+  const events = readPartyEvents(50000).sort((a, b) => a.at - b.at);
+  const counts: Record<string, number> = {};
+  const songVotes: Record<string, { videoId: string; title: string; artistName?: string; votes: number; partyCount: number; parties: Set<string> }> = {};
+  const playedArtists: Record<string, { artistName: string; plays: number; completed: number; skipped: number }> = {};
+  const removedSongs: Record<string, { videoId: string; title: string; artistName?: string; removals: number }> = {};
+  const parties = new Map<string, { createdAt?: number; endedAt?: number; maxAgeSeconds: number; peakParticipants: number; participantSamples: number[] }>();
+  const playSequence = new Map<string, PartyIntelligenceEvent[]>();
+  let completed = 0;
+  let skipped = 0;
+
+  const normalizeArtist = (entry: PartyIntelligenceEvent) => {
+    const raw = String(entry.song?.artistName || "Artiste inconnu").trim();
+    return raw || "Artiste inconnu";
+  };
+
+  for (const entry of events) {
+    counts[entry.event] = (counts[entry.event] || 0) + 1;
+
+    const partyStats = parties.get(entry.partyCode) || {
+      maxAgeSeconds: 0,
+      peakParticipants: 0,
+      participantSamples: [],
+    };
+    if (entry.event === "PARTY_CREATED") partyStats.createdAt = entry.at;
+    if (entry.event === "PARTY_ENDED") partyStats.endedAt = entry.at;
+    partyStats.maxAgeSeconds = Math.max(partyStats.maxAgeSeconds, Number(entry.partyAgeSeconds || 0));
+    partyStats.peakParticipants = Math.max(partyStats.peakParticipants, Number(entry.participantCount || 0));
+    partyStats.participantSamples.push(Number(entry.participantCount || 0));
+    parties.set(entry.partyCode, partyStats);
+
+    if (entry.event === "SONG_VOTED" && entry.song) {
+      const current = songVotes[entry.song.videoId] || {
+        videoId: entry.song.videoId,
+        title: entry.song.title,
+        artistName: entry.song.artistName,
+        votes: 0,
+        partyCount: 0,
+        parties: new Set<string>(),
+      };
+      current.votes += 1;
+      current.parties.add(entry.partyCode);
+      current.partyCount = current.parties.size;
+      songVotes[entry.song.videoId] = current;
+    }
+
+    if (entry.event === "SONG_PLAY_STARTED" && entry.song) {
+      const artistName = normalizeArtist(entry);
+      const key = artistName.toLocaleLowerCase("fr-FR");
+      const current = playedArtists[key] || { artistName, plays: 0, completed: 0, skipped: 0 };
+      current.plays += 1;
+      playedArtists[key] = current;
+      const sequence = playSequence.get(entry.partyCode) || [];
+      sequence.push(entry);
+      playSequence.set(entry.partyCode, sequence);
+    }
+
+    if ((entry.event === "SONG_PLAY_COMPLETED" || entry.event === "SONG_SKIPPED") && entry.song) {
+      const artistName = normalizeArtist(entry);
+      const key = artistName.toLocaleLowerCase("fr-FR");
+      const current = playedArtists[key] || { artistName, plays: 0, completed: 0, skipped: 0 };
+      if (entry.event === "SONG_PLAY_COMPLETED") current.completed += 1;
+      if (entry.event === "SONG_SKIPPED") current.skipped += 1;
+      playedArtists[key] = current;
+    }
+
+    if (entry.event === "SONG_REMOVED" && entry.song) {
+      const current = removedSongs[entry.song.videoId] || {
+        videoId: entry.song.videoId,
+        title: entry.song.title,
+        artistName: entry.song.artistName,
+        removals: 0,
+      };
+      current.removals += 1;
+      removedSongs[entry.song.videoId] = current;
+    }
+
+    if (entry.event === "SONG_PLAY_COMPLETED") completed += 1;
+    if (entry.event === "SONG_SKIPPED") skipped += 1;
+  }
+
+  const transitions: Record<string, {
+    from: { videoId: string; title: string; artistName?: string };
+    to: { videoId: string; title: string; artistName?: string };
+    count: number;
+    partyCount: number;
+    parties: Set<string>;
+  }> = {};
+
+  for (const [partyCode, sequence] of playSequence.entries()) {
+    for (let index = 0; index < sequence.length - 1; index += 1) {
+      const from = sequence[index].song;
+      const to = sequence[index + 1].song;
+      if (!from || !to || from.videoId === to.videoId) continue;
+      const key = `${from.videoId}=>${to.videoId}`;
+      const current = transitions[key] || {
+        from: { videoId: from.videoId, title: from.title, artistName: from.artistName },
+        to: { videoId: to.videoId, title: to.title, artistName: to.artistName },
+        count: 0,
+        partyCount: 0,
+        parties: new Set<string>(),
+      };
+      current.count += 1;
+      current.parties.add(partyCode);
+      current.partyCount = current.parties.size;
+      transitions[key] = current;
+    }
+  }
+
+  const partyValues = [...parties.values()];
+  const durations = partyValues
+    .map((party) => party.endedAt && party.createdAt
+      ? Math.max(0, Math.round((party.endedAt - party.createdAt) / 1000))
+      : party.maxAgeSeconds)
+    .filter((duration) => duration > 0);
+  const participantPeaks = partyValues.map((party) => party.peakParticipants);
+  const average = (values: number[]) => values.length
+    ? values.reduce((total, value) => total + value, 0) / values.length
+    : null;
+
+  return {
+    version: 2,
+    generatedAt: Date.now(),
+    totalEvents: events.length,
+    analyzedParties: parties.size,
+    counts,
+    completionRate: completed + skipped > 0 ? completed / (completed + skipped) : null,
+    topVotedSongs: Object.values(songVotes)
+      .map(({ parties: _parties, ...song }) => song)
+      .sort((a, b) => b.votes - a.votes)
+      .slice(0, 20),
+    topPlayedArtists: Object.values(playedArtists)
+      .sort((a, b) => b.plays - a.plays || b.completed - a.completed)
+      .slice(0, 20),
+    averagePartyDurationSeconds: average(durations),
+    averagePartyDurationMinutes: average(durations) === null ? null : Math.round((average(durations)! / 60) * 10) / 10,
+    durationMethod: counts.PARTY_ENDED
+      ? "party_created_to_party_ended"
+      : "last_observed_event_per_party",
+    averageParticipants: average(participantPeaks) === null ? null : Math.round(average(participantPeaks)! * 10) / 10,
+    participantMethod: "average_peak_participants_per_party",
+    topRemovedSongs: Object.values(removedSongs)
+      .sort((a, b) => b.removals - a.removals)
+      .slice(0, 20),
+    commonSongTransitions: Object.values(transitions)
+      .map(({ parties: _parties, ...transition }) => transition)
+      .sort((a, b) => b.count - a.count || b.partyCount - a.partyCount)
+      .slice(0, 30),
+    dataCoverage: {
+      partyEndedEvents: counts.PARTY_ENDED || 0,
+      songRemovedEvents: counts.SONG_REMOVED || 0,
+      note: "Les statistiques de durée et de suppression gagnent en précision à mesure que PARTY_ENDED et SONG_REMOVED sont enregistrés.",
+    },
+    storage: { format: "jsonl", file: path.basename(partyEventsFilePath) },
+  };
+}
 
 type Participant = { id:string; name:string; avatar?:string; lastSeen:number };
 
@@ -781,6 +1173,7 @@ const party:Party = {
 
 
 parties.push(party);
+recordPartyEvent(party, "PARTY_CREATED");
 
 saveParties();
 
@@ -852,6 +1245,7 @@ app.post("/party/:code/join",(req,res)=>{
   const participantId = req.body.id || `guest-${name.toLowerCase()}`;
   const avatar = typeof req.body.avatar === "string" ? req.body.avatar : undefined;
   const existingParticipant = party.participants.find((participant) => participant.id === participantId);
+  const isNewParticipant = !existingParticipant;
 
   if(existingParticipant){
     existingParticipant.name = name;
@@ -863,6 +1257,9 @@ app.post("/party/:code/join",(req,res)=>{
 
 
 
+  if (isNewParticipant) {
+    recordPartyEvent(party, "PARTICIPANT_JOINED", { actorHash: anonymizeActor(participantId) });
+  }
   updateParty(party);
 
 
@@ -902,7 +1299,9 @@ app.post("/party/:code/leave", (req, res) => {
   const party = findParty(req.params.code);
   if (!party) return res.status(404).json({ error: "Soirée introuvable" });
   const id = String(req.body.id || "").trim();
+  const existed = party.participants.some((participant) => participant.id === id);
   party.participants = party.participants.filter((participant) => participant.id !== id);
+  if (existed) recordPartyEvent(party, "PARTICIPANT_LEFT", { actorHash: anonymizeActor(id) });
   updateParty(party);
   res.json(toPublicParty(party));
 });
@@ -937,7 +1336,9 @@ app.post("/party/:code/song",(req,res)=>{
   featuredArtistNames,
   albumName,
   metadataSource,
-  metadataConfidence
+  metadataConfidence,
+  durationSeconds,
+  additionSource
 } = req.body;
 
 
@@ -959,6 +1360,8 @@ party.songs.push({
   videoId: videoId || "",
 
   thumbnail: thumbnail || "",
+
+  durationSeconds: Number.isFinite(Number(durationSeconds)) ? Number(durationSeconds) : undefined,
 
   votes: 0,
 
@@ -999,7 +1402,18 @@ party.songs.push({
 
 });
 
-  recordMusicBrainAddition(party.songs[party.songs.length - 1]);
+  const addedSong = party.songs[party.songs.length - 1];
+  recordMusicBrainAddition(addedSong);
+  recordPartyEvent(party, "SONG_ADDED", {
+    song: songEventSnapshot(party, addedSong),
+    actorHash: anonymizeActor(addedBy),
+    source: additionSource === "partybrain_suggestion"
+      ? "partybrain_suggestion"
+      : additionSource === "manual_search"
+        ? "manual_search"
+        : "unknown",
+    context: { sourceQuery: typeof sourceQuery === "string" ? sourceQuery.trim() : "" },
+  });
 
   updateParty(party);
 
@@ -1082,6 +1496,11 @@ console.log("Résultat includes :", song.voters.includes(name));
 
   song.votes++;
   recordMusicBrainVote(song);
+  recordPartyEvent(party, "SONG_VOTED", {
+    song: songEventSnapshot(party, song),
+    actorHash: anonymizeActor(name),
+    context: { voteDelta: 1 },
+  });
 
   updateParty(party);
 
@@ -1132,8 +1551,10 @@ app.post("/party/:code/play/:index",(req,res)=>{
 
 
   const previousSong = party.currentSong;
+  if (previousSong && previousSong.videoId !== song.videoId) finalizePlayback(party, "song_change");
   party.currentSong = song;
   recordMusicBrainPlay(song, previousSong);
+  startPlaybackTelemetry(party, song);
 
   updateParty(party);
 
@@ -1166,6 +1587,7 @@ app.post("/party/:code/next",(req,res)=>{
 
 
   const previousSong = party.currentSong;
+  if (previousSong) finalizePlayback(party, "dj_skip");
 
   if(party.currentSong){
 
@@ -1208,6 +1630,7 @@ app.post("/party/:code/next",(req,res)=>{
 
   party.currentSong = nextSong;
   recordMusicBrainPlay(nextSong, previousSong);
+  startPlaybackTelemetry(party, nextSong);
 
   updateParty(party);
 
@@ -1251,12 +1674,37 @@ io.on("connection",(socket)=>{
   socket.on("playback_sync", (payload: any) => {
     const code = String(payload?.code || "").toUpperCase();
     if (!code || playbackControllers.get(code) !== socket.id) return;
-    socket.to(`party:${code}`).emit("playback_sync", {
-      code,
-      videoId: String(payload.videoId || ""),
-      state: Number(payload.state),
-      time: Number(payload.time || 0),
-    });
+
+    const videoId = String(payload.videoId || "");
+    const state = Number(payload.state);
+    const time = Math.max(0, Number(payload.time || 0));
+    const party = findParty(code);
+    if (party?.currentSong && party.currentSong.videoId === videoId) {
+      let telemetry = playbackTelemetry.get(code);
+      if (!telemetry || telemetry.videoId !== videoId || telemetry.finalized) {
+        startPlaybackTelemetry(party, party.currentSong);
+        telemetry = playbackTelemetry.get(code);
+      }
+      if (telemetry) {
+        telemetry.lastTime = time;
+        telemetry.lastState = state;
+        const bucket = Math.floor(time / 30);
+        if (bucket > telemetry.lastProgressBucket) {
+          telemetry.lastProgressBucket = bucket;
+          const duration = Number(party.currentSong.durationSeconds || 0);
+          recordPartyEvent(party, "SONG_PROGRESS", {
+            song: songEventSnapshot(party, party.currentSong),
+            playback: {
+              elapsedSeconds: Math.round(time),
+              completionRatio: duration > 0 ? Math.min(1, time / duration) : undefined,
+            },
+          });
+        }
+        if (state === 0) finalizePlayback(party, "ended");
+      }
+    }
+
+    socket.to(`party:${code}`).emit("playback_sync", { code, videoId, state, time });
   });
 
 
@@ -2107,6 +2555,33 @@ setInterval(() => {
 
 
 
+app.get("/partybrain/intelligence/insights/search", (req, res) => {
+  const query = String(req.query.q || "").trim();
+  if (!query) return res.status(400).json({ error: "Recherche manquante" });
+  return res.json(partyBrainSearchInsight(query));
+});
+
+app.get("/partybrain/intelligence/stats", (_req, res) => {
+  res.json(partyIntelligenceStats());
+});
+
+app.get("/partybrain/intelligence/stats/v2", (_req, res) => {
+  res.json(partyIntelligenceStats());
+});
+
+app.get("/partybrain/intelligence/events", (req, res) => {
+  const requested = Number(req.query.limit || 500);
+  const limit = Math.max(1, Math.min(Number.isFinite(requested) ? requested : 500, 5000));
+  res.json({ events: readPartyEvents(limit) });
+});
+
+app.get("/partybrain/intelligence/export", (_req, res) => {
+  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="mixparty-party-intelligence-${Date.now()}.jsonl"`);
+  if (!fs.existsSync(partyEventsFilePath)) return res.send("");
+  return res.sendFile(partyEventsFilePath);
+});
+
 app.get("/musicbrain/stats", (_req, res) => {
   return res.json(musicBrainStats());
 });
@@ -2187,6 +2662,16 @@ app.get("/search/youtube", async (req, res) => {
 
   const normalizedQuery = normalizeMusicQuery(query);
   if (!normalizedQuery) return res.status(400).json({ error: "Recherche invalide" });
+
+  const partyCode = String(req.query.partyCode || "").trim().toUpperCase();
+  const searchParty = partyCode ? parties.find((party) => party.code === partyCode) : undefined;
+  if (searchParty) {
+    recordPartyEvent(searchParty, "SONG_SEARCHED", {
+      actorHash: anonymizeActor(req.query.actor),
+      source: "manual_search",
+      context: { query, normalizedQuery },
+    });
+  }
 
   pruneYoutubeCache();
 
