@@ -69,26 +69,26 @@ export default function Home() {
         <MixPartyBackground />
         <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(to_bottom,rgba(7,7,17,.03),rgba(7,7,17,.14)_54%,rgba(7,7,17,.32))]" />
 
-        <div className="relative z-10 mx-auto max-w-7xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(.75rem,env(safe-area-inset-top))] sm:px-6 lg:px-8">
+        <div className="relative z-10 mx-auto w-full max-w-7xl px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(.5rem,env(safe-area-inset-top))] sm:px-6 lg:px-8">
           <MixPartyHeader />
 
-          <section className="grid min-h-[calc(100dvh-110px)] items-center gap-9 py-8 sm:py-12 lg:grid-cols-[minmax(0,1.02fr)_minmax(470px,.98fr)] lg:gap-14 lg:py-16">
+          <section className="grid min-h-[calc(100svh-88px)] items-center gap-8 py-6 sm:py-10 lg:min-h-[calc(100dvh-110px)] lg:grid-cols-[minmax(0,1.02fr)_minmax(470px,.98fr)] lg:gap-14 lg:py-16">
             <MixPartyHero creatingParty={creatingParty} onCreateParty={createParty} onJoinClick={() => document.getElementById("mixparty-join")?.scrollIntoView({ behavior: "smooth", block: "center" })} />
             <PartyCard />
           </section>
 
           <section id="mixparty-join" className="mixparty-join-strip py-10 sm:py-12">
-            <div className="mx-auto flex max-w-3xl flex-col items-center gap-3 rounded-[28px] border border-white/10 bg-white/[0.045] p-4 backdrop-blur-xl sm:flex-row">
+            <div className="mx-auto flex w-full max-w-3xl flex-col items-stretch gap-3 rounded-[28px] border border-white/10 bg-white/[0.045] p-4 backdrop-blur-xl sm:flex-row">
               <div className="flex-1 px-2">
                 <p className="text-sm font-black text-white">Tu as déjà un code ?</p>
                 <p className="mt-1 text-xs text-white/40">Entre-le ici pour rejoindre la soirée instantanément.</p>
               </div>
-              <input value={partyCode} onChange={(event) => setPartyCode(event.target.value.toUpperCase())} onKeyDown={(event) => event.key === "Enter" && joinParty()} placeholder="CODE" maxLength={8} className="h-12 w-full rounded-2xl border border-white/10 bg-black/30 px-4 text-center text-sm font-black uppercase tracking-[.2em] outline-none focus:border-fuchsia-400/50 sm:w-48" />
-              <button type="button" onClick={joinParty} className="mixparty-secondary-cta h-12 w-full sm:w-auto">Rejoindre</button>
+              <input value={partyCode} onChange={(event) => setPartyCode(event.target.value.toUpperCase())} onKeyDown={(event) => event.key === "Enter" && joinParty()} placeholder="CODE" maxLength={8} className="h-14 w-full rounded-2xl border border-white/10 bg-black/30 px-4 text-center text-sm font-black uppercase tracking-[.2em] outline-none focus:border-fuchsia-400/50 sm:w-48" />
+              <button type="button" onClick={joinParty} className="mixparty-secondary-cta h-14 w-full sm:w-auto">Rejoindre</button>
             </div>
           </section>
 
-          <section className="py-14 sm:py-20">
+          <section className="py-10 sm:py-16">
             <SectionTitle
               eyebrow="Pourquoi MixParty"
               title={<>Une soirée qui <GradientText animated>réagit en direct.</GradientText></>}
@@ -110,10 +110,10 @@ export default function Home() {
               description="De la création de la salle au passage automatique des morceaux, tout est pensé pour rester simple."
               accent="pink"
             />
-            <div className="mixparty-timeline relative mt-10 grid gap-5 lg:grid-cols-4">
+            <div className="mixparty-timeline relative mt-6 sm:mt-10 grid gap-5 lg:grid-cols-4">
               <div className="mixparty-timeline-line pointer-events-none absolute left-[8%] right-[8%] top-10 hidden h-px lg:block" />
               {STEPS.map(({ number, title, text, icon: Icon, accent }) => (
-                <GlassCard key={number} accent={accent} hoverable animatedBorder={number === "01"} className="mixparty-timeline-card relative">
+                <GlassCard key={number} accent={accent} hoverable animatedBorder={number === "01"} className="mixparty-timeline-card relative h-full">
                   <div className={`mixparty-timeline-node mp-stat-icon mp-stat-icon--${accent}`}><Icon className="h-5 w-5" /></div>
                   <p className="mt-5 text-[10px] font-black uppercase tracking-[0.22em] text-white/24">Étape {number}</p>
                   <p className="mt-2 font-[family:var(--font-exo-2)] text-xl font-black">{title}</p>

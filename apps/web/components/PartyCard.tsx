@@ -28,7 +28,7 @@ export default function PartyCard() {
   const format = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 
   return (
-    <section className="mixparty-reveal mixparty-reveal-delay-4 relative mx-auto w-full max-w-[560px] lg:mx-0">
+    <section className="mixparty-reveal mixparty-reveal-delay-4 relative mx-auto w-full max-w-[340px] sm:max-w-[430px] lg:max-w-[560px] lg:mx-0">
       <div className="mixparty-phone-aura pointer-events-none absolute -inset-12 rounded-[68px]" />
       <div className="mixparty-phone-frame relative overflow-hidden rounded-[46px] p-[2px]">
         <div className="mixparty-phone-shell rounded-[44px] p-4 sm:p-5">

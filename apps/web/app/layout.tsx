@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   Exo_2,
   Geist,
@@ -7,6 +7,9 @@ import {
 import "./globals.css";
 import InstallMixParty from "../components/InstallMixParty";
 
+export const viewport: Viewport = {
+  themeColor: "#090711",
+};
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -42,8 +45,6 @@ export const metadata: Metadata = {
   },
 
   manifest: "/manifest.json",
-
-  themeColor: "#090711",
 };
 
 export default function RootLayout({
@@ -53,10 +54,11 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="fr"
-      suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} ${exo2.variable} h-full antialiased`}
-    >
+  lang="fr"
+  suppressHydrationWarning
+  data-scroll-behavior="smooth"
+  className={`${geistSans.variable} ${geistMono.variable} ${exo2.variable} h-full antialiased`}
+>
       <body suppressHydrationWarning className="flex min-h-full flex-col">
         {children}
         <InstallMixParty />
