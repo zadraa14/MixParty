@@ -83,12 +83,44 @@ type Song = {
 
 type Participant = { id: string; name: string; avatar?: string };
 
+const DEFAULT_AVATARS = [
+  "/avatars/default/001-panda.png",
+  "/avatars/default/002-corgi.png",
+  "/avatars/default/003-black-cat.png",
+  "/avatars/default/004-shiba.png",
+  "/avatars/default/005-sloth.png",
+  "/avatars/default/006-rabbit.png",
+  "/avatars/default/007-tiger.png",
+  "/avatars/default/008-lion.png",
+  "/avatars/default/009-fox.png",
+  "/avatars/default/010-wolf.png",
+  "/avatars/default/011-koala.png",
+  "/avatars/default/012-bear.png",
+  "/avatars/default/013-raccoon.png",
+  "/avatars/default/014-giraffe.png",
+  "/avatars/default/015-monkey.png",
+  "/avatars/default/016-bull.png",
+  "/avatars/default/017-duck.png",
+  "/avatars/default/018-owl.png",
+  "/avatars/default/019-frog.png",
+  "/avatars/default/020-penguin.png",
+] as const;
+
+function defaultAvatarForParticipant(participantId: string) {
+  let hash = 0;
+  for (let index = 0; index < participantId.length; index += 1) {
+    hash = (hash * 31 + participantId.charCodeAt(index)) >>> 0;
+  }
+  return DEFAULT_AVATARS[hash % DEFAULT_AVATARS.length];
+}
+
 type Party = {
   code: string;
   currentSong: Song | null;
   songs: Song[];
   history: Song[];
   participants: Participant[];
+  partyBrainAutoRelayEnabled?: boolean;
 };
 
 function normalizeParty(data: Partial<Party> | null | undefined): Party | null {
@@ -100,6 +132,7 @@ function normalizeParty(data: Partial<Party> | null | undefined): Party | null {
     songs: Array.isArray(data.songs) ? data.songs : [],
     history: Array.isArray(data.history) ? data.history : [],
     participants: Array.isArray(data.participants) ? data.participants : [],
+    partyBrainAutoRelayEnabled: Boolean(data.partyBrainAutoRelayEnabled),
   };
 }
 
@@ -154,9 +187,11 @@ export default function PartyPage() {
   const [party, setParty] = useState<Party | null>(null);
   const [loadError, setLoadError] = useState("");
 
+  const [name, setName] = useState("");
   const [playerName, setPlayerName] = useState("");
   const [participantId, setParticipantId] = useState("");
   const [participantAvatar, setParticipantAvatar] = useState("");
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<any[]>([]);
@@ -169,6 +204,7 @@ export default function PartyPage() {
     hourMessage?: string;
     nextArtists: Array<{ artistName: string; count: number; confidence: number }>;
   }>(null);
+  const [joining, setJoining] = useState(false);
   const [addingVideoId, setAddingVideoId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
@@ -178,6 +214,7 @@ export default function PartyPage() {
   const [remotePlayback, setRemotePlayback] = useState({ state: 2, time: 0, receivedAt: Date.now() });
   const [youtubeError, setYoutubeError] = useState<number | null>(null);
   const [djModeActive, setDjModeActive] = useState(false);
+  const [partyBrainRelayUpdating, setPartyBrainRelayUpdating] = useState(false);
   const [djModeStartedAt, setDjModeStartedAt] = useState<number | null>(null);
   const [djModeElapsed, setDjModeElapsed] = useState(0);
   const [tvModeActive, setTvModeActive] = useState(false);
@@ -209,51 +246,25 @@ export default function PartyPage() {
   }
 
   useEffect(() => {
-    function applySavedProfile(profile?: {
-      name?: string;
-      photo?: string;
-      participantId?: string;
-    }) {
-      let stableId =
-        profile?.participantId ||
-        localStorage.getItem("mixparty.participant.id") ||
-        "";
+    const saved = localStorage.getItem("playerName");
+    const resolvedName = saved || "";
 
-      if (!stableId) {
-        stableId =
-          globalThis.crypto?.randomUUID?.() ||
-          `participant-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-        localStorage.setItem("mixparty.participant.id", stableId);
-      }
-
-      const savedName =
-        profile?.name ||
-        localStorage.getItem("playerName")?.trim() ||
-        "";
-      const savedPhoto =
-        profile?.photo ||
-        localStorage.getItem("mixparty.profile.photo.v1") ||
-        "";
-
-      setParticipantId(stableId);
-      setPlayerName(savedName);
-      setParticipantAvatar(savedPhoto);
+    let stableId = localStorage.getItem("mixparty.participant.id") || "";
+    if (!stableId) {
+      stableId = globalThis.crypto?.randomUUID?.() || `participant-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      localStorage.setItem("mixparty.participant.id", stableId);
     }
 
-    applySavedProfile();
+    const personalPhoto = localStorage.getItem("mixparty.profile.photo.v1") || "";
+    const avatar = personalPhoto || defaultAvatarForParticipant(stableId);
 
-    const onProfileUpdated = (event: Event) => {
-      const customEvent = event as CustomEvent<{
-        name?: string;
-        photo?: string;
-        participantId?: string;
-      }>;
-      applySavedProfile(customEvent.detail);
-    };
+    setParticipantId(stableId);
+    setParticipantAvatar(avatar);
 
-    window.addEventListener("mixparty-profile-updated", onProfileUpdated);
-    return () =>
-      window.removeEventListener("mixparty-profile-updated", onProfileUpdated);
+    if (resolvedName) {
+      setPlayerName(resolvedName);
+      setName(resolvedName);
+    }
   }, []);
 
   useEffect(() => {
@@ -496,6 +507,85 @@ export default function PartyPage() {
     return () => controller.abort();
   }, [party?.currentSong?.videoId, queueSignature, historySignature]);
 
+  async function joinParty() {
+    if (!name.trim() || joining) return;
+
+    setJoining(true);
+
+    try {
+      const response = await fetch(
+      `${getApiBaseUrl()}/party/${code}/join`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          id: participantId,
+          name: name.trim(),
+          avatar: participantAvatar || undefined,
+        })
+      }
+    );
+
+    const updated = await response.json();
+
+    localStorage.setItem(
+      "playerName",
+      name.trim()
+    );
+
+    setPlayerName(name.trim());
+
+    setParty(updated);
+
+      setName("");
+    } finally {
+      setJoining(false);
+    }
+  }
+
+  async function handleProfilePhotoUpload(file: File | null) {
+    if (!file || !file.type.startsWith("image/")) return;
+    setUploadingAvatar(true);
+
+    try {
+      const source = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const next = new Image();
+        next.onload = () => resolve(next);
+        next.onerror = reject;
+        next.src = source;
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = 128;
+      canvas.height = 128;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+
+      const side = Math.min(image.width, image.height);
+      const sx = (image.width - side) / 2;
+      const sy = (image.height - side) / 2;
+      context.drawImage(image, sx, sy, side, side, 0, 0, 128, 128);
+      const compressed = canvas.toDataURL("image/webp", 0.72);
+
+      localStorage.setItem("mixparty.profile.photo.v1", compressed);
+      setParticipantAvatar(compressed);
+    } catch (error) {
+      console.error("Impossible de préparer la photo de profil", error);
+      window.alert("Impossible d’utiliser cette image. Essaie avec une autre photo.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  }
+
   async function searchYoutube() {
     if (!search.trim() || searching) return;
 
@@ -623,6 +713,53 @@ export default function PartyPage() {
     const updated = await response.json();
 
     setParty(updated);
+  }
+
+  async function togglePartyBrainAutoRelay() {
+    if (!isPlaybackController || partyBrainRelayUpdating) return;
+
+    const enabled = !Boolean(party?.partyBrainAutoRelayEnabled);
+    const creatorToken =
+      localStorage.getItem(`mixparty_creator_${code}`) || "";
+
+    if (!creatorToken) {
+      window.alert("Le contrôle PartyBrain est réservé au créateur de la soirée.");
+      return;
+    }
+
+    setPartyBrainRelayUpdating(true);
+
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/party/${code}/partybrain/auto-relay`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            enabled,
+            creatorToken,
+            actor: participantId || playerName,
+          }),
+        }
+      );
+
+      const updated = await response.json();
+
+      if (!response.ok || updated.error) {
+        window.alert(updated.error || "Impossible de modifier le relais PartyBrain.");
+        return;
+      }
+
+      const normalized = normalizeParty(updated);
+      if (normalized) setParty(normalized);
+    } catch (error) {
+      console.error("Relais PartyBrain indisponible", error);
+      window.alert("Impossible de joindre PartyBrain pour le moment.");
+    } finally {
+      setPartyBrainRelayUpdating(false);
+    }
   }
 
   async function nextSong() {
@@ -1494,21 +1631,7 @@ export default function PartyPage() {
                           <p className="v53-queue-title">{song.title}</p>
                           <p className="v53-queue-artist">{song.artistName || "Artiste MixParty"}</p>
 
-                          <div className="v53-queue-added">
-                            <span className="v53-queue-avatar">
-                              {party.participants.find((participant) => participant.name === song.addedBy)?.avatar ? (
-                                <img
-                                  src={party.participants.find((participant) => participant.name === song.addedBy)?.avatar}
-                                  alt=""
-                                />
-                              ) : (
-                                <span className="grid h-full w-full place-items-center text-[10px] font-black uppercase">
-                                  {song.addedBy.charAt(0)}
-                                </span>
-                              )}
-                            </span>
-                            <span>Ajouté par <strong>{song.addedBy}</strong></span>
-                          </div>
+                          <div className="v53-queue-added"><span className="v53-queue-avatar"><img src={party.participants.find((participant) => participant.name === song.addedBy)?.avatar || defaultAvatarForParticipant(song.addedBy)} alt="" /></span><span>Ajouté par <strong>{song.addedBy}</strong></span></div>
 
                           <div className="mt-2 flex items-center gap-2 sm:hidden">
 
@@ -1528,7 +1651,7 @@ export default function PartyPage() {
 
                         </div>
 
-                        <div className="v53-queue-actions !hidden sm:!flex">
+                        <div className="v53-queue-actions hidden sm:flex">
 
                           <div className="v53-vote-score">
 
@@ -1903,31 +2026,89 @@ export default function PartyPage() {
 
             </section>
 
-            <section className={`${activeMobileTab === "guests" ? "block" : "hidden"} premium-glass-card rounded-[24px] border border-purple-400/20 bg-gradient-to-br from-purple-600/10 to-pink-500/[0.07] p-4 backdrop-blur-xl md:block md:rounded-[30px] md:p-5`}>
-              <div className="flex items-center gap-4">
-                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-purple-300/30 bg-gradient-to-br from-purple-600 to-pink-500 shadow-[0_0_24px_rgba(168,85,247,0.22)]">
-                  {participantAvatar ? (
-                    <img
-                      src={participantAvatar}
-                      alt={`Photo de ${playerName}`}
-                      className="h-full w-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center text-xl font-black uppercase">
-                      {playerName.charAt(0)}
-                    </div>
-                  )}
+            {!playerName ? (
+              <section className={`${activeMobileTab === "guests" ? "block" : "hidden"} premium-glass-card rounded-[24px] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 to-purple-600/10 p-4 backdrop-blur-xl md:block md:rounded-[30px] md:p-5`}>
+
+                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl border border-pink-400/20 bg-pink-500/10 shadow-[0_0_28px_rgba(236,72,153,0.12)]">
+                  <UserPlus className="h-5 w-5 text-pink-300" />
                 </div>
 
-                <div className="min-w-0">
-                  <p className="text-sm text-white/40">Connecté en tant que</p>
-                  <p className="truncate text-lg font-black">{playerName}</p>
-                  <p className="mt-1 text-xs text-emerald-300/70">
-                    Profil MixParty enregistré
-                  </p>
+                <h2 className="text-xl font-black">
+                  Comment tu t’appelles ?
+                </h2>
+
+                <p className="mt-2 text-sm leading-relaxed text-white/40">
+                  Ton prénom apparaîtra sur les morceaux que tu ajoutes.
+                </p>
+
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      joinParty();
+                    }
+                  }}
+                  placeholder="Ton prénom"
+                  className="mt-5 w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-4 outline-none transition placeholder:text-white/25 focus:border-pink-400/50"
+                />
+
+                <button
+                  onClick={joinParty}
+                  className="group mt-3 w-full rounded-2xl border border-white/20 bg-gradient-to-r from-purple-600 via-pink-500 to-orange-400 px-5 py-4 font-black shadow-[0_14px_35px_rgba(168,85,247,0.2)] transition duration-300 hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.98]"
+                >
+                  <span className="flex items-center justify-center gap-2">
+                    <UserPlus className="h-4 w-4" />
+                    {joining ? "Connexion…" : "Rejoindre la soirée"}
+                  </span>
+                </button>
+
+              </section>
+            ) : (
+              <section className={`${activeMobileTab === "guests" ? "block" : "hidden"} premium-glass-card rounded-[24px] border border-purple-400/20 bg-gradient-to-br from-purple-600/10 to-pink-500/[0.07] p-4 backdrop-blur-xl md:block md:rounded-[30px] md:p-5`}>
+
+                <div className="flex items-center gap-4">
+
+                  <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-purple-300/30 bg-gradient-to-br from-purple-600 to-pink-500 shadow-[0_0_24px_rgba(168,85,247,0.22)]">
+                    {participantAvatar ? (
+                      <img src={participantAvatar} alt="Ton avatar" className="h-full w-full object-cover" />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center text-xl font-black uppercase">{playerName.charAt(0)}</div>
+                    )}
+                  </div>
+
+                  <div>
+
+                    <p className="text-sm text-white/40">
+                      Connecté en tant que
+                    </p>
+
+                    <p className="text-lg font-black">
+                      {playerName}
+                    </p>
+
+                  </div>
+
                 </div>
-              </div>
-            </section>
+
+                <label className="mt-4 flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-bold text-white/65 transition hover:border-purple-400/30 hover:bg-purple-500/10">
+                  <UserPlus className="h-4 w-4 text-purple-300" />
+                  {uploadingAvatar ? "Préparation de la photo…" : "Choisir ma photo de profil"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={uploadingAvatar}
+                    onChange={(event) => handleProfilePhotoUpload(event.target.files?.[0] || null)}
+                  />
+                </label>
+
+                <div className="mt-3 rounded-2xl border border-white/[0.07] bg-black/20 px-4 py-3 text-sm text-white/50">
+                  Sans photo personnelle, MixParty t’attribue automatiquement un avatar unique.
+                </div>
+
+              </section>
+            )}
 
             <section className={`${activeMobileTab === "guests" ? "block" : "hidden"} participants-panel premium-glass-card rounded-[24px] p-4 md:block md:rounded-[30px] md:p-5`}>
 
@@ -1998,6 +2179,66 @@ export default function PartyPage() {
                 </p>
               )}
 
+            </section>
+
+            <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} premium-glass-card overflow-hidden rounded-[22px] border border-cyan-400/15 bg-cyan-500/[0.045] p-3 backdrop-blur-xl md:block md:rounded-[26px] md:p-4`}>
+              <button
+                type="button"
+                onClick={togglePartyBrainAutoRelay}
+                disabled={!isPlaybackController || partyBrainRelayUpdating}
+                className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                  party?.partyBrainAutoRelayEnabled
+                    ? "border-emerald-400/25 bg-emerald-500/15 text-emerald-100"
+                    : "border-white/10 bg-black/20 text-white"
+                }`}
+              >
+                <span
+                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${
+                    party?.partyBrainAutoRelayEnabled
+                      ? "bg-emerald-400/15 text-emerald-300"
+                      : "bg-cyan-400/10 text-cyan-300"
+                  }`}
+                >
+                  {partyBrainRelayUpdating ? (
+                    <RefreshCw className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <Bot className="h-5 w-5" />
+                  )}
+                </span>
+
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-black">
+                    {party?.partyBrainAutoRelayEnabled
+                      ? "Relais PartyBrain activé"
+                      : "Activer le relais PartyBrain"}
+                  </span>
+                  <span className="mt-0.5 block text-xs leading-5 text-white/45">
+                    {party?.partyBrainAutoRelayEnabled
+                      ? "PartyBrain choisira une musique adaptée si la file devient vide."
+                      : "PartyBrain ne prendra le relais que lorsque la file sera vide."}
+                  </span>
+                </span>
+
+                <span
+                  className={`relative h-7 w-12 shrink-0 rounded-full border transition ${
+                    party?.partyBrainAutoRelayEnabled
+                      ? "border-emerald-300/30 bg-emerald-400/30"
+                      : "border-white/10 bg-white/10"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-lg transition ${
+                      party?.partyBrainAutoRelayEnabled ? "left-6" : "left-1"
+                    }`}
+                  />
+                </span>
+              </button>
+
+              {!isPlaybackController && (
+                <p className="mt-2 px-1 text-[10px] font-bold text-white/30">
+                  Ce réglage est disponible uniquement sur l’appareil du créateur.
+                </p>
+              )}
             </section>
 
             <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} premium-glass-card overflow-hidden rounded-[22px] border p-3 backdrop-blur-xl transition md:block md:rounded-[26px] md:p-4 ${

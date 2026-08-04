@@ -600,6 +600,7 @@ type Party = {
   currentSong: Song | null;
   createdAt: number;
   creatorToken: string;
+  partyBrainAutoRelayEnabled: boolean;
 };
 
 let parties: Party[] = [];
@@ -619,6 +620,7 @@ if(fs.existsSync(dataFilePath)){
         : { ...participant, lastSeen: Number(participant.lastSeen || 0) }
     );
     party.creatorToken = typeof party.creatorToken === "string" && party.creatorToken ? party.creatorToken : randomUUID();
+    party.partyBrainAutoRelayEnabled = Boolean(party.partyBrainAutoRelayEnabled);
   });
 
   cleanOldParties();
@@ -1501,6 +1503,116 @@ function buildPartyBrainRecommendationScores(
     .slice(0, Math.max(1, Math.min(Number(requestedLimit) || 10, 25)));
 }
 
+
+type PartyBrainFallbackSong = {
+  videoId: string;
+  title: string;
+  thumbnail: string;
+  artistName: string;
+  durationSeconds?: number;
+  metadataSource?: MusicMetadataSource;
+  metadataConfidence?: number;
+  fallbackScore: number;
+  reason: string;
+};
+
+function selectPartyBrainFallbackSong(party: Party): PartyBrainFallbackSong | null {
+  const excludedVideoIds = new Set([
+    ...(party.history || []).map((song) => song.videoId),
+    ...(party.currentSong ? [party.currentSong.videoId] : []),
+    ...(party.songs || []).map((song) => song.videoId),
+  ]);
+
+  const recentArtistKeys = new Set(
+    [
+      ...(party.history || []).slice(-5),
+      ...(party.currentSong ? [party.currentSong] : []),
+    ]
+      .map((song) => normalizeMusicQuery(song.artistName || ""))
+      .filter(Boolean)
+  );
+
+  const eventStats = new Map<string, {
+    completed: number;
+    skipped: number;
+    removed: number;
+  }>();
+
+  for (const event of readPartyEvents(50000)) {
+    const videoId = event.song?.videoId;
+    if (!videoId) continue;
+
+    const stats = eventStats.get(videoId) || {
+      completed: 0,
+      skipped: 0,
+      removed: 0,
+    };
+
+    if (event.event === "SONG_PLAY_COMPLETED") stats.completed += 1;
+    if (event.event === "SONG_SKIPPED") stats.skipped += 1;
+    if (event.event === "SONG_REMOVED") stats.removed += 1;
+
+    eventStats.set(videoId, stats);
+  }
+
+  const candidates = Object.values(musicBrain.songs)
+    .filter((song) => {
+      if (!song.videoId || !song.title || excludedVideoIds.has(song.videoId)) return false;
+
+      const confidence = Number(song.metadataConfidence || 0);
+      const duration = Number(song.durationSeconds || 0);
+
+      if (confidence > 0 && confidence < 25) return false;
+      if (duration > 0 && (duration < 90 || duration > 480)) return false;
+
+      const outcomes = eventStats.get(song.videoId);
+      const negatives = Number(outcomes?.skipped || 0) + Number(outcomes?.removed || 0);
+      const positives = Number(outcomes?.completed || 0);
+
+      if (negatives >= 3 && negatives > positives * 1.5) return false;
+
+      return true;
+    })
+    .map((song) => {
+      const outcomes = eventStats.get(song.videoId) || {
+        completed: 0,
+        skipped: 0,
+        removed: 0,
+      };
+
+      const artistKey = normalizeMusicQuery(song.artistName || "");
+      const repeatedArtistPenalty = recentArtistKeys.has(artistKey) ? 18 : 0;
+      const negativePenalty = outcomes.skipped * 8 + outcomes.removed * 12;
+      const positiveSignal =
+        Number(song.addedCount || 0) * 5 +
+        Number(song.playedCount || 0) * 4 +
+        Number(song.voteCount || 0) * 6 +
+        Number(song.searchCount || 0) * 2 +
+        outcomes.completed * 8;
+
+      const metadataBonus = Math.round(Number(song.metadataConfidence || 40) / 10);
+      const fallbackScore = positiveSignal + metadataBonus - repeatedArtistPenalty - negativePenalty;
+
+      return {
+        videoId: song.videoId,
+        title: song.title,
+        thumbnail: song.thumbnail || "",
+        artistName: song.artistName || "Artiste inconnu",
+        durationSeconds: song.durationSeconds,
+        metadataSource: song.metadataSource,
+        metadataConfidence: song.metadataConfidence,
+        fallbackScore,
+        reason:
+          positiveSignal > 0
+            ? "Titre de secours populaire et peu risqué dans l’historique MixParty."
+            : "Titre de secours disponible avec des métadonnées valides.",
+      } satisfies PartyBrainFallbackSong;
+    })
+    .sort((a, b) => b.fallbackScore - a.fallbackScore);
+
+  return candidates[0] || null;
+}
+
 function cleanOldParties(){
 
   const now = Date.now();
@@ -1611,7 +1723,9 @@ const party:Party = {
 
   createdAt: Date.now(),
 
-  creatorToken: randomUUID()
+  creatorToken: randomUUID(),
+
+  partyBrainAutoRelayEnabled: false
 
 };
 
@@ -2163,6 +2277,50 @@ app.post("/party/:code/play/:index",(req,res)=>{
 
 });
 
+// Activer ou désactiver le relais automatique PartyBrain
+app.post("/party/:code/partybrain/auto-relay", (req, res) => {
+  const party = findParty(req.params.code);
+
+  if (!party) {
+    return res.status(404).json({
+      error: "Soirée introuvable",
+    });
+  }
+
+  const providedCreatorToken = String(
+    req.body.creatorToken ||
+    req.headers["x-mixparty-creator-token"] ||
+    ""
+  );
+
+  if (!providedCreatorToken || providedCreatorToken !== party.creatorToken) {
+    return res.status(403).json({
+      error: "Seul le créateur peut modifier le relais PartyBrain",
+    });
+  }
+
+  const enabled = req.body.enabled === true;
+  party.partyBrainAutoRelayEnabled = enabled;
+
+  recordPartyEvent(party, "QUEUE_REORDERED", {
+    actorHash: anonymizeActor(req.body.actor),
+    context: {
+      action: "partybrain_auto_relay_toggle",
+      enabled,
+    },
+  });
+
+  updateParty(party);
+
+  return res.json({
+    ...toPublicParty(party),
+    partyBrain: {
+      autoRelayEnabled: enabled,
+    },
+  });
+});
+
+
 // Lancer DJ automatique
 app.post("/party/:code/next",(req,res)=>{
 
@@ -2218,6 +2376,18 @@ app.post("/party/:code/next",(req,res)=>{
   let partyBrainRelayUsed = false;
 
   if(!nextSong){
+    if (!party.partyBrainAutoRelayEnabled) {
+      return res.status(400).json({
+        error: "Plus de chansons disponibles",
+        partyBrain: {
+          relayAttempted: false,
+          relayUsed: false,
+          autoRelayEnabled: false,
+          reason: "Le relais automatique PartyBrain est désactivé."
+        }
+      });
+    }
+
     const [bestRecommendation] = buildPartyBrainRecommendationScores(party, 1);
 
     const minimumScore = Number(
@@ -2234,15 +2404,24 @@ app.post("/party/:code/next",(req,res)=>{
       bestRecommendation.confidence >= minimumConfidence
     );
 
-    if(!recommendationAccepted || !bestRecommendation){
+    const fallbackEnabled =
+      String(process.env.PARTYBRAIN_RELAY_FALLBACK_ENABLED || "true").toLowerCase() !== "false";
+
+    const fallbackSong =
+      !recommendationAccepted && fallbackEnabled
+        ? selectPartyBrainFallbackSong(party)
+        : null;
+
+    if (!recommendationAccepted && !fallbackSong) {
       return res.status(400).json({
         error:"Plus de chansons disponibles",
         partyBrain: {
           relayAttempted: true,
           relayUsed: false,
+          fallbackAttempted: fallbackEnabled,
           reason: bestRecommendation
-            ? "La meilleure recommandation n’atteint pas les seuils de sécurité."
-            : "Aucune recommandation PartyBrain disponible.",
+            ? "La recommandation n’atteint pas les seuils et aucun secours sûr n’est disponible."
+            : "Aucune recommandation ni musique de secours disponible.",
           thresholds: {
             minimumScore,
             minimumConfidence
@@ -2252,20 +2431,39 @@ app.post("/party/:code/next",(req,res)=>{
       });
     }
 
-    const learnedSong = musicBrain.songs[bestRecommendation.videoId];
+    const selectedVideoId = recommendationAccepted
+      ? bestRecommendation!.videoId
+      : fallbackSong!.videoId;
+
+    const learnedSong = musicBrain.songs[selectedVideoId];
+    const selectedTitle = recommendationAccepted
+      ? bestRecommendation!.title
+      : fallbackSong!.title;
+    const selectedArtist = recommendationAccepted
+      ? bestRecommendation!.artistName
+      : fallbackSong!.artistName;
+    const selectedThumbnail = recommendationAccepted
+      ? bestRecommendation!.thumbnail
+      : fallbackSong!.thumbnail;
+    const selectedDuration = recommendationAccepted
+      ? bestRecommendation!.durationSeconds
+      : fallbackSong!.durationSeconds;
+    const relaySourceQuery = recommendationAccepted
+      ? "partybrain-auto-relay"
+      : "partybrain-safe-fallback";
 
     nextSong = {
-      title: bestRecommendation.title,
-      videoId: bestRecommendation.videoId,
-      thumbnail: bestRecommendation.thumbnail || learnedSong?.thumbnail || "",
-      durationSeconds: bestRecommendation.durationSeconds || learnedSong?.durationSeconds,
+      title: selectedTitle,
+      videoId: selectedVideoId,
+      thumbnail: selectedThumbnail || learnedSong?.thumbnail || "",
+      durationSeconds: selectedDuration || learnedSong?.durationSeconds,
       votes: 0,
-      addedBy: "PartyBrain",
+      addedBy: recommendationAccepted ? "PartyBrain" : "PartyBrain Secours",
       voters: [],
       played: false,
       addedAt: Date.now(),
-      sourceQuery: "partybrain-auto-relay",
-      artistName: bestRecommendation.artistName,
+      sourceQuery: relaySourceQuery,
+      artistName: selectedArtist,
       featuredArtistNames: [],
       albumName: undefined,
       metadataSource: learnedSong?.metadataSource,
@@ -2281,10 +2479,14 @@ app.post("/party/:code/next",(req,res)=>{
       song: songEventSnapshot(party, nextSong),
       source: "partybrain_suggestion",
       context: {
-        sourceQuery: "partybrain-auto-relay",
-        recommendationScore: bestRecommendation.score,
-        recommendationConfidence: bestRecommendation.confidence,
-        recommendationReasons: bestRecommendation.reasons.join(" | ")
+        sourceQuery: relaySourceQuery,
+        relayMode: recommendationAccepted ? "scored_recommendation" : "safe_fallback",
+        recommendationScore: bestRecommendation?.score || 0,
+        recommendationConfidence: bestRecommendation?.confidence || 0,
+        recommendationReasons: recommendationAccepted
+          ? bestRecommendation!.reasons.join(" | ")
+          : fallbackSong!.reason,
+        fallbackScore: fallbackSong?.fallbackScore || 0
       }
     });
   }
@@ -2304,7 +2506,12 @@ app.post("/party/:code/next",(req,res)=>{
     ...toPublicParty(party),
     partyBrain: {
       relayUsed: partyBrainRelayUsed,
-      source: partyBrainRelayUsed ? "partybrain_suggestion" : "user_queue"
+      autoRelayEnabled: party.partyBrainAutoRelayEnabled,
+      source: partyBrainRelayUsed
+        ? nextSong.addedBy === "PartyBrain Secours"
+          ? "partybrain_safe_fallback"
+          : "partybrain_suggestion"
+        : "user_queue"
     }
   });
 
