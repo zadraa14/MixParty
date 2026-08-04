@@ -1086,6 +1086,421 @@ function musicBrainStats() {
 }
 
 
+
+type PartyBrainRecommendationBreakdown = {
+  transition: number;
+  artistAffinity: number;
+  popularity: number;
+  completion: number;
+  votes: number;
+  hourFit: number;
+  freshness: number;
+  penalties: number;
+};
+
+type PartyBrainRecommendation = {
+  videoId: string;
+  title: string;
+  thumbnail: string;
+  artistName: string;
+  durationSeconds?: number;
+  score: number;
+  confidence: number;
+  breakdown: PartyBrainRecommendationBreakdown;
+  reasons: string[];
+  evidence: {
+    searches: number;
+    additions: number;
+    plays: number;
+    votes: number;
+    completed: number;
+    skipped: number;
+    removed: number;
+    directTransitions: number;
+    artistTransitions: number;
+    hourSamples: number;
+  };
+};
+
+function clampScore(value: number, min = 0, max = 100) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function logarithmicRatio(value: number, reference: number) {
+  if (value <= 0) return 0;
+  return clampScore(Math.log1p(value) / Math.log1p(Math.max(1, reference)), 0, 1);
+}
+
+function buildPartyBrainRecommendationScores(
+  party: Party,
+  requestedLimit = 10
+): PartyBrainRecommendation[] {
+  const events = readPartyEvents(50000).sort((a, b) => a.at - b.at);
+  const currentHour = new Date().getHours();
+
+  const songOutcomes = new Map<string, {
+    completed: number;
+    skipped: number;
+    removed: number;
+    votes: number;
+    additions: number;
+    hourSamples: number;
+    hourPositive: number;
+    hourNegative: number;
+  }>();
+
+  const artistOutcomes = new Map<string, {
+    completed: number;
+    skipped: number;
+    removed: number;
+    votes: number;
+    additions: number;
+    hourSamples: number;
+    hourPositive: number;
+    hourNegative: number;
+  }>();
+
+  const artistTransitionCounts = new Map<string, number>();
+  let maxDirectTransitionCount = 1;
+  let maxArtistTransitionCount = 1;
+
+  const playStartsByParty = new Map<string, PartyIntelligenceEvent[]>();
+
+  for (const event of events) {
+    if (event.event === "SONG_PLAY_STARTED" && event.song) {
+      const sequence = playStartsByParty.get(event.partyCode) || [];
+      sequence.push(event);
+      playStartsByParty.set(event.partyCode, sequence);
+    }
+
+    if (!event.song?.videoId) continue;
+
+    const videoId = event.song.videoId;
+    const artistName = String(event.song.artistName || "").trim();
+    const artistKey = normalizeMusicQuery(artistName);
+
+    const songStats = songOutcomes.get(videoId) || {
+      completed: 0,
+      skipped: 0,
+      removed: 0,
+      votes: 0,
+      additions: 0,
+      hourSamples: 0,
+      hourPositive: 0,
+      hourNegative: 0,
+    };
+
+    const artistStats = artistOutcomes.get(artistKey) || {
+      completed: 0,
+      skipped: 0,
+      removed: 0,
+      votes: 0,
+      additions: 0,
+      hourSamples: 0,
+      hourPositive: 0,
+      hourNegative: 0,
+    };
+
+    const hourDistance = Math.min(
+      Math.abs(event.localHour - currentHour),
+      24 - Math.abs(event.localHour - currentHour)
+    );
+    const closeToCurrentHour = hourDistance <= 2;
+
+    if (event.event === "SONG_ADDED") {
+      songStats.additions += 1;
+      artistStats.additions += 1;
+      if (closeToCurrentHour) {
+        songStats.hourSamples += 1;
+        songStats.hourPositive += 1;
+        artistStats.hourSamples += 1;
+        artistStats.hourPositive += 1;
+      }
+    }
+
+    if (event.event === "SONG_VOTED") {
+      songStats.votes += 1;
+      artistStats.votes += 1;
+      if (closeToCurrentHour) {
+        songStats.hourSamples += 1;
+        songStats.hourPositive += 1;
+        artistStats.hourSamples += 1;
+        artistStats.hourPositive += 1;
+      }
+    }
+
+    if (event.event === "SONG_PLAY_COMPLETED") {
+      songStats.completed += 1;
+      artistStats.completed += 1;
+      if (closeToCurrentHour) {
+        songStats.hourSamples += 1;
+        songStats.hourPositive += 2;
+        artistStats.hourSamples += 1;
+        artistStats.hourPositive += 2;
+      }
+    }
+
+    if (event.event === "SONG_SKIPPED") {
+      songStats.skipped += 1;
+      artistStats.skipped += 1;
+      if (closeToCurrentHour) {
+        songStats.hourSamples += 1;
+        songStats.hourNegative += 2;
+        artistStats.hourSamples += 1;
+        artistStats.hourNegative += 2;
+      }
+    }
+
+    if (event.event === "SONG_REMOVED") {
+      songStats.removed += 1;
+      artistStats.removed += 1;
+      if (closeToCurrentHour) {
+        songStats.hourSamples += 1;
+        songStats.hourNegative += 2;
+        artistStats.hourSamples += 1;
+        artistStats.hourNegative += 2;
+      }
+    }
+
+    songOutcomes.set(videoId, songStats);
+    if (artistKey) artistOutcomes.set(artistKey, artistStats);
+  }
+
+  for (const sequence of playStartsByParty.values()) {
+    sequence.sort((a, b) => a.at - b.at);
+
+    for (let index = 1; index < sequence.length; index += 1) {
+      const previous = sequence[index - 1];
+      const next = sequence[index];
+      const fromArtist = normalizeMusicQuery(previous.song?.artistName || "");
+      const toArtist = normalizeMusicQuery(next.song?.artistName || "");
+
+      if (!fromArtist || !toArtist) continue;
+      const key = `${fromArtist}>>${toArtist}`;
+      const count = (artistTransitionCounts.get(key) || 0) + 1;
+      artistTransitionCounts.set(key, count);
+      maxArtistTransitionCount = Math.max(maxArtistTransitionCount, count);
+    }
+  }
+
+  for (const transition of Object.values(musicBrain.transitions)) {
+    maxDirectTransitionCount = Math.max(maxDirectTransitionCount, Number(transition.count || 0));
+  }
+
+  const recentSongs = [
+    ...(party.history || []).slice(-8),
+    ...(party.currentSong ? [party.currentSong] : []),
+  ];
+
+  const currentSong = party.currentSong || recentSongs[recentSongs.length - 1] || null;
+  const currentArtistKey = normalizeMusicQuery(currentSong?.artistName || "");
+  const recentVideoIds = new Set([
+    ...recentSongs.map((song) => song.videoId),
+    ...(party.songs || []).map((song) => song.videoId),
+  ]);
+  const lastTwoArtistKeys = recentSongs
+    .slice(-2)
+    .map((song) => normalizeMusicQuery(song.artistName || ""))
+    .filter(Boolean);
+
+  const maxSearches = Math.max(1, ...Object.values(musicBrain.songs).map((song) => Number(song.searchCount || 0)));
+  const maxAdds = Math.max(1, ...Object.values(musicBrain.songs).map((song) => Number(song.addedCount || 0)));
+  const maxPlays = Math.max(1, ...Object.values(musicBrain.songs).map((song) => Number(song.playedCount || 0)));
+  const maxVotes = Math.max(1, ...Object.values(musicBrain.songs).map((song) => Number(song.voteCount || 0)));
+
+  const recommendations: PartyBrainRecommendation[] = [];
+
+  for (const candidate of Object.values(musicBrain.songs)) {
+    if (!candidate.videoId || !candidate.title || recentVideoIds.has(candidate.videoId)) continue;
+
+    const candidateArtistKey = normalizeMusicQuery(candidate.artistName || "");
+    const outcomes = songOutcomes.get(candidate.videoId) || {
+      completed: 0,
+      skipped: 0,
+      removed: 0,
+      votes: 0,
+      additions: 0,
+      hourSamples: 0,
+      hourPositive: 0,
+      hourNegative: 0,
+    };
+    const artistStats = artistOutcomes.get(candidateArtistKey) || {
+      completed: 0,
+      skipped: 0,
+      removed: 0,
+      votes: 0,
+      additions: 0,
+      hourSamples: 0,
+      hourPositive: 0,
+      hourNegative: 0,
+    };
+
+    const directTransition = currentSong
+      ? musicBrain.transitions[`${currentSong.videoId}>>${candidate.videoId}`]
+      : undefined;
+    const directTransitionCount = Number(directTransition?.count || 0);
+
+    const artistTransitionCount = currentArtistKey && candidateArtistKey
+      ? Number(artistTransitionCounts.get(`${currentArtistKey}>>${candidateArtistKey}`) || 0)
+      : 0;
+
+    const knownArtistRelation = currentArtistKey && candidateArtistKey
+      ? Number(musicBrain.artistRelations[`${currentArtistKey}>>${candidateArtistKey}`]?.count || 0)
+      : 0;
+
+    const transitionEvidence = directTransitionCount * 2 + artistTransitionCount + knownArtistRelation;
+    const transitionPart = clampScore(
+      (
+        logarithmicRatio(directTransitionCount, maxDirectTransitionCount) * 0.62 +
+        logarithmicRatio(artistTransitionCount + knownArtistRelation, maxArtistTransitionCount) * 0.38
+      ) * 28,
+      0,
+      28
+    );
+
+    let recentAffinity = 0;
+    const recentArtists = recentSongs
+      .slice(-6)
+      .map((song) => normalizeMusicQuery(song.artistName || ""))
+      .filter(Boolean);
+
+    recentArtists.forEach((artistKey, index) => {
+      const recencyWeight = (index + 1) / Math.max(1, recentArtists.length);
+      if (artistKey === candidateArtistKey) {
+        recentAffinity += 0.9 * recencyWeight;
+      }
+
+      const relation = musicBrain.artistRelations[`${artistKey}>>${candidateArtistKey}`];
+      if (relation) {
+        recentAffinity += Math.min(1, Number(relation.count || 0) / 5) * recencyWeight;
+      }
+    });
+
+    const artistAffinityPart = clampScore((recentAffinity / Math.max(1, recentArtists.length * 0.7)) * 18, 0, 18);
+
+    const popularityRatio =
+      logarithmicRatio(candidate.searchCount, maxSearches) * 0.15 +
+      logarithmicRatio(candidate.addedCount, maxAdds) * 0.35 +
+      logarithmicRatio(candidate.playedCount, maxPlays) * 0.2 +
+      logarithmicRatio(candidate.voteCount, maxVotes) * 0.3;
+    const popularityPart = clampScore(popularityRatio * 15, 0, 15);
+
+    const completed = outcomes.completed;
+    const skipped = outcomes.skipped;
+    const observedFinishes = completed + skipped;
+    const smoothedCompletionRate = (completed + 3) / (observedFinishes + 5);
+    const completionPart = clampScore(smoothedCompletionRate * 14, 0, 14);
+
+    const voteDenominator = Math.max(1, candidate.addedCount + candidate.playedCount);
+    const voteRate = candidate.voteCount / voteDenominator;
+    const votesPart = clampScore((1 - Math.exp(-voteRate)) * 10, 0, 10);
+
+    const combinedHourSamples = outcomes.hourSamples + artistStats.hourSamples;
+    const hourPositive = outcomes.hourPositive + artistStats.hourPositive * 0.45;
+    const hourNegative = outcomes.hourNegative + artistStats.hourNegative * 0.45;
+    const hourRate = combinedHourSamples
+      ? (hourPositive + 1.5) / (hourPositive + hourNegative + 3)
+      : 0.5;
+    const hourFitPart = clampScore(hourRate * 7, 0, 7);
+
+    const ageDays = Math.max(0, (Date.now() - Number(candidate.lastSeenAt || candidate.firstSeenAt || Date.now())) / 86400000);
+    const recencySignal = Math.exp(-ageDays / 180);
+    const metadataSignal = clampScore(Number(candidate.metadataConfidence || 45) / 100, 0, 1);
+    const freshnessPart = clampScore((recencySignal * 0.55 + metadataSignal * 0.45) * 8, 0, 8);
+
+    let penalties = 0;
+    const totalNegativeOutcomes = outcomes.skipped + outcomes.removed;
+    const negativeRate = totalNegativeOutcomes / Math.max(1, outcomes.completed + totalNegativeOutcomes);
+
+    penalties += clampScore(negativeRate * 18, 0, 18);
+    penalties += clampScore((outcomes.removed / Math.max(1, outcomes.additions)) * 12, 0, 12);
+
+    if (lastTwoArtistKeys.includes(candidateArtistKey)) penalties += 7;
+    if (candidate.durationSeconds && (candidate.durationSeconds < 90 || candidate.durationSeconds > 480)) penalties += 4;
+    if (Number(candidate.metadataConfidence || 0) < 30) penalties += 3;
+
+    const rawScore =
+      transitionPart +
+      artistAffinityPart +
+      popularityPart +
+      completionPart +
+      votesPart +
+      hourFitPart +
+      freshnessPart -
+      penalties;
+
+    const score = Math.round(clampScore(rawScore));
+    const evidenceVolume =
+      Number(candidate.searchCount || 0) +
+      Number(candidate.addedCount || 0) * 2 +
+      Number(candidate.playedCount || 0) * 2 +
+      Number(candidate.voteCount || 0) +
+      completed +
+      skipped +
+      outcomes.removed +
+      transitionEvidence * 2;
+
+    const confidence = Math.round(
+      clampScore(
+        20 +
+        logarithmicRatio(evidenceVolume, 80) * 55 +
+        logarithmicRatio(transitionEvidence, 12) * 20 +
+        (combinedHourSamples > 2 ? 5 : 0)
+      )
+    );
+
+    const reasons: string[] = [];
+    if (directTransitionCount > 0) reasons.push(`déjà joué ${directTransitionCount} fois après le morceau actuel`);
+    else if (artistTransitionCount + knownArtistRelation > 0) reasons.push("enchaînement d’artistes déjà validé");
+    if (smoothedCompletionRate >= 0.72) reasons.push("bon taux de lecture jusqu’au bout");
+    if (candidate.voteCount >= 2) reasons.push("reçoit régulièrement des votes");
+    if (hourRate >= 0.62 && combinedHourSamples > 0) reasons.push(`fonctionne bien autour de ${String(currentHour).padStart(2, "0")} h`);
+    if (popularityPart >= 10) reasons.push("titre populaire dans l’historique MixParty");
+    if (!reasons.length) reasons.push("meilleur équilibre disponible avec les données actuelles");
+
+    recommendations.push({
+      videoId: candidate.videoId,
+      title: candidate.title,
+      thumbnail: candidate.thumbnail,
+      artistName: candidate.artistName || "Artiste inconnu",
+      durationSeconds: candidate.durationSeconds,
+      score,
+      confidence,
+      breakdown: {
+        transition: Math.round(transitionPart),
+        artistAffinity: Math.round(artistAffinityPart),
+        popularity: Math.round(popularityPart),
+        completion: Math.round(completionPart),
+        votes: Math.round(votesPart),
+        hourFit: Math.round(hourFitPart),
+        freshness: Math.round(freshnessPart),
+        penalties: Math.round(penalties),
+      },
+      reasons: reasons.slice(0, 4),
+      evidence: {
+        searches: Number(candidate.searchCount || 0),
+        additions: Number(candidate.addedCount || 0),
+        plays: Number(candidate.playedCount || 0),
+        votes: Number(candidate.voteCount || 0),
+        completed,
+        skipped,
+        removed: outcomes.removed,
+        directTransitions: directTransitionCount,
+        artistTransitions: artistTransitionCount + knownArtistRelation,
+        hourSamples: combinedHourSamples,
+      },
+    });
+  }
+
+  return recommendations
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      if (b.confidence !== a.confidence) return b.confidence - a.confidence;
+      return b.evidence.plays + b.evidence.votes - (a.evidence.plays + a.evidence.votes);
+    })
+    .slice(0, Math.max(1, Math.min(Number(requestedLimit) || 10, 25)));
+}
+
 function cleanOldParties(){
 
   const now = Date.now();
@@ -2830,6 +3245,47 @@ app.get("/partybrain/graph", (_req, res) => {
   const allowed = new Set(nodes.map((node) => node.id));
   const edges = (stats.topArtistRelations || []).filter((edge:any) => allowed.has(edge.fromKey) && allowed.has(edge.toKey));
   res.json({ nodes, edges, updatedAt: musicBrain.updatedAt });
+});
+
+
+app.get("/party/:code/partybrain/recommendations", (req, res) => {
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  const limit = Math.max(1, Math.min(Number(req.query.limit || 10), 25));
+  const recommendations = buildPartyBrainRecommendationScores(party, limit);
+
+  return res.json({
+    partyCode: party.code,
+    generatedAt: Date.now(),
+    currentSong: party.currentSong
+      ? {
+          videoId: party.currentSong.videoId,
+          title: party.currentSong.title,
+          artistName: party.currentSong.artistName,
+        }
+      : null,
+    queueLength: party.songs.filter((song) => !song.played).length,
+    scoringVersion: "partybrain-score-v1",
+    weights: {
+      transition: 28,
+      artistAffinity: 18,
+      popularity: 15,
+      completion: 14,
+      votes: 10,
+      hourFit: 7,
+      freshness: 8,
+      penalties: "jusqu’à -44",
+    },
+    recommendations,
+    learningState: recommendations.length
+      ? recommendations[0].confidence >= 65
+        ? "trained"
+        : recommendations[0].confidence >= 40
+          ? "learning"
+          : "early_learning"
+      : "no_candidate",
+  });
 });
 
 app.get("/partybrain/intelligence/events/coverage", (_req, res) => {
