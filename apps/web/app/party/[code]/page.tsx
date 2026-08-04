@@ -1458,7 +1458,7 @@ export default function PartyPage() {
                             </div>
                           )}
                           <div className="relative aspect-video w-full overflow-hidden rounded-[22px] bg-black">
-                            <div ref={setPlayerHostElement} className="absolute inset-0 h-full w-full" />
+                            <div ref={setPlayerHostElement} className="mixparty-youtube-host absolute inset-0 h-full w-full min-w-0 max-w-full overflow-hidden" />
                             {youtubeError !== null && (
                               <div className="absolute inset-x-3 bottom-3 z-10 rounded-2xl border border-red-400/30 bg-red-950/90 p-3 text-sm shadow-2xl backdrop-blur">
                                 <p className="font-black text-red-200">Erreur YouTube {youtubeError}</p>
