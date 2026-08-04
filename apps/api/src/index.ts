@@ -2198,7 +2198,7 @@ app.post("/party/:code/next",(req,res)=>{
 
 
 
-  const nextSong = party.songs
+  let nextSong = party.songs
 .filter(song=>!song.played)
 .sort((a,b)=>{
 
@@ -2215,12 +2215,78 @@ app.post("/party/:code/next",(req,res)=>{
 
 
 
+  let partyBrainRelayUsed = false;
+
   if(!nextSong){
+    const [bestRecommendation] = buildPartyBrainRecommendationScores(party, 1);
 
-    return res.status(400).json({
-      error:"Plus de chansons disponibles"
+    const minimumScore = Number(
+      process.env.PARTYBRAIN_RELAY_MIN_SCORE || 55
+    );
+
+    const minimumConfidence = Number(
+      process.env.PARTYBRAIN_RELAY_MIN_CONFIDENCE || 30
+    );
+
+    const recommendationAccepted = Boolean(
+      bestRecommendation &&
+      bestRecommendation.score >= minimumScore &&
+      bestRecommendation.confidence >= minimumConfidence
+    );
+
+    if(!recommendationAccepted || !bestRecommendation){
+      return res.status(400).json({
+        error:"Plus de chansons disponibles",
+        partyBrain: {
+          relayAttempted: true,
+          relayUsed: false,
+          reason: bestRecommendation
+            ? "La meilleure recommandation n’atteint pas les seuils de sécurité."
+            : "Aucune recommandation PartyBrain disponible.",
+          thresholds: {
+            minimumScore,
+            minimumConfidence
+          },
+          recommendation: bestRecommendation || null
+        }
+      });
+    }
+
+    const learnedSong = musicBrain.songs[bestRecommendation.videoId];
+
+    nextSong = {
+      title: bestRecommendation.title,
+      videoId: bestRecommendation.videoId,
+      thumbnail: bestRecommendation.thumbnail || learnedSong?.thumbnail || "",
+      durationSeconds: bestRecommendation.durationSeconds || learnedSong?.durationSeconds,
+      votes: 0,
+      addedBy: "PartyBrain",
+      voters: [],
+      played: false,
+      addedAt: Date.now(),
+      sourceQuery: "partybrain-auto-relay",
+      artistName: bestRecommendation.artistName,
+      featuredArtistNames: [],
+      albumName: undefined,
+      metadataSource: learnedSong?.metadataSource,
+      metadataConfidence: learnedSong?.metadataConfidence,
+      suggestionPool: []
+    };
+
+    party.songs.push(nextSong);
+    partyBrainRelayUsed = true;
+
+    recordMusicBrainAddition(nextSong);
+    recordPartyEvent(party, "SONG_ADDED", {
+      song: songEventSnapshot(party, nextSong),
+      source: "partybrain_suggestion",
+      context: {
+        sourceQuery: "partybrain-auto-relay",
+        recommendationScore: bestRecommendation.score,
+        recommendationConfidence: bestRecommendation.confidence,
+        recommendationReasons: bestRecommendation.reasons.join(" | ")
+      }
     });
-
   }
 
 
@@ -2234,7 +2300,13 @@ app.post("/party/:code/next",(req,res)=>{
   updateParty(party);
 
 
-  res.json(toPublicParty(party));
+  res.json({
+    ...toPublicParty(party),
+    partyBrain: {
+      relayUsed: partyBrainRelayUsed,
+      source: partyBrainRelayUsed ? "partybrain_suggestion" : "user_queue"
+    }
+  });
 
 });
 // Socket connexion
@@ -3287,6 +3359,66 @@ app.get("/party/:code/partybrain/recommendations", (req, res) => {
       : "no_candidate",
   });
 });
+
+// Retourne uniquement le meilleur morceau PartyBrain pour une soirée.
+// Cette route est volontairement sans effet de bord :
+// elle ne modifie ni la file, ni le morceau courant, ni l'historique.
+app.get("/party/:code/partybrain/best-recommendation", (req, res) => {
+  const party = findParty(req.params.code);
+
+  if (!party) {
+    return res.status(404).json({
+      error: "Soirée introuvable",
+    });
+  }
+
+  const recommendations = buildPartyBrainRecommendationScores(party, 1);
+  const bestRecommendation = recommendations[0] || null;
+
+  if (!bestRecommendation) {
+    return res.status(404).json({
+      error: "Aucune recommandation disponible",
+      partyCode: party.code,
+      scoringVersion: "partybrain-score-v1",
+      reason: "PartyBrain ne possède pas encore de morceau compatible hors de la file actuelle.",
+    });
+  }
+
+  const minimumScore = Math.max(
+    0,
+    Math.min(100, Number(req.query.minimumScore || 0))
+  );
+
+  const minimumConfidence = Math.max(
+    0,
+    Math.min(100, Number(req.query.minimumConfidence || 0))
+  );
+
+  const accepted =
+    bestRecommendation.score >= minimumScore &&
+    bestRecommendation.confidence >= minimumConfidence;
+
+  return res.json({
+    partyCode: party.code,
+    generatedAt: Date.now(),
+    scoringVersion: "partybrain-score-v1",
+    accepted,
+    thresholds: {
+      minimumScore,
+      minimumConfidence,
+    },
+    currentSong: party.currentSong
+      ? {
+          videoId: party.currentSong.videoId,
+          title: party.currentSong.title,
+          artistName: party.currentSong.artistName,
+        }
+      : null,
+    queueLength: party.songs.filter((song) => !song.played).length,
+    recommendation: bestRecommendation,
+  });
+});
+
 
 app.get("/partybrain/intelligence/events/coverage", (_req, res) => {
   const events = readPartyEvents(50000);
