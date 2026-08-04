@@ -1462,6 +1462,61 @@ export default function PartyPage() {
               ) : (
                 <div className="v53-player-empty"><div><Music4 className="h-7 w-7" /></div><h2>Aucun morceau en lecture</h2><p>Ajoute des musiques à la file puis lance le DJ.</p><button onClick={nextSong} className="party-action party-action--purple group mt-5 rounded-2xl px-6 py-3"><span className="party-action__shine" aria-hidden="true" /><span className="party-action__content flex items-center justify-center gap-2"><Play className="h-4 w-4 fill-current" />Lancer le DJ</span></button></div>
               )}
+
+              <div className="mt-4 border-t border-white/[0.07] pt-4 md:hidden">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-purple-300">
+                      À suivre
+                    </p>
+                    <h3 className="mt-1 text-base font-black">Prochaines musiques</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => switchMobileTab("queue")}
+                    className="rounded-full border border-purple-400/15 bg-purple-500/10 px-3 py-1.5 text-[11px] font-black text-purple-200"
+                  >
+                    Voir la file
+                  </button>
+                </div>
+
+                {queue.length > 0 ? (
+                  <div className="space-y-2">
+                    {queue.slice(0, 4).map((song, index) => (
+                      <button
+                        key={`playback-next-${song.videoId}-${song.addedAt}`}
+                        type="button"
+                        onClick={() => switchMobileTab("queue")}
+                        className="flex w-full items-center gap-3 rounded-2xl border border-white/[0.07] bg-black/20 p-2.5 text-left"
+                      >
+                        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-purple-400/15 bg-purple-500/10 text-xs font-black text-purple-200">
+                          {index + 1}
+                        </span>
+                        <img
+                          src={song.thumbnail}
+                          alt=""
+                          className="h-12 w-12 shrink-0 rounded-xl object-cover"
+                        />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-sm font-black text-white">
+                            {song.title}
+                          </span>
+                          <span className="mt-0.5 block truncate text-xs text-white/40">
+                            {song.artistName || "Artiste MixParty"}
+                          </span>
+                        </span>
+                        <span className="shrink-0 rounded-full border border-fuchsia-400/15 bg-fuchsia-500/10 px-2.5 py-1 text-xs font-black text-fuchsia-200">
+                          {song.votes} vote{song.votes > 1 ? "s" : ""}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-white/10 bg-black/15 px-4 py-5 text-center text-sm text-white/40">
+                    Aucun morceau en attente.
+                  </div>
+                )}
+              </div>
             </section>
 
             <section className={`${activeMobileTab === "queue" ? "block" : "hidden"} v53-queue-panel premium-glass-card md:block`}>
@@ -1546,7 +1601,7 @@ export default function PartyPage() {
 
                         </div>
 
-                        <div className="v53-queue-actions">
+                        <div className="v53-queue-actions hidden sm:flex">
 
                           <div className="v53-vote-score">
 
@@ -2076,80 +2131,99 @@ export default function PartyPage() {
 
             </section>
 
-            <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} premium-glass-card overflow-hidden rounded-[24px] border border-orange-400/20 bg-gradient-to-br from-orange-500/15 via-pink-500/10 to-purple-600/10 p-4 backdrop-blur-xl md:block md:rounded-[30px] md:p-5`}>
-
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-orange-400/20 bg-orange-400/10 shadow-[0_0_28px_rgba(251,146,60,0.12)]">
-                  <Headphones className="h-5 w-5 text-orange-300" />
-                </div>
-
-{djModeActive && (
-                  <span className="inline-flex items-center gap-2 rounded-full border border-emerald-400/20 bg-emerald-400/10 px-3 py-1.5 text-xs font-black text-emerald-300">
-                    <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-                    Mode DJ actif
-                  </span>
-                )}
-              </div>
-
-              <h2 className="mt-4 text-xl font-black">Mode DJ permanent</h2>
-              <p className="mt-2 text-sm leading-relaxed text-white/45">
-                Garde l’écran allumé, protège la diffusion et reconnecte automatiquement la soirée.
-              </p>
-
-              {djModeActive ? (
-                <>
-                  <div className="mt-5 grid grid-cols-2 gap-2 text-xs">
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                      <div className="flex items-center gap-2 text-white/55">
-                        {networkOnline ? <Wifi className="h-4 w-4 text-emerald-300" /> : <WifiOff className="h-4 w-4 text-red-300" />}
-                        Réseau
-                      </div>
-                      <p className={`mt-2 font-black ${networkOnline ? "text-emerald-300" : "text-red-300"}`}>
-                        {networkOnline ? "Connecté" : "Hors ligne"}
-                      </p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                      <div className="flex items-center gap-2 text-white/55"><Battery className="h-4 w-4 text-orange-300" /> Batterie</div>
-                      <p className="mt-2 font-black text-white">{batteryLevel === null ? "Indisponible" : `${batteryLevel} %`}</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                      <div className="flex items-center gap-2 text-white/55"><Sparkles className="h-4 w-4 text-purple-300" /> Écran</div>
-                      <p className={`mt-2 font-black ${wakeLockActive ? "text-emerald-300" : "text-amber-300"}`}>{wakeLockActive ? "Maintenu allumé" : "Wake Lock indisponible"}</p>
-                    </div>
-                    <div className="rounded-2xl border border-white/10 bg-black/20 p-3">
-                      <div className="flex items-center gap-2 text-white/55"><Radio className="h-4 w-4 text-pink-300" /> Durée</div>
-                      <p className="mt-2 font-black text-white">{String(Math.floor(djModeElapsed / 3600000)).padStart(2, "0")}:{String(Math.floor((djModeElapsed % 3600000) / 60000)).padStart(2, "0")}:{String(Math.floor((djModeElapsed % 60000) / 1000)).padStart(2, "0")}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <button type="button" onClick={resumePlayback} className="rounded-2xl border border-white/10 bg-white/[0.07] px-3 py-3 text-sm font-black transition hover:bg-white/[0.12]">
-                      <span className="flex items-center justify-center gap-2"><RefreshCw className="h-4 w-4" /> Reprendre</span>
-                    </button>
-                    <button type="button" onClick={activateTvMode} className="v55-tv-launch rounded-2xl border border-purple-300/25 bg-gradient-to-r from-purple-500/20 via-pink-500/15 to-orange-400/15 px-3 py-3 text-sm font-black transition hover:border-white/25">
-                      <span className="flex items-center justify-center gap-2"><Expand className="h-4 w-4" /> Mode TV</span>
-                    </button>
-                  </div>
-
-                  <button type="button" onClick={deactivateDjMode} className="mt-3 w-full rounded-2xl border border-red-400/20 bg-red-400/10 px-5 py-3 text-sm font-black text-red-200 transition hover:bg-red-400/15">
-                    Désactiver le mode DJ
-                  </button>
-                </>
-              ) : (
-                <button
-                  type="button"
-                  onClick={activateDjMode}
-                  disabled={!isPlaybackController}
-                  className="party-action party-action--orange group mt-5 w-full rounded-2xl px-5 py-4 disabled:cursor-not-allowed disabled:opacity-45"
+            <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} premium-glass-card overflow-hidden rounded-[22px] border p-3 backdrop-blur-xl transition md:block md:rounded-[26px] md:p-4 ${
+              djModeActive
+                ? "border-emerald-400/25 bg-emerald-500/[0.08]"
+                : "border-white/10 bg-white/[0.035]"
+            }`}>
+              <button
+                type="button"
+                onClick={djModeActive ? deactivateDjMode : activateDjMode}
+                disabled={!djModeActive && !isPlaybackController}
+                className={`flex w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition disabled:cursor-not-allowed disabled:opacity-45 ${
+                  djModeActive
+                    ? "border-emerald-400/25 bg-emerald-500/15 text-emerald-100"
+                    : "border-white/10 bg-black/20 text-white"
+                }`}
+              >
+                <span
+                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${
+                    djModeActive
+                      ? "bg-emerald-400/15 text-emerald-300"
+                      : "bg-orange-400/10 text-orange-300"
+                  }`}
                 >
-                  <span className="party-action__shine" aria-hidden="true" />
-                  <span className="party-action__content flex items-center justify-center gap-2">
-                    <span className="party-action__icon"><Headphones className="h-4 w-4" /></span>
-                    {isPlaybackController ? "Activer le mode DJ" : "Disponible sur l’appareil DJ"}
-                  </span>
-                </button>
-              )}
+                  <Headphones className="h-5 w-5" />
+                </span>
 
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-black">
+                    {djModeActive
+                      ? "Mode DJ activé"
+                      : isPlaybackController
+                        ? "Activer le mode DJ"
+                        : "Disponible sur l’appareil DJ"}
+                  </span>
+                  <span className="mt-0.5 block text-xs leading-5 text-white/45">
+                    {djModeActive
+                      ? "L’écran reste allumé pendant la diffusion."
+                      : "Garde ton écran allumé pendant toute la soirée."}
+                  </span>
+                </span>
+
+                <span
+                  className={`h-3 w-3 shrink-0 rounded-full ${
+                    djModeActive
+                      ? "animate-pulse bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,.85)]"
+                      : "bg-white/20"
+                  }`}
+                />
+              </button>
+
+              {djModeActive && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black ${
+                    networkOnline
+                      ? "border-emerald-400/15 bg-emerald-400/10 text-emerald-300"
+                      : "border-red-400/15 bg-red-400/10 text-red-300"
+                  }`}>
+                    {networkOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+                    {networkOnline ? "Connecté" : "Hors ligne"}
+                  </span>
+
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-[10px] font-black text-white/55">
+                    <Battery className="h-3 w-3" />
+                    {batteryLevel === null ? "Batterie —" : `${batteryLevel} %`}
+                  </span>
+
+                  <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black ${
+                    wakeLockActive
+                      ? "border-emerald-400/15 bg-emerald-400/10 text-emerald-300"
+                      : "border-amber-400/15 bg-amber-400/10 text-amber-300"
+                  }`}>
+                    <Sparkles className="h-3 w-3" />
+                    {wakeLockActive ? "Écran maintenu" : "Wake Lock indisponible"}
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={resumePlayback}
+                    className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.06] px-3 py-1.5 text-[10px] font-black text-white/70"
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    Reprendre
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={activateTvMode}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-purple-400/15 bg-purple-500/10 px-3 py-1.5 text-[10px] font-black text-purple-200"
+                  >
+                    <Expand className="h-3 w-3" />
+                    Mode TV
+                  </button>
+                </div>
+              )}
             </section>
 
           </aside>
