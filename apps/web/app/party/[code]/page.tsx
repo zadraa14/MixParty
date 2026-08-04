@@ -1528,7 +1528,7 @@ export default function PartyPage() {
 
                         </div>
 
-                        <div className="v53-queue-actions hidden sm:flex">
+                        <div className="v53-queue-actions !hidden sm:!flex">
 
                           <div className="v53-vote-score">
 
