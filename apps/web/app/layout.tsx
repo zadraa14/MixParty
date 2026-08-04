@@ -6,6 +6,7 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import InstallMixParty from "../components/InstallMixParty";
+import ProfileOnboarding from "../components/ProfileOnboarding";
 
 export const viewport: Viewport = {
   themeColor: "#090711",
@@ -60,6 +61,7 @@ export default function RootLayout({
   className={`${geistSans.variable} ${geistMono.variable} ${exo2.variable} h-full antialiased`}
 >
       <body suppressHydrationWarning className="flex min-h-full flex-col">
+        <ProfileOnboarding />
         {children}
         <InstallMixParty />
       </body>
