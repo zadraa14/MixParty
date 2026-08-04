@@ -1089,27 +1089,56 @@ function musicBrainStats() {
 function cleanOldParties(){
 
   const now = Date.now();
+  const keptParties: Party[] = [];
 
-  parties = parties.filter((party)=>{
-
-    if(!party.createdAt){
+  for (const party of parties) {
+    if (!party.createdAt) {
       party.createdAt = now;
     }
 
-    return now - party.createdAt < 24 * 60 * 60 * 1000;
+    const expired = now - party.createdAt >= 24 * 60 * 60 * 1000;
+    if (!expired) {
+      keptParties.push(party);
+      continue;
+    }
 
-  });
+    if (party.currentSong) {
+      finalizePlayback(party, "song_change");
+    }
 
+    recordPartyEvent(party, "PARTY_ENDED", {
+      context: {
+        reason: "expired_24h",
+        songsPlayed: party.history?.length || 0,
+        songsQueued: party.songs?.filter((song) => !song.played).length || 0,
+      },
+    });
 
+    playbackTelemetry.delete(party.code);
+  }
+
+  parties = keptParties;
   saveParties();
 
 }
 
 function pruneOfflineParticipants(party: Party) {
   const cutoff = Date.now() - 30_000;
-  party.participants = (party.participants || []).filter(
+  const currentParticipants = party.participants || [];
+  const offlineParticipants = currentParticipants.filter(
+    (participant) => Number(participant.lastSeen || 0) < cutoff
+  );
+
+  party.participants = currentParticipants.filter(
     (participant) => Number(participant.lastSeen || 0) >= cutoff
   );
+
+  for (const participant of offlineParticipants) {
+    recordPartyEvent(party, "PARTICIPANT_LEFT", {
+      actorHash: anonymizeActor(participant.id),
+      context: { reason: "presence_timeout" },
+    });
+  }
 }
 
 function toPublicParty(party: Party) {
@@ -1283,12 +1312,21 @@ app.post("/party/:code/presence", (req, res) => {
   if (!id || !name) return res.status(400).json({ error: "Participant invalide" });
 
   const participant = party.participants.find((item) => item.id === id);
+  const isNewParticipant = !participant;
+
   if (participant) {
     participant.name = name;
     participant.avatar = avatar || participant.avatar;
     participant.lastSeen = Date.now();
   } else {
     party.participants.push({ id, name, avatar, lastSeen: Date.now() });
+  }
+
+  if (isNewParticipant) {
+    recordPartyEvent(party, "PARTICIPANT_JOINED", {
+      actorHash: anonymizeActor(id),
+      context: { entryPoint: "presence" },
+    });
   }
 
   updateParty(party);
@@ -1514,6 +1552,151 @@ console.log("Résultat includes :", song.voters.includes(name));
 
 
 
+
+// Retirer son vote d'une chanson
+app.post("/party/:code/song/:index/downvote", (req, res) => {
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  const index = Number(req.params.index);
+  const song = party.songs[index];
+  if (!song) return res.status(404).json({ error: "Chanson introuvable" });
+
+  const name = String(req.body.name || "").trim().toLowerCase();
+  if (!name) return res.status(400).json({ error: "Nom obligatoire" });
+
+  const voterIndex = song.voters.indexOf(name);
+  if (voterIndex < 0) {
+    return res.status(400).json({ error: "Tu n’as pas encore voté pour cette chanson" });
+  }
+
+  song.voters.splice(voterIndex, 1);
+  song.votes = Math.max(0, Number(song.votes || 0) - 1);
+
+  recordPartyEvent(party, "SONG_DOWNVOTED", {
+    song: songEventSnapshot(party, song),
+    actorHash: anonymizeActor(name),
+    context: { voteDelta: -1 },
+  });
+
+  updateParty(party);
+  return res.json(toPublicParty(party));
+});
+
+// Supprimer une chanson de la file
+app.delete("/party/:code/song/:index", (req, res) => {
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  const index = Number(req.params.index);
+  const song = party.songs[index];
+  if (!song) return res.status(404).json({ error: "Chanson introuvable" });
+
+  if (party.currentSong?.videoId === song.videoId && party.currentSong?.addedAt === song.addedAt) {
+    finalizePlayback(party, "song_change");
+    party.currentSong = null;
+  }
+
+  const snapshot = songEventSnapshot(party, song);
+  party.songs.splice(index, 1);
+
+  recordPartyEvent(party, "SONG_REMOVED", {
+    song: snapshot,
+    actorHash: anonymizeActor(req.body?.actor || req.query.actor),
+    context: {
+      reason: String(req.body?.reason || req.query.reason || "manual_remove"),
+      wasPlayed: Boolean(song.played),
+    },
+  });
+
+  updateParty(party);
+  return res.json(toPublicParty(party));
+});
+
+// Réordonner manuellement la file
+app.post("/party/:code/reorder", (req, res) => {
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  const orderedIds = Array.isArray(req.body.videoIds)
+    ? req.body.videoIds.map(String)
+    : [];
+
+  if (!orderedIds.length) {
+    return res.status(400).json({ error: "Ordre de file obligatoire" });
+  }
+
+  const unplayed = party.songs.filter((song) => !song.played);
+  const played = party.songs.filter((song) => song.played);
+  const byId = new Map(unplayed.map((song) => [song.videoId, song]));
+  const reordered: Song[] = [];
+
+  for (const videoId of orderedIds) {
+    const song = byId.get(videoId);
+    if (!song) continue;
+    reordered.push(song);
+    byId.delete(videoId);
+  }
+
+  reordered.push(...byId.values());
+
+  const baseTime = Date.now();
+  reordered.forEach((song, position) => {
+    song.addedAt = baseTime + position;
+  });
+
+  party.songs = [...played, ...reordered];
+
+  recordPartyEvent(party, "QUEUE_REORDERED", {
+    actorHash: anonymizeActor(req.body.actor),
+    context: {
+      queueLength: reordered.length,
+      orderedVideoIds: reordered.map((song) => song.videoId).join(","),
+    },
+  });
+
+  updateParty(party);
+  return res.json(toPublicParty(party));
+});
+
+// Terminer explicitement une soirée
+app.post("/party/:code/end", (req, res) => {
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  const providedCreatorToken = String(
+    req.body.creatorToken ||
+    req.headers["x-mixparty-creator-token"] ||
+    ""
+  );
+
+  if (!providedCreatorToken || providedCreatorToken !== party.creatorToken) {
+    return res.status(403).json({ error: "Seul le créateur peut terminer la soirée" });
+  }
+
+  if (party.currentSong) {
+    finalizePlayback(party, "song_change");
+  }
+
+  recordPartyEvent(party, "PARTY_ENDED", {
+    actorHash: anonymizeActor(req.body.actor),
+    context: {
+      reason: "creator_ended",
+      songsPlayed: party.history?.length || 0,
+      songsQueued: party.songs?.filter((song) => !song.played).length || 0,
+      totalParticipants: party.participants?.length || 0,
+    },
+  });
+
+  playbackTelemetry.delete(party.code);
+  parties = parties.filter((item) => item.code !== party.code);
+  saveParties();
+  io.emit("party_ended", { code: party.code });
+
+  return res.json({ ok: true, code: party.code });
+});
+
+
 // Lire une chanson
 app.post("/party/:code/play/:index",(req,res)=>{
 
@@ -1552,6 +1735,7 @@ app.post("/party/:code/play/:index",(req,res)=>{
 
   const previousSong = party.currentSong;
   if (previousSong && previousSong.videoId !== song.videoId) finalizePlayback(party, "song_change");
+  song.played = true;
   party.currentSong = song;
   recordMusicBrainPlay(song, previousSong);
   startPlaybackTelemetry(party, song);
@@ -2647,6 +2831,42 @@ app.get("/partybrain/graph", (_req, res) => {
   const edges = (stats.topArtistRelations || []).filter((edge:any) => allowed.has(edge.fromKey) && allowed.has(edge.toKey));
   res.json({ nodes, edges, updatedAt: musicBrain.updatedAt });
 });
+
+app.get("/partybrain/intelligence/events/coverage", (_req, res) => {
+  const events = readPartyEvents(50000);
+  const expected: PartyIntelligenceEventType[] = [
+    "PARTY_CREATED",
+    "PARTICIPANT_JOINED",
+    "PARTICIPANT_LEFT",
+    "SONG_SEARCHED",
+    "SONG_ADDED",
+    "SONG_VOTED",
+    "SONG_DOWNVOTED",
+    "SONG_PLAY_STARTED",
+    "SONG_PROGRESS",
+    "SONG_PLAY_COMPLETED",
+    "SONG_SKIPPED",
+    "SONG_REMOVED",
+    "QUEUE_REORDERED",
+    "PARTY_ENDED",
+  ];
+
+  const counts = Object.fromEntries(expected.map((event) => [event, 0])) as Record<PartyIntelligenceEventType, number>;
+  for (const entry of events) {
+    if (entry.event in counts) counts[entry.event] += 1;
+  }
+
+  return res.json({
+    ok: true,
+    totalEvents: events.length,
+    coverage: expected.map((event) => ({
+      event,
+      count: counts[event],
+      collected: counts[event] > 0,
+    })),
+  });
+});
+
 app.get("/partybrain/export", (_req, res) => {
   res.setHeader("Content-Disposition", "attachment; filename=partybrain-export.json");
   return res.json(musicBrain);
