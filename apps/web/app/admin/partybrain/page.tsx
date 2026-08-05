@@ -96,6 +96,16 @@ type Stats = {
     youtubeCalls: number;
     quotaSaved: number;
   };
+  covers: {
+  downloaded: number;
+  pending: number;
+  active: number;
+  exactMatches: number;
+  artistFallback: number;
+  notFound: number;
+  errors: number;
+  unrequested: number;
+};
   topArtists: Array<{
     key: string;
     name: string;
@@ -325,7 +335,97 @@ export default function MusicBrainAdminPage() {
                 </div>
               </div>
             </section>
+<section className="mb-7 rounded-[28px] border border-cyan-400/20 bg-gradient-to-br from-cyan-500/10 via-violet-500/10 to-fuchsia-500/10 p-5 backdrop-blur-xl sm:p-7">
+  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div>
+      <p className="text-xs font-black uppercase tracking-[.24em] text-cyan-300">
+        Bibliothèque visuelle
+      </p>
 
+      <h2 className="mt-2 text-2xl font-black">
+        HD Cover System
+      </h2>
+
+      <p className="mt-1 text-sm text-white/50">
+        Suivi des recherches et des jaquettes enregistrées par PartyBrain.
+      </p>
+    </div>
+
+    <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-sm font-bold text-white/60">
+      {number.format(stats.covers.downloaded)} jaquette(s) disponible(s)
+    </div>
+  </div>
+
+  <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    {[
+      {
+        label: "Jaquettes téléchargées",
+        value: stats.covers.downloaded,
+        detail: "Images disponibles",
+        className: "text-emerald-300",
+      },
+      {
+        label: "En attente",
+        value: stats.covers.pending,
+        detail: "Recherche programmée",
+        className: "text-amber-300",
+      },
+      {
+        label: "Téléchargements actifs",
+        value: stats.covers.active,
+        detail: "Recherche en cours",
+        className: "text-cyan-300",
+      },
+      {
+        label: "Correspondances exactes",
+        value: stats.covers.exactMatches,
+        detail: "Artiste et titre validés",
+        className: "text-fuchsia-300",
+      },
+      {
+        label: "Secours artiste",
+        value: stats.covers.artistFallback,
+        detail: "Pochette liée à l’artiste",
+        className: "text-violet-300",
+      },
+      {
+        label: "Introuvables",
+        value: stats.covers.notFound,
+        detail: "Aucun résultat fiable",
+        className: "text-white/65",
+      },
+      {
+        label: "Erreurs",
+        value: stats.covers.errors,
+        detail: "Recherche à réessayer",
+        className: "text-red-300",
+      },
+      {
+        label: "Pas encore recherchés",
+        value: stats.covers.unrequested,
+        detail: "Morceaux à traiter",
+        className: "text-white/45",
+      },
+    ].map((item) => (
+      <article
+        key={item.label}
+        className="rounded-2xl border border-white/10 bg-black/20 p-4"
+      >
+        <p className="text-[10px] font-black uppercase tracking-[.16em] text-white/40">
+          {item.label}
+        </p>
+
+        <p className={`mt-3 text-3xl font-black ${item.className}`}>
+          {number.format(item.value)}
+        </p>
+
+        <p className="mt-1 text-xs text-white/35">
+          {item.detail}
+        </p>
+      </article>
+    ))}
+  </div>
+</section>
             <section className="mb-7 rounded-[28px] border border-cyan-400/20 bg-gradient-to-br from-cyan-500/10 via-violet-500/10 to-fuchsia-500/10 p-5 backdrop-blur-xl sm:p-7">
               <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                 <div className="max-w-2xl">

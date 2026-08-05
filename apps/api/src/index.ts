@@ -87,12 +87,6 @@ type Song = {
   albumName?:string;
   metadataSource?:MusicMetadataSource;
   metadataConfidence?:number;
-  coverStatus?: CoverStatus;
-  coverUrl?: string;
-  coverSource?: CoverSource;
-  coverWidth?: number;
-  coverHeight?: number;
-  coverLastCheckedAt?: number;
 };
 
 
@@ -623,7 +617,6 @@ type Party = {
   createdAt: number;
   creatorToken: string;
   partyBrainAutoRelayEnabled: boolean;
-  showYoutubeClip: boolean;
 };
 
 let parties: Party[] = [];
@@ -644,7 +637,6 @@ if(fs.existsSync(dataFilePath)){
     );
     party.creatorToken = typeof party.creatorToken === "string" && party.creatorToken ? party.creatorToken : randomUUID();
     party.partyBrainAutoRelayEnabled = Boolean(party.partyBrainAutoRelayEnabled);
-    party.showYoutubeClip = Boolean(party.showYoutubeClip);
   });
 
   cleanOldParties();
@@ -943,36 +935,58 @@ async function searchAppleCover(song: MusicBrainSong): Promise<CoverLookupResult
   };
 }
 
-async function searchAppleArtistFallbackCover(song: MusicBrainSong): Promise<CoverLookupResult | null> {
-  const term = encodeURIComponent(song.artistName.trim());
-  if (!term) return null;
+async function searchAppleArtistFallback(song: MusicBrainSong): Promise<CoverLookupResult | null> {
+  const artistName = String(song.artistName || "").trim();
+  if (!artistName) return null;
+
+  const term = encodeURIComponent(artistName);
   const country = encodeURIComponent(process.env.ITUNES_STOREFRONT || "FR");
   const url = `https://itunes.apple.com/search?term=${term}&country=${country}&media=music&entity=song&limit=25`;
   const data = await fetchJsonWithTimeout<{ results?: Array<Record<string, any>> }>(url);
   const results = Array.isArray(data?.results) ? data!.results! : [];
 
-  const candidates = results
-    .map((item) => ({
-      item,
-      artistScore: coverTextSimilarity(song.artistName, String(item.artistName || "")),
-      albumScore: song.albumName ? coverTextSimilarity(song.albumName, String(item.collectionName || "")) : 0,
-    }))
-    .filter((candidate) => candidate.artistScore >= 0.82)
-    .sort((a, b) => (b.artistScore + b.albumScore * 0.15) - (a.artistScore + a.albumScore * 0.15));
+  let best: { item: Record<string, any>; score: number } | null = null;
 
-  for (const candidate of candidates) {
-    const artwork = appleHdArtworkUrl(String(candidate.item.artworkUrl100 || candidate.item.artworkUrl60 || ""));
+  for (const item of results) {
+    const candidateArtist = String(item.artistName || "");
+    const artistScore = coverTextSimilarity(artistName, candidateArtist);
+
+    // Le secours artiste doit rester strict : on refuse les artistes seulement proches.
+    if (artistScore < 0.82) continue;
+
+    const artwork = String(item.artworkUrl100 || item.artworkUrl60 || "");
     if (!artwork) continue;
-    return {
-      url: artwork,
-      source: "APPLE_ARTIST_FALLBACK",
-      width: 1200,
-      height: 1200,
-      confidence: Math.round(Math.min(88, candidate.artistScore * 100)),
-    };
+
+    const candidateTitle = String(item.trackName || "");
+    const titleScore = coverTextSimilarity(song.title, candidateTitle);
+    const collectionName = String(item.collectionName || "");
+    const albumScore = song.albumName
+      ? coverTextSimilarity(song.albumName, collectionName)
+      : 0;
+
+    // Une correspondance d’album connue est préférable. Sinon, on choisit
+    // simplement une pochette fiable appartenant exactement au même artiste.
+    const score = artistScore * 0.8 + albumScore * 0.15 + Math.min(titleScore, 0.25) * 0.05;
+
+    if (!best || score > best.score) {
+      best = { item, score };
+    }
   }
 
-  return null;
+  if (!best || best.score < 0.7) return null;
+
+  const artwork = appleHdArtworkUrl(
+    String(best.item.artworkUrl100 || best.item.artworkUrl60 || "")
+  );
+  if (!artwork) return null;
+
+  return {
+    url: artwork,
+    source: "APPLE_ARTIST_FALLBACK",
+    width: 1200,
+    height: 1200,
+    confidence: Math.round(Math.min(79, Math.max(55, best.score * 100))),
+  };
 }
 
 async function searchMusicBrainzCover(song: MusicBrainSong): Promise<CoverLookupResult | null> {
@@ -1062,12 +1076,15 @@ function queueHdCoverLookup(videoId: string) {
         await new Promise((resolve) => setTimeout(resolve, 1100));
       });
       await musicBrainzCoverQueue;
+
       if (musicBrainzResult) {
         persistCoverResult(videoId, musicBrainzResult, false);
         return;
       }
 
-      const artistFallback = await searchAppleArtistFallbackCover(learnedSong);
+      // Dernier secours visuel : une pochette fiable appartenant au même artiste.
+      // Elle est clairement identifiée comme fallback artiste pour l’administration.
+      const artistFallback = await searchAppleArtistFallback(learnedSong);
       persistCoverResult(videoId, artistFallback, false);
     } catch (error) {
       console.error("HD COVER LOOKUP ERROR", videoId, error);
@@ -1340,16 +1357,6 @@ function musicBrainStats() {
       quotaSaved: youtubeSearchStats.quotaSaved,
     },
     academy: academyDashboard(),
-    covers: {
-      downloaded: songs.filter((song) => song.coverStatus === "found" && Boolean(song.coverUrl)).length,
-      pending: songs.filter((song) => song.coverStatus === "pending").length,
-      activeDownloads: coverLookupsInFlight.size,
-      exactMatches: songs.filter((song) => song.coverStatus === "found" && ["APPLE_ITUNES", "MUSICBRAINZ_CAA"].includes(String(song.coverSource))).length,
-      artistFallbacks: songs.filter((song) => song.coverStatus === "found" && song.coverSource === "APPLE_ARTIST_FALLBACK").length,
-      notFound: songs.filter((song) => song.coverStatus === "not_found").length,
-      errors: songs.filter((song) => song.coverStatus === "error").length,
-      unrequested: songs.filter((song) => !song.coverStatus).length,
-    },
     topArtists,
     topSongs,
     topTransitions,
@@ -2166,9 +2173,7 @@ const party:Party = {
 
   creatorToken: randomUUID(),
 
-  partyBrainAutoRelayEnabled: false,
-
-  showYoutubeClip: false
+  partyBrainAutoRelayEnabled: false
 
 };
 
@@ -2721,24 +2726,6 @@ app.post("/party/:code/play/:index",(req,res)=>{
 
 
 });
-
-// Afficher ou masquer le clip YouTube dans la console DJ sans recréer le lecteur
-app.post("/party/:code/display/clip", (req, res) => {
-  const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
-
-  const providedCreatorToken = String(
-    req.body.creatorToken || req.headers["x-mixparty-creator-token"] || ""
-  );
-  if (!providedCreatorToken || providedCreatorToken !== party.creatorToken) {
-    return res.status(403).json({ error: "Seul le créateur peut modifier l’affichage du clip" });
-  }
-
-  party.showYoutubeClip = req.body.enabled === true;
-  updateParty(party);
-  return res.json(toPublicParty(party));
-});
-
 
 // Activer ou désactiver le relais automatique PartyBrain
 app.post("/party/:code/partybrain/auto-relay", (req, res) => {
