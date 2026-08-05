@@ -73,6 +73,7 @@ type Song = {
   title: string;
   videoId: string;
   thumbnail: string;
+  durationSeconds?: number;
   votes: number;
   addedBy: string;
   voters: string[];
@@ -94,6 +95,14 @@ type Song = {
 };
 
 type Participant = { id: string; name: string; avatar?: string };
+
+type DjInteraction = {
+  id: string;
+  kind: "join" | "vote" | "add";
+  name: string;
+  detail: string;
+  at: number;
+};
 
 const MIXPARTY_DEFAULT_COVER = "/branding/icon.png";
 
@@ -247,6 +256,8 @@ export default function PartyPage() {
   const [resumeRequired, setResumeRequired] = useState(false);
   const [playerHostElement, setPlayerHostElement] = useState<HTMLDivElement | null>(null);
   const [playerAudit, setPlayerAudit] = useState<Array<{ at: number; event: string; detail?: string }>>([]);
+  const [djInteractions, setDjInteractions] = useState<DjInteraction[]>([]);
+  const interactionSnapshotRef = useRef({ participants: new Set<string>(), songs: new Set<string>(), voters: new Set<string>() });
   const DEBUG_PLAYER = false;
   const wakeLockRef = useRef<any>(null);
   const playerRef = useRef<any>(null);
@@ -821,6 +832,19 @@ export default function PartyPage() {
     }
   }
 
+  function formatPlaybackTime(value: number) {
+    const safeValue = Math.max(0, Number.isFinite(value) ? value : 0);
+    return `${Math.floor(safeValue / 60)}:${String(Math.floor(safeValue % 60)).padStart(2, "0")}`;
+  }
+
+  function seekPlayback(value: number) {
+    if (!isPlaybackController || !playerRef.current) return;
+    const duration = Number(playerRef.current.getDuration?.() || tvPlayback.duration || 0);
+    const nextTime = Math.max(0, Math.min(duration || value, value));
+    playerRef.current.seekTo?.(nextTime, true);
+    setTvPlayback((current) => ({ ...current, time: nextTime, duration: duration || current.duration }));
+  }
+
   async function copyInvitation() {
     if (!shareUrl) return;
 
@@ -1096,8 +1120,60 @@ export default function PartyPage() {
   }
 
   useEffect(() => {
-    if (!tvModeActive) return;
+    if (!party) return;
 
+    const snapshot = interactionSnapshotRef.current;
+    const nextInteractions: DjInteraction[] = [];
+    const now = Date.now();
+
+    for (const participant of party.participants || []) {
+      if (!snapshot.participants.has(participant.id)) {
+        nextInteractions.push({
+          id: `join-${participant.id}-${now}`,
+          kind: "join",
+          name: participant.name,
+          detail: "a rejoint la soirée",
+          at: now,
+        });
+      }
+    }
+
+    for (const song of party.songs || []) {
+      const songKey = `${song.videoId}-${song.addedAt}`;
+      if (!snapshot.songs.has(songKey)) {
+        nextInteractions.push({
+          id: `add-${songKey}`,
+          kind: "add",
+          name: song.addedBy || "Un invité",
+          detail: `a ajouté ${song.title}`,
+          at: Number(song.addedAt || now),
+        });
+      }
+
+      for (const voter of song.voters || []) {
+        const voteKey = `${songKey}-${voter}`;
+        if (!snapshot.voters.has(voteKey)) {
+          nextInteractions.push({
+            id: `vote-${voteKey}-${now}`,
+            kind: "vote",
+            name: voter,
+            detail: `a voté pour ${song.title}`,
+            at: now,
+          });
+        }
+      }
+    }
+
+    snapshot.participants = new Set((party.participants || []).map((participant) => participant.id));
+    snapshot.songs = new Set((party.songs || []).map((song) => `${song.videoId}-${song.addedAt}`));
+    snapshot.voters = new Set((party.songs || []).flatMap((song) => (song.voters || []).map((voter) => `${song.videoId}-${song.addedAt}-${voter}`)));
+
+    if (nextInteractions.length) {
+      setDjInteractions((current) => [...nextInteractions.reverse(), ...current].slice(0, 12));
+    }
+  }, [party]);
+
+  useEffect(() => {
     const updateTvPlayback = () => {
       const player = playerRef.current;
       if (player && isPlaybackControllerRef.current) {
@@ -1119,7 +1195,7 @@ export default function PartyPage() {
     updateTvPlayback();
     const timer = window.setInterval(updateTvPlayback, 500);
     return () => window.clearInterval(timer);
-  }, [tvModeActive, remotePlayback]);
+  }, [remotePlayback]);
 
   useEffect(() => {
     setNetworkOnline(navigator.onLine);
@@ -1468,113 +1544,119 @@ export default function PartyPage() {
               </div>
 
               {party.currentSong ? (
-                <div className="v53-player-console">
-                  <div className="v53-player-media">
-                    <div className="v53-player-video-frame">
-                      {isPlaybackController ? (
-                        <>
-                          {DEBUG_PLAYER && (
-                            <div className="mb-2 max-h-44 overflow-auto rounded-xl border border-cyan-300/25 bg-black/90 p-2 font-mono text-[10px] leading-4 text-cyan-100 shadow-2xl">
-                              <div className="mb-1 flex items-center justify-between gap-2 font-black text-cyan-300"><span>PLAYER AUDIT — ACTIF</span><span>{playerRef.current ? "lecteur créé" : "lecteur en attente"}</span></div>
-                              {playerAudit.length === 0 ? <div className="text-cyan-100/55">En attente du premier événement…</div> : playerAudit.slice(-12).map((entry, index) => <div key={`${entry.at}-${index}`} className="border-t border-white/5 py-0.5">{new Date(entry.at).toLocaleTimeString("fr-FR", { hour12: false })} — {entry.event}{entry.detail ? ` — ${entry.detail}` : ""}</div>)}
-                            </div>
-                          )}
-                          <div className="premium-cover-stage relative aspect-video w-full overflow-hidden rounded-[22px] bg-[#090912]">
-                            <div
-                              ref={setPlayerHostElement}
-                              className="mixparty-youtube-host mixparty-youtube-host--audio-only absolute inset-0 h-full w-full min-w-0 max-w-full overflow-hidden"
-                              aria-hidden="true"
-                            />
-
-                            <div
-                              className={`premium-cover-backdrop ${hasHdCover(party.currentSong) ? "premium-cover-backdrop--artwork" : "premium-cover-backdrop--mixparty"}`}
-                              style={hasHdCover(party.currentSong) ? { backgroundImage: `url(${getSongArtwork(party.currentSong)})` } : undefined}
-                            />
-                            <div className="premium-cover-stage__veil" />
-                            <div className="premium-cover-stage__orb premium-cover-stage__orb--one" />
-                            <div className="premium-cover-stage__orb premium-cover-stage__orb--two" />
-
-                            <div className="premium-cover-stage__content">
-                              <div className={`premium-cover-art ${hasHdCover(party.currentSong) ? "premium-cover-art--hd" : "premium-cover-art--logo"}`}>
-                                <span className="premium-cover-art__glow" />
-                                <img
-                                  src={getSongArtwork(party.currentSong)}
-                                  alt={hasHdCover(party.currentSong) ? `Jaquette de ${party.currentSong.title}` : "Logo MixParty"}
-                                />
-                              </div>
-                              <div className="premium-cover-stage__meta">
-                                <span className="premium-cover-stage__eyebrow">
-                                  {hasHdCover(party.currentSong) ? "Jaquette HD" : "MixParty · Jaquette en préparation"}
-                                </span>
-                                <strong>{party.currentSong.title}</strong>
-                                <span>{party.currentSong.artistName || party.currentSong.addedBy}</span>
-                              </div>
-                            </div>
-
-                            {youtubeError !== null && (
-                              <div className="absolute inset-x-3 bottom-3 z-30 rounded-2xl border border-red-400/30 bg-red-950/90 p-3 text-sm shadow-2xl backdrop-blur">
-                                <p className="font-black text-red-200">Erreur YouTube {youtubeError}</p>
-                                <p className="mt-1 text-xs leading-5 text-red-100/75">{youtubeError === 2 && "Identifiant vidéo ou paramètres invalides."}{(youtubeError === 5 || youtubeError === 101 || youtubeError === 150) && "Cette vidéo refuse la lecture dans un lecteur intégré."}{youtubeError === 100 && "Cette vidéo est privée, supprimée ou introuvable."}{youtubeError === 153 && "YouTube ne reçoit pas correctement l’origine ou le référent de MixParty."}{![-1, 2, 5, 100, 101, 150, 153].includes(youtubeError) && "Erreur inconnue du lecteur intégré."}</p>
-                              </div>
-                            )}
-                            {resumeRequired && (
-                              <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/65 p-5 backdrop-blur-sm">
-                                <button type="button" onClick={resumePlayback} className="party-action party-action--orange group rounded-2xl px-6 py-4 text-base font-black"><span className="party-action__shine" aria-hidden="true" /><span className="party-action__content flex items-center gap-2"><Play className="h-5 w-5 fill-current" />Reprendre la lecture</span></button>
-                              </div>
-                            )}
-                          </div>
-                        </>
-                      ) : (
-                        <div className="premium-cover-stage relative aspect-video overflow-hidden rounded-[22px] bg-[#0d0d18]">
-                          <div
-                            className={`premium-cover-backdrop ${hasHdCover(party.currentSong) ? "premium-cover-backdrop--artwork" : "premium-cover-backdrop--mixparty"}`}
-                            style={hasHdCover(party.currentSong) ? { backgroundImage: `url(${getSongArtwork(party.currentSong)})` } : undefined}
-                          />
-                          <div className="premium-cover-stage__veil" />
-                          <div className="premium-cover-stage__content premium-cover-stage__content--remote">
-                            <div className={`premium-cover-art premium-cover-art--remote ${hasHdCover(party.currentSong) ? "premium-cover-art--hd" : "premium-cover-art--logo"}`}>
-                              <span className="premium-cover-art__glow" />
-                              <img src={getSongArtwork(party.currentSong)} alt={hasHdCover(party.currentSong) ? `Jaquette de ${party.currentSong.title}` : "Logo MixParty"} />
-                            </div>
-                            <div className="premium-cover-stage__meta">
-                              <span className="premium-cover-stage__eyebrow"><Radio className="h-3.5 w-3.5" /> Lecture sur l’appareil DJ</span>
-                              <strong>{party.currentSong.title}</strong>
-                              <span>{party.currentSong.artistName || party.currentSong.addedBy}</span>
-                              <small>{remotePlayback.state === 1 ? "Lecture en cours" : "Lecture en pause"} · {Math.floor(remotePlayback.time / 60)}:{String(Math.floor(remotePlayback.time % 60)).padStart(2, "0")}</small>
-                            </div>
-                          </div>
-                        </div>
+                <div className="dj-console-redesign">
+                  <div className="dj-console-main">
+                    <div className="dj-console-hidden-player" aria-hidden="true">
+                      {isPlaybackController && (
+                        <div
+                          ref={setPlayerHostElement}
+                          className="mixparty-youtube-host mixparty-youtube-host--audio-only absolute inset-0 h-full w-full min-w-0 max-w-full overflow-hidden"
+                        />
                       )}
                     </div>
-                  </div>
 
-                  <div className="v53-player-dashboard">
-                    <div className="v53-track-identity">
-                      <div className={`v53-cover-wrap ${hasHdCover(party.currentSong) ? "v53-cover-wrap--hd" : "v53-cover-wrap--logo"}`}><span className="v53-cover-glow" /><img src={getSongArtwork(party.currentSong)} alt={hasHdCover(party.currentSong) ? party.currentSong.title : "MixParty"} /></div>
-                      <div className="min-w-0">
-                        <span className="v53-track-badge"><Radio className="h-3.5 w-3.5" />{isPlaybackController ? "Appareil DJ" : "Synchronisé"}</span>
-                        <h2>{party.currentSong.title}</h2>
-                        <p className="v53-track-artist">{party.currentSong.artistName || party.currentSong.addedBy}</p>
-                        <p className="v53-track-added">Ajouté par <strong>{party.currentSong.addedBy}</strong></p>
+                    <div
+                      className={`dj-console-cover ${hasHdCover(party.currentSong) ? "dj-console-cover--hd" : "dj-console-cover--logo"}`}
+                      style={hasHdCover(party.currentSong) ? { backgroundImage: `url(${getSongArtwork(party.currentSong)})` } : undefined}
+                    >
+                      <span className="dj-console-cover__glow" />
+                      <img src={getSongArtwork(party.currentSong)} alt={hasHdCover(party.currentSong) ? `Jaquette de ${party.currentSong.title}` : "Logo MixParty"} />
+                    </div>
+
+                    <div className="dj-console-track">
+                      <div className="dj-console-track__topline">
+                        <span className="dj-console-status"><Radio className="h-3.5 w-3.5" /> En cours</span>
+                        <span className="dj-console-added">Ajouté par <strong>{party.currentSong.addedBy}</strong></span>
+                      </div>
+                      <h2>{party.currentSong.title}</h2>
+                      <p>{party.currentSong.artistName || party.currentSong.addedBy}</p>
+
+                      <div className="dj-console-timeline">
+                        <div className="dj-console-timeline__times">
+                          <span>{formatPlaybackTime(isPlaybackController ? tvPlayback.time : remotePlayback.time)}</span>
+                          <span>{formatPlaybackTime(tvPlayback.duration || party.currentSong.durationSeconds || 0)}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max={Math.max(1, tvPlayback.duration || party.currentSong.durationSeconds || 1)}
+                          step="0.25"
+                          value={Math.min(tvPlayback.duration || party.currentSong.durationSeconds || 1, isPlaybackController ? tvPlayback.time : remotePlayback.time)}
+                          onChange={(event) => seekPlayback(Number(event.target.value))}
+                          disabled={!isPlaybackController}
+                          className="dj-console-seek"
+                          aria-label="Avancer ou reculer dans la musique"
+                        />
+                        <div className="dj-console-waveform" aria-hidden="true">
+                          {[38,72,46,88,58,95,44,76,52,84,34,68,48,92,56,80,42,70,50,86,36,64,54,90,46,74,40,82,58,96,44,72,52,88].map((height,index)=><span key={index} style={{ height:`${height}%`, animationDelay:`${index * 45}ms` }} />)}
+                        </div>
+                      </div>
+
+                      <div className="dj-console-actions">
+                        <button
+                          type="button"
+                          onClick={tvPlayback.state === 1 ? () => playerRef.current?.pauseVideo?.() : resumePlayback}
+                          className="dj-console-play"
+                          aria-label={tvPlayback.state === 1 ? "Mettre en pause" : "Lire"}
+                        >
+                          {tvPlayback.state === 1 ? <Pause className="h-7 w-7" /> : <Play className="h-7 w-7 fill-current" />}
+                        </button>
+                        {isPlaybackController && (
+                          <button type="button" onClick={nextSong} className="dj-console-next">
+                            <SkipForward className="h-5 w-5 fill-current" />
+                            <span>Passer au suivant</span>
+                            <small>{queue.length} titre{queue.length > 1 ? "s" : ""} en attente</small>
+                          </button>
+                        )}
+                        <div className="dj-console-votes">
+                          <ArrowBigUp className="h-5 w-5" />
+                          <strong>{party.currentSong.votes || 0}</strong>
+                          <span>votes</span>
+                        </div>
                       </div>
                     </div>
-
-                    <div className="v53-progress"><span style={{ width: `${Math.min(100, Math.max(4, (remotePlayback.time % 240) / 2.4))}%` }} /></div>
-
-                    <div className="v53-player-controls">
-                      <div className="v53-control-group">
-                        <button type="button" onClick={resumePlayback} className="v53-control v53-control--primary" aria-label="Lecture"><Play className="h-5 w-5 fill-current" /></button>
-                        {isPlaybackController && <button type="button" onClick={() => playerRef.current?.pauseVideo?.()} className="v53-control" aria-label="Pause"><Pause className="h-5 w-5" /></button>}
-                        {isPlaybackController && <button type="button" onClick={nextSong} className="v53-control" aria-label="Titre suivant"><SkipForward className="h-5 w-5" /></button>}
-                        <button type="button" className="v53-control v53-control--muted" aria-label="Lecture aléatoire" title="Lecture aléatoire bientôt disponible"><Shuffle className="h-5 w-5" /></button>
-                      </div>
-                      <div className="v53-player-audience v53-player-audience--compact"><UsersRound className="h-4 w-4" /><strong>{party.participants.length}</strong><span>en ligne</span></div>
-                    </div>
-
-                    <div className="v53-waveform" aria-label="Visualisation audio">
-                      {[38,72,46,88,58,95,44,76,52,84,34,68,48,92,56,80,42,70,50,86,36,64,54,90,46,74,40,82].map((height,index)=><span key={index} style={{ height:`${height}%`, animationDelay:`${index * 55}ms` }} />)}
-                    </div>
                   </div>
+
+                  <aside className="dj-console-activity">
+                    <div className="dj-console-activity__header">
+                      <div>
+                        <span>En direct</span>
+                        <h3>Dernières interactions</h3>
+                      </div>
+                      <Activity className="h-5 w-5" />
+                    </div>
+                    <div className="dj-console-activity__list">
+                      {(djInteractions.length ? djInteractions : [
+                        ...queue.slice(0, 2).map((song, index) => ({ id: `fallback-add-${index}`, kind: "add" as const, name: song.addedBy || "Un invité", detail: `a ajouté ${song.title}`, at: song.addedAt })),
+                        ...party.participants.slice(0, 2).map((participant, index) => ({ id: `fallback-join-${index}`, kind: "join" as const, name: participant.name, detail: "est en ligne dans la soirée", at: Date.now() })),
+                      ]).slice(0, 5).map((interaction) => (
+                        <div key={interaction.id} className="dj-console-activity__item">
+                          <span className={`dj-console-activity__icon dj-console-activity__icon--${interaction.kind}`}>
+                            {interaction.kind === "vote" ? <ArrowBigUp className="h-4 w-4" /> : interaction.kind === "join" ? <UserPlus className="h-4 w-4" /> : <Music4 className="h-4 w-4" />}
+                          </span>
+                          <div>
+                            <strong>{interaction.name}</strong>
+                            <p>{interaction.detail}</p>
+                          </div>
+                        </div>
+                      ))}
+                      {!djInteractions.length && !queue.length && !party.participants.length && (
+                        <p className="dj-console-activity__empty">Les votes, ajouts et arrivées apparaîtront ici.</p>
+                      )}
+                    </div>
+                  </aside>
+
+                  {youtubeError !== null && (
+                    <div className="dj-console-error">
+                      <p>Erreur YouTube {youtubeError}</p>
+                      <span>Le lecteur audio rencontre un problème sur ce morceau.</span>
+                    </div>
+                  )}
+                  {resumeRequired && (
+                    <div className="dj-console-resume">
+                      <button type="button" onClick={resumePlayback}><Play className="h-5 w-5 fill-current" /> Reprendre la lecture</button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="v53-player-empty"><div><Music4 className="h-7 w-7" /></div><h2>Aucun morceau en lecture</h2><p>Ajoute des musiques à la file puis lance le DJ.</p><button onClick={nextSong} className="party-action party-action--purple group mt-5 rounded-2xl px-6 py-3"><span className="party-action__shine" aria-hidden="true" /><span className="party-action__content flex items-center justify-center gap-2"><Play className="h-4 w-4 fill-current" />Lancer le DJ</span></button></div>
