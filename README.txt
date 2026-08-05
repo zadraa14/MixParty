@@ -1,3 +1,2 @@
-Fond TV validé.
-Ce pack modifie uniquement globals.css et ajoute l'image 4K.
-Aucun changement dans page.tsx ni dans les boutons du mode TV.
+Ajoute uniquement un contour néon autour de la jaquette du mode TV.
+Les fonds d'écran du mode TV ne sont pas modifiés.

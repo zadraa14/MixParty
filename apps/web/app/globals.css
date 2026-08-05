@@ -2072,3 +2072,88 @@ body {
   background-size: cover, cover !important;
   background-color: #070711 !important;
 }
+
+/* =========================================================
+   MIXPARTY TV — NÉON AUTOUR DE LA JAQUETTE
+   Modifie uniquement la jaquette. Aucun changement des fonds TV.
+   ========================================================= */
+
+@keyframes v60-cover-neon-flow {
+  0%, 100% {
+    filter: brightness(1) saturate(1.05);
+    box-shadow:
+      0 0 8px rgba(168, 85, 247, .95),
+      0 0 20px rgba(236, 72, 153, .78),
+      0 0 42px rgba(249, 115, 22, .38);
+  }
+
+  50% {
+    filter: brightness(1.18) saturate(1.22);
+    box-shadow:
+      0 0 12px rgba(34, 211, 238, .9),
+      0 0 28px rgba(236, 72, 153, .9),
+      0 0 58px rgba(249, 115, 22, .48);
+  }
+}
+
+.v60-tv__cover-wrap {
+  isolation: isolate;
+  overflow: visible;
+  border-radius: 24px;
+}
+
+.v60-tv__cover-wrap::before {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  z-index: 1;
+  border-radius: 26px;
+  padding: 3px;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    #22d3ee 0%,
+    #8b5cf6 24%,
+    #ec4899 52%,
+    #fb7185 72%,
+    #f97316 100%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: v60-cover-neon-flow 3.8s ease-in-out infinite;
+}
+
+.v60-tv__cover-glow {
+  inset: -5% !important;
+  z-index: 0;
+  border-radius: 30px !important;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(34, 211, 238, .82),
+      rgba(139, 92, 246, .9) 28%,
+      rgba(236, 72, 153, .92) 58%,
+      rgba(249, 115, 22, .82)
+    ) !important;
+  filter: blur(28px) !important;
+  opacity: .62 !important;
+}
+
+.v60-tv__cover {
+  z-index: 2;
+  border: 1px solid rgba(255, 255, 255, .34) !important;
+  border-radius: 22px !important;
+  box-shadow:
+    0 28px 72px rgba(0, 0, 0, .62),
+    0 0 18px rgba(236, 72, 153, .34),
+    inset 0 1px 0 rgba(255, 255, 255, .22) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v60-tv__cover-wrap::before {
+    animation: none !important;
+  }
+}
