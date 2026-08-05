@@ -100,7 +100,6 @@ type DjInteraction = {
   id: string;
   kind: "join" | "vote" | "add";
   name: string;
-  avatar?: string;
   detail: string;
   at: number;
 };
@@ -1177,21 +1176,6 @@ export default function PartyPage() {
     } catch {}
   }
 
-  function avatarForInteraction(name: string, participantIdHint?: string) {
-    const normalizedName = String(name || "").trim().toLocaleLowerCase("fr-FR");
-    const participant = (party?.participants || []).find((item) =>
-      item.id === participantIdHint ||
-      String(item.name || "").trim().toLocaleLowerCase("fr-FR") === normalizedName
-    );
-
-    if (participant?.avatar) return participant.avatar;
-    if (participant?.id) return defaultAvatarForParticipant(participant.id);
-
-    return defaultAvatarForParticipant(
-      participantIdHint || normalizedName || "mixparty-guest"
-    );
-  }
-
   useEffect(() => {
     if (!party) return;
 
@@ -1205,7 +1189,6 @@ export default function PartyPage() {
           id: `join-${participant.id}-${now}`,
           kind: "join",
           name: participant.name,
-          avatar: participant.avatar || defaultAvatarForParticipant(participant.id),
           detail: "a rejoint la soirée",
           at: now,
         });
@@ -1219,7 +1202,6 @@ export default function PartyPage() {
           id: `add-${songKey}`,
           kind: "add",
           name: song.addedBy || "Un invité",
-          avatar: avatarForInteraction(song.addedBy || "Un invité"),
           detail: `a ajouté ${song.title}`,
           at: Number(song.addedAt || now),
         });
@@ -1232,7 +1214,6 @@ export default function PartyPage() {
             id: `vote-${voteKey}-${now}`,
             kind: "vote",
             name: voter,
-            avatar: avatarForInteraction(voter),
             detail: `a voté pour ${song.title}`,
             at: now,
           });
@@ -1717,30 +1698,12 @@ export default function PartyPage() {
                     </div>
                     <div className="dj-console-activity__list">
                       {(djInteractions.length ? djInteractions : [
-                        ...queue.slice(0, 2).map((song, index) => ({
-                          id: `fallback-add-${index}`,
-                          kind: "add" as const,
-                          name: song.addedBy || "Un invité",
-                          avatar: avatarForInteraction(song.addedBy || "Un invité"),
-                          detail: `a ajouté ${song.title}`,
-                          at: song.addedAt,
-                        })),
-                        ...party.participants.slice(0, 2).map((participant, index) => ({
-                          id: `fallback-join-${index}`,
-                          kind: "join" as const,
-                          name: participant.name,
-                          avatar: participant.avatar || defaultAvatarForParticipant(participant.id),
-                          detail: "est en ligne dans la soirée",
-                          at: Date.now(),
-                        })),
+                        ...queue.slice(0, 2).map((song, index) => ({ id: `fallback-add-${index}`, kind: "add" as const, name: song.addedBy || "Un invité", detail: `a ajouté ${song.title}`, at: song.addedAt })),
+                        ...party.participants.slice(0, 2).map((participant, index) => ({ id: `fallback-join-${index}`, kind: "join" as const, name: participant.name, detail: "est en ligne dans la soirée", at: Date.now() })),
                       ]).slice(0, 5).map((interaction) => (
                         <div key={interaction.id} className="dj-console-activity__item">
-                          <span className={`dj-console-activity__icon dj-console-activity__icon--${interaction.kind} overflow-hidden p-0`}>
-                            <img
-                              src={interaction.avatar || avatarForInteraction(interaction.name)}
-                              alt={`Photo de profil de ${interaction.name}`}
-                              className="h-full w-full object-cover"
-                            />
+                          <span className={`dj-console-activity__icon dj-console-activity__icon--${interaction.kind}`}>
+                            {interaction.kind === "vote" ? <ArrowBigUp className="h-4 w-4" /> : interaction.kind === "join" ? <UserPlus className="h-4 w-4" /> : <Music4 className="h-4 w-4" />}
                           </span>
                           <div>
                             <strong>{interaction.name}</strong>
@@ -2617,7 +2580,20 @@ export default function PartyPage() {
 
             <main className="v60-tv__grid">
               <section className="v60-tv__now">
-                <div className="v60-tv__current-pill">EN COURS</div>
+                
+              <div className="v60-tv__bg-scene" aria-hidden="true">
+                <div className="v60-tv__backdrop" />
+                <div className="v60-tv__veil" />
+                <div className="v60-tv__crowd" />
+                <div className="v60-tv__lights">
+                  <span className="v60-tv__spot v60-tv__spot--1" />
+                  <span className="v60-tv__spot v60-tv__spot--2" />
+                  <span className="v60-tv__spot v60-tv__spot--3" />
+                  <span className="v60-tv__spot v60-tv__spot--4" />
+                  <span className="v60-tv__spot v60-tv__spot--5" />
+                </div>
+              </div>
+<div className="v60-tv__current-pill">EN COURS</div>
                 <div className="v60-tv__now-grid">
                   <div className="v60-tv__cover-wrap">
                     <div className="v60-tv__cover-glow" />
