@@ -636,20 +636,28 @@ export default function MusicBrainAdminPage() {
               </div>
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {[
-                  ["Jaquettes téléchargées", stats.covers.downloaded, "text-emerald-300"],
-                  ["En attente", stats.covers.pending, "text-amber-300"],
-                  ["Téléchargements actifs", stats.covers.activeDownloads, "text-cyan-300"],
-                  ["Correspondances exactes", stats.covers.exactMatches, "text-fuchsia-300"],
-                  ["Secours artiste", stats.covers.artistFallbacks, "text-violet-300"],
-                  ["Introuvables", stats.covers.notFound, "text-white/55"],
-                  ["Erreurs", stats.covers.errors, "text-red-300"],
-                  ["Pas encore recherchées", stats.covers.unrequested, "text-white/40"],
-                ].map(([label, value, tone]) => (
-                  <article key={String(label)} className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-[10px] font-black uppercase tracking-[.15em] text-white/35">{String(label)}</p>
-                    <p className={`mt-3 text-2xl font-black ${String(tone)}`}>{number.format(Number(value))}</p>
-                  </article>
-                ))}
+  ["Jaquettes téléchargées", stats.covers.downloaded, "text-emerald-300"],
+  ["En attente", stats.covers.pending, "text-amber-300"],
+  ["Téléchargements actifs", stats.covers.active, "text-cyan-300"],
+  ["Correspondances exactes", stats.covers.exactMatches, "text-fuchsia-300"],
+  ["Secours artiste", stats.covers.artistFallback, "text-violet-300"],
+  ["Introuvables", stats.covers.notFound, "text-white/55"],
+  ["Erreurs", stats.covers.errors, "text-red-300"],
+  ["Pas encore recherchées", stats.covers.unrequested, "text-white/40"],
+].map(([label, value, tone]) => (
+  <article
+    key={String(label)}
+    className="rounded-2xl border border-white/10 bg-black/20 p-4"
+  >
+    <p className="text-[10px] font-black uppercase tracking-[.15em] text-white/35">
+      {String(label)}
+    </p>
+
+    <p className={`mt-3 text-2xl font-black ${String(tone)}`}>
+      {number.format(Number(value))}
+    </p>
+  </article>
+))}
               </div>
             </section>
 
