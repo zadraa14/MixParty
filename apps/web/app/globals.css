@@ -1914,14 +1914,140 @@ body {
 .dj-console-cover__artwork--hidden{opacity:0!important;pointer-events:none}
 @media(max-width:640px){.dj-console-clip-toggle span{display:none}.dj-console-clip-toggle{width:40px;height:40px;padding:0;border-radius:12px}}
 
+
 /* =========================================================
-   MIXPARTY TV — FOND BOÎTE DE NUIT 4K VALIDÉ
-   Image uniquement, sans calque interactif ni modification du lecteur.
+   MIXPARTY TV — FOND CONCERT DIRECT ET VISIBLE
+   Aucun pseudo-élément : le fond est posé directement sur la scène.
    ========================================================= */
 
+@keyframes mp-tv-visible-bg {
+  0%, 100% {
+    background-position: center 52%;
+  }
+  50% {
+    background-position: center 48%;
+  }
+}
+
 .v60-tv__now {
-  background-image: url("/tv/mixparty-nightclub-4k.webp") !important;
-  background-position: center center !important;
-  background-repeat: no-repeat !important;
-  background-size: cover !important;
+  position: relative !important;
+  isolation: isolate !important;
+  overflow: hidden !important;
+
+  background-image:
+    linear-gradient(
+      180deg,
+      rgba(4, 5, 15, .18) 0%,
+      rgba(4, 5, 15, .08) 42%,
+      rgba(3, 3, 11, .42) 100%
+    ),
+    url("/tv/crowd-visible.webp") !important;
+
+  background-size: cover, cover !important;
+  background-repeat: no-repeat, no-repeat !important;
+  background-position: center, center 52% !important;
+  background-color: #070711 !important;
+
+  animation: mp-tv-visible-bg 16s ease-in-out infinite;
+}
+
+/* Le contenu reste entièrement visible et cliquable */
+.v60-tv__now > * {
+  position: relative;
+  z-index: 2;
+}
+
+.v60-tv__controls,
+.v60-tv__controls button,
+.v60-tv__close,
+.v60-tv__queue,
+.v60-tv__queue button {
+  position: relative;
+  z-index: 20;
+  pointer-events: auto;
+}
+
+/* Halos lumineux très légers, sans masquer l'image */
+.v60-tv__now-grid {
+  position: relative;
+  z-index: 3;
+}
+
+.v60-tv__now-grid::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 10%, rgba(34,211,238,.15), transparent 26%),
+    radial-gradient(circle at 48% 7%, rgba(236,72,153,.18), transparent 30%),
+    radial-gradient(circle at 78% 12%, rgba(249,115,22,.13), transparent 28%);
+}
+
+/* Le badge EN COURS reste compact */
+.v60-tv__current-pill {
+  position: relative;
+  z-index: 10;
+  width: fit-content;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v60-tv__now {
+    animation: none !important;
+  }
+}
+
+
+/* =========================================================
+   MIXPARTY TV — ARRIÈRE-PLAN GLOBAL FLOU
+   Même image que le bloc lecture, mais très floue et tout derrière.
+   ========================================================= */
+
+.v60-tv {
+  isolation: isolate;
+}
+
+.v60-tv::before {
+  content: "";
+  position: absolute;
+  inset: -6%;
+  z-index: -4;
+  pointer-events: none;
+  background-image: url("/tv/mixparty-nightclub-4k.webp");
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  filter: blur(58px) saturate(1.35) brightness(.72);
+  transform: scale(1.22);
+  opacity: .88;
+}
+
+.v60-tv::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 18%, rgba(56,189,248,.16), transparent 26%),
+    radial-gradient(circle at 46% 12%, rgba(168,85,247,.18), transparent 28%),
+    radial-gradient(circle at 72% 18%, rgba(236,72,153,.16), transparent 30%),
+    radial-gradient(circle at 86% 22%, rgba(249,115,22,.12), transparent 28%),
+    linear-gradient(180deg, rgba(4,4,12,.24), rgba(4,4,12,.48));
+}
+
+/* Le bloc lecture garde l'image nette au-dessus. */
+.v60-tv__now {
+  position: relative;
+  z-index: 2;
+}
+
+/* La file et le footer restent au-dessus du fond global. */
+.v60-tv__grid,
+.v60-tv__queue,
+.v60-tv__footer,
+.v60-tv__header {
+  position: relative;
+  z-index: 2;
 }
