@@ -59,7 +59,16 @@ type YoutubeSuggestion = {
   albumName?:string;
   metadataSource?:MusicMetadataSource;
   metadataConfidence?:number;
+  coverStatus?:CoverStatus;
+  coverUrl?:string;
+  coverSource?:CoverSource;
+  coverWidth?:number;
+  coverHeight?:number;
+  coverLastCheckedAt?:number;
 };
+
+type CoverStatus = "pending" | "found" | "not_found" | "error";
+type CoverSource = "APPLE_ITUNES" | "MUSICBRAINZ_CAA";
 
 type Song = {
   title:string;
@@ -105,6 +114,13 @@ type MusicBrainSong = {
   addedCount: number;
   playedCount: number;
   voteCount: number;
+  coverStatus?: CoverStatus;
+  coverUrl?: string;
+  coverSource?: CoverSource;
+  coverWidth?: number;
+  coverHeight?: number;
+  coverLastCheckedAt?: number;
+  coverAttempts?: number;
 };
 
 type MusicBrainArtistLink = {
@@ -842,6 +858,198 @@ function recordArtistRelation(mainName: string, collaboratorName: string) {
   relation.count += 1; relation.lastSeenAt = now; musicBrain.artistRelations[key] = relation;
 }
 
+
+type CoverLookupResult = {
+  url: string;
+  source: CoverSource;
+  width: number;
+  height: number;
+  confidence: number;
+};
+
+const coverLookupsInFlight = new Set<string>();
+let musicBrainzCoverQueue: Promise<void> = Promise.resolve();
+
+function normalizeCoverText(value: unknown) {
+  return normalizeMusicQuery(String(value || ""))
+    .replace(/\b(remaster(?:ed)?|radio edit|official audio|official video|lyrics?|clip officiel|audio officiel)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function coverTextSimilarity(expected: string, candidate: string) {
+  const left = new Set(normalizeCoverText(expected).split(" ").filter((token) => token.length > 1));
+  const right = new Set(normalizeCoverText(candidate).split(" ").filter((token) => token.length > 1));
+  if (!left.size || !right.size) return 0;
+  let overlap = 0;
+  for (const token of left) if (right.has(token)) overlap += 1;
+  return overlap / Math.max(left.size, right.size);
+}
+
+function appleHdArtworkUrl(url: string) {
+  if (!url) return "";
+  return url
+    .replace(/\/\d+x\d+bb(?:-\d+)?\.(jpg|png)$/i, "/1200x1200bb.$1")
+    .replace(/\/\d+x\d+bb\.(jpg|png)(\?.*)?$/i, "/1200x1200bb.$1$2");
+}
+
+async function fetchJsonWithTimeout<T>(url: string, init: RequestInit = {}, timeoutMs = 7000): Promise<T | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    if (!response.ok) return null;
+    return await response.json() as T;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function searchAppleCover(song: MusicBrainSong): Promise<CoverLookupResult | null> {
+  const term = encodeURIComponent(`${song.artistName} ${song.title}`.trim());
+  const country = encodeURIComponent(process.env.ITUNES_STOREFRONT || "FR");
+  const url = `https://itunes.apple.com/search?term=${term}&country=${country}&media=music&entity=song&limit=12`;
+  const data = await fetchJsonWithTimeout<{ results?: Array<Record<string, any>> }>(url);
+  const results = Array.isArray(data?.results) ? data!.results! : [];
+
+  let best: { item: Record<string, any>; score: number } | null = null;
+  for (const item of results) {
+    const titleScore = coverTextSimilarity(song.title, String(item.trackName || ""));
+    const artistScore = coverTextSimilarity(song.artistName, String(item.artistName || ""));
+    const albumBonus = song.albumName && coverTextSimilarity(song.albumName, String(item.collectionName || "")) >= 0.6 ? 0.08 : 0;
+    const score = titleScore * 0.62 + artistScore * 0.38 + albumBonus;
+    if (!best || score > best.score) best = { item, score };
+  }
+
+  if (!best || best.score < 0.68) return null;
+  const artwork = appleHdArtworkUrl(String(best.item.artworkUrl100 || best.item.artworkUrl60 || ""));
+  if (!artwork) return null;
+  return {
+    url: artwork,
+    source: "APPLE_ITUNES",
+    width: 1200,
+    height: 1200,
+    confidence: Math.round(Math.min(100, best.score * 100)),
+  };
+}
+
+async function searchMusicBrainzCover(song: MusicBrainSong): Promise<CoverLookupResult | null> {
+  const query = encodeURIComponent(`recording:"${song.title}" AND artist:"${song.artistName}"`);
+  const userAgent = process.env.MUSICBRAINZ_USER_AGENT || "MixParty/1.0 (contact: admin@mixparty.app)";
+  const data = await fetchJsonWithTimeout<{ recordings?: Array<Record<string, any>> }>(
+    `https://musicbrainz.org/ws/2/recording/?query=${query}&fmt=json&limit=5`,
+    { headers: { "User-Agent": userAgent, Accept: "application/json" } },
+    9000
+  );
+  const recordings = Array.isArray(data?.recordings) ? data!.recordings! : [];
+
+  for (const recording of recordings) {
+    const score = Number(recording.score || 0);
+    if (score < 80) continue;
+    const releases = Array.isArray(recording.releases) ? recording.releases : [];
+    for (const release of releases.slice(0, 4)) {
+      const releaseId = String(release.id || "");
+      if (!releaseId) continue;
+      const coverData = await fetchJsonWithTimeout<{ images?: Array<Record<string, any>> }>(
+        `https://coverartarchive.org/release/${encodeURIComponent(releaseId)}`,
+        { headers: { "User-Agent": userAgent, Accept: "application/json" } },
+        8000
+      );
+      const images = Array.isArray(coverData?.images) ? coverData!.images! : [];
+      const front = images.find((image) => image.front === true) || images[0];
+      const thumbnails = front?.thumbnails || {};
+      const url = String(thumbnails["1200"] || thumbnails.large || front?.image || "");
+      if (!url) continue;
+      return {
+        url,
+        source: "MUSICBRAINZ_CAA",
+        width: thumbnails["1200"] ? 1200 : 1000,
+        height: thumbnails["1200"] ? 1200 : 1000,
+        confidence: Math.min(100, score),
+      };
+    }
+  }
+  return null;
+}
+
+function persistCoverResult(videoId: string, result: CoverLookupResult | null, failed = false) {
+  const learnedSong = musicBrain.songs[videoId];
+  if (!learnedSong) return;
+  learnedSong.coverLastCheckedAt = Date.now();
+  learnedSong.coverAttempts = Number(learnedSong.coverAttempts || 0) + 1;
+  if (result) {
+    learnedSong.coverStatus = "found";
+    learnedSong.coverUrl = result.url;
+    learnedSong.coverSource = result.source;
+    learnedSong.coverWidth = result.width;
+    learnedSong.coverHeight = result.height;
+  } else {
+    learnedSong.coverStatus = failed ? "error" : "not_found";
+    learnedSong.coverUrl = undefined;
+    learnedSong.coverSource = undefined;
+    learnedSong.coverWidth = undefined;
+    learnedSong.coverHeight = undefined;
+  }
+  saveMusicBrain();
+}
+
+function queueHdCoverLookup(videoId: string) {
+  const learnedSong = musicBrain.songs[videoId];
+  if (!learnedSong || coverLookupsInFlight.has(videoId)) return;
+
+  const retryDelay = learnedSong.coverStatus === "not_found" ? 7 * 24 * 60 * 60 * 1000 : 60 * 60 * 1000;
+  if (learnedSong.coverStatus === "found" && learnedSong.coverUrl) return;
+  if (learnedSong.coverLastCheckedAt && Date.now() - learnedSong.coverLastCheckedAt < retryDelay) return;
+
+  learnedSong.coverStatus = "pending";
+  learnedSong.coverLastCheckedAt = Date.now();
+  saveMusicBrain();
+  coverLookupsInFlight.add(videoId);
+
+  void (async () => {
+    try {
+      const apple = await searchAppleCover(learnedSong);
+      if (apple) {
+        persistCoverResult(videoId, apple);
+        return;
+      }
+
+      let musicBrainzResult: CoverLookupResult | null = null;
+      musicBrainzCoverQueue = musicBrainzCoverQueue.then(async () => {
+        musicBrainzResult = await searchMusicBrainzCover(learnedSong);
+        await new Promise((resolve) => setTimeout(resolve, 1100));
+      });
+      await musicBrainzCoverQueue;
+      persistCoverResult(videoId, musicBrainzResult, false);
+    } catch (error) {
+      console.error("HD COVER LOOKUP ERROR", videoId, error);
+      persistCoverResult(videoId, null, true);
+    } finally {
+      coverLookupsInFlight.delete(videoId);
+    }
+  })();
+}
+
+function learnedCoverFor(videoId: string) {
+  const learnedSong = musicBrain.songs[videoId];
+  if (!learnedSong || learnedSong.coverStatus !== "found" || !learnedSong.coverUrl) {
+    return {
+      coverStatus: learnedSong?.coverStatus || undefined,
+      coverLastCheckedAt: learnedSong?.coverLastCheckedAt,
+    };
+  }
+  return {
+    coverStatus: learnedSong.coverStatus,
+    coverUrl: learnedSong.coverUrl,
+    coverSource: learnedSong.coverSource,
+    coverWidth: learnedSong.coverWidth,
+    coverHeight: learnedSong.coverHeight,
+    coverLastCheckedAt: learnedSong.coverLastCheckedAt,
+  };
+}
+
 function upsertMusicBrainSong(params: {
   videoId: string;
   title: string;
@@ -997,6 +1205,12 @@ function recordMusicBrainPlay(song: Song, previous?: Song | null) {
   });
   item.playedCount += 1;
   musicBrain.totals.plays += 1;
+
+  // First playback stays on the MixParty logo. The HD cover is fetched asynchronously
+  // and will be attached the next time this videoId is added to a party.
+  if (item.coverStatus !== "found" || !item.coverUrl) {
+    queueHdCoverLookup(item.videoId);
+  }
 
   if (previous?.videoId && previous.videoId !== song.videoId) {
     const key = `${previous.videoId}>>${song.videoId}`;
@@ -2041,6 +2255,7 @@ app.post("/party/:code/song",(req,res)=>{
 
 
 console.log("CHANSON RECUE API :", req.body);
+const learnedCover = learnedCoverFor(String(videoId || ""));
 party.songs.push({
 
   title: song,
@@ -2067,6 +2282,7 @@ party.songs.push({
   albumName: typeof albumName === "string" ? albumName.trim() : undefined,
   metadataSource: ["ART_TRACK_DESCRIPTION", "TITLE_CHANNEL", "QUERY_FALLBACK"].includes(String(metadataSource)) ? metadataSource : undefined,
   metadataConfidence: Number.isFinite(Number(metadataConfidence)) ? Number(metadataConfidence) : undefined,
+  ...learnedCover,
 
   suggestionPool: Array.isArray(suggestionPool)
     ? suggestionPool
@@ -2590,6 +2806,7 @@ app.post("/party/:code/next",(req,res)=>{
       albumName: undefined,
       metadataSource: learnedSong?.metadataSource,
       metadataConfidence: learnedSong?.metadataConfidence,
+      ...learnedCoverFor(selectedVideoId),
       suggestionPool: []
     };
 
@@ -3782,6 +3999,43 @@ app.get("/partybrain/intelligence/events/coverage", (_req, res) => {
       collected: counts[event] > 0,
     })),
   });
+});
+
+
+app.get("/partybrain/covers/status", (_req, res) => {
+  const songs = Object.values(musicBrain.songs || {});
+  const counts = songs.reduce<Record<string, number>>((acc, song) => {
+    const status = song.coverStatus || "unrequested";
+    acc[status] = Number(acc[status] || 0) + 1;
+    return acc;
+  }, {});
+  return res.json({
+    totalSongs: songs.length,
+    counts,
+    inFlight: coverLookupsInFlight.size,
+    found: songs
+      .filter((song) => song.coverStatus === "found" && song.coverUrl)
+      .slice(-50)
+      .map((song) => ({
+        videoId: song.videoId,
+        title: song.title,
+        artistName: song.artistName,
+        coverUrl: song.coverUrl,
+        coverSource: song.coverSource,
+        coverWidth: song.coverWidth,
+        coverHeight: song.coverHeight,
+      })),
+  });
+});
+
+app.post("/partybrain/covers/:videoId/retry", (req, res) => {
+  const learnedSong = musicBrain.songs[String(req.params.videoId || "")];
+  if (!learnedSong) return res.status(404).json({ error: "Morceau PartyBrain introuvable" });
+  learnedSong.coverStatus = undefined;
+  learnedSong.coverLastCheckedAt = undefined;
+  saveMusicBrain();
+  queueHdCoverLookup(learnedSong.videoId);
+  return res.json({ ok: true, videoId: learnedSong.videoId, coverStatus: "pending" });
 });
 
 app.get("/partybrain/export", (_req, res) => {
