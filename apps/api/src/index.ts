@@ -1364,7 +1364,7 @@ function inferPartyBrainGenre(title: string, artistName: string): PartyBrainGenr
   const value = normalizeMusicQuery(`${artistName} ${title}`);
   const contains = (...terms: string[]) => terms.some((term) => value.includes(term));
 
-  if (contains("jul", "ninho", "gazo", "sdm", "tiakola", "sch", "booba", "damso", "nekfeu", "orelsan", "pnl", "koba", "naps", "soprano", "rap francais", "rap fr")) return "rap_fr";
+  if (contains("jul", "ninho", "gazo", "sdm", "tiakola", "sch", "booba", "damso", "nekfeu", "orelsan", "pnl", "koba", "naps", "soprano", "gims", "maitre gims", "rap francais", "rap fr")) return "rap_fr";
   if (contains("drake", "travis scott", "eminem", "kanye", "kendrick", "50 cent", "lil ", "hip hop", "rap us")) return "rap_us";
   if (contains("aya nakamura", "burna boy", "wizkid", "afrobeat", "afro", "amapiano", "dadju", "tayc")) return "afro";
   if (contains("david guetta", "calvin harris", "avicii", "dj snake", "martin garrix", "house", "techno", "electro", "dance")) return "dance_electro";
@@ -1394,6 +1394,39 @@ function partyBrainGenreCompatibility(from: PartyBrainGenreTag, to: PartyBrainGe
   return compatible[from].includes(to) ? 0.55 : -0.35;
 }
 
+
+function inferPartyBrainContextGenre(party: Party): PartyBrainGenreTag {
+  const recentSongs = [
+    ...(party.history || []).slice(-8),
+    ...(party.currentSong ? [party.currentSong] : []),
+  ];
+
+  const scores = new Map<PartyBrainGenreTag, number>();
+
+  recentSongs.forEach((song, index) => {
+    const genre = inferPartyBrainGenre(song.title || "", song.artistName || "");
+    if (genre === "unknown") return;
+
+    const recencyWeight = 1 + index / Math.max(1, recentSongs.length);
+    const isPartyBrain = String(song.addedBy || "").toLowerCase().includes("partybrain");
+    const sourceWeight = isPartyBrain ? 0.8 : 2.4;
+    const currentWeight = party.currentSong?.videoId === song.videoId ? 1.6 : 1;
+
+    scores.set(
+      genre,
+      (scores.get(genre) || 0) + recencyWeight * sourceWeight * currentWeight
+    );
+  });
+
+  const ranked = [...scores.entries()].sort((a, b) => b[1] - a[1]);
+  if (ranked[0]) return ranked[0][0];
+
+  return inferPartyBrainGenre(
+    party.currentSong?.title || "",
+    party.currentSong?.artistName || ""
+  );
+}
+
 function recentPartyBrainSelectionStats(events: PartyIntelligenceEvent[]) {
   const now = Date.now();
   const stats = new Map<string, { count: number; lastAt: number }>();
@@ -1415,8 +1448,15 @@ function chooseDiversifiedPartyBrainRecommendation(
 ): PartyBrainRecommendation | null {
   if (!recommendations.length) return null;
   const current = party.currentSong || party.history?.[party.history.length - 1] || null;
-  const currentGenre = inferPartyBrainGenre(current?.title || "", current?.artistName || "");
-  const top = recommendations.slice(0, Math.min(5, recommendations.length));
+  const currentGenre = inferPartyBrainContextGenre(party);
+  const compatibleRecommendations = recommendations.filter((item) => {
+    const genre = inferPartyBrainGenre(item.title, item.artistName);
+    return partyBrainGenreCompatibility(currentGenre, genre) >= 0.55;
+  });
+  const sourcePool = compatibleRecommendations.length >= 2
+    ? compatibleRecommendations
+    : recommendations;
+  const top = sourcePool.slice(0, Math.min(8, sourcePool.length));
   const weighted = top.map((item, index) => {
     const genre = inferPartyBrainGenre(item.title, item.artistName);
     const genreBonus = partyBrainGenreCompatibility(currentGenre, genre) * 18;
@@ -1679,7 +1719,7 @@ function buildPartyBrainRecommendationScores(
 
     const artistAffinityPart = clampScore((recentAffinity / Math.max(1, recentArtists.length * 0.7)) * 18, 0, 18);
 
-    const currentGenre = inferPartyBrainGenre(currentSong?.title || "", currentSong?.artistName || "");
+    const currentGenre = inferPartyBrainContextGenre(party);
     const candidateGenre = inferPartyBrainGenre(candidate.title, candidate.artistName || "");
     const genreCompatibility = partyBrainGenreCompatibility(currentGenre, candidateGenre);
     const coldStartGenreBonus = genreCompatibility > 0 ? genreCompatibility * 12 : 0;
@@ -1943,7 +1983,17 @@ function selectPartyBrainFallbackSong(party: Party): PartyBrainFallbackSong | nu
               : "Titre de secours disponible avec des métadonnées valides.",
       } satisfies PartyBrainFallbackSong;
     })
-    .sort((a, b) => b.fallbackScore - a.fallbackScore);
+    .sort((a, b) => {
+      const aGenre = inferPartyBrainGenre(a.title, a.artistName);
+      const bGenre = inferPartyBrainGenre(b.title, b.artistName);
+      const aCompatibility = partyBrainGenreCompatibility(currentGenre, aGenre);
+      const bCompatibility = partyBrainGenreCompatibility(currentGenre, bGenre);
+      const aTier = aCompatibility >= 0.55 ? 2 : aCompatibility >= 0 ? 1 : 0;
+      const bTier = bCompatibility >= 0.55 ? 2 : bCompatibility >= 0 ? 1 : 0;
+
+      if (bTier !== aTier) return bTier - aTier;
+      return b.fallbackScore - a.fallbackScore;
+    });
 
   return candidates[0] || null;
 }
@@ -2725,7 +2775,7 @@ app.post("/party/:code/next",(req,res)=>{
       });
     }
 
-    const recommendationPool = buildPartyBrainRecommendationScores(party, 5);
+    const recommendationPool = buildPartyBrainRecommendationScores(party, 20);
     const bestRecommendation = chooseDiversifiedPartyBrainRecommendation(recommendationPool, party);
 
     const minimumScore = Number(

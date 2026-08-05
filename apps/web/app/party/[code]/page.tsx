@@ -59,6 +59,12 @@ type YoutubeSuggestion = {
   albumName?: string;
   metadataSource?: "ART_TRACK_DESCRIPTION" | "TITLE_CHANNEL" | "QUERY_FALLBACK";
   metadataConfidence?: number;
+  coverStatus?: "pending" | "found" | "not_found" | "error";
+  coverUrl?: string;
+  coverSource?: "APPLE_ITUNES" | "MUSICBRAINZ_CAA";
+  coverWidth?: number;
+  coverHeight?: number;
+  coverLastCheckedAt?: number;
   sourceQuery?: string;
   suggestionPool?: YoutubeSuggestion[];
 };
@@ -79,9 +85,25 @@ type Song = {
   albumName?: string;
   metadataSource?: "ART_TRACK_DESCRIPTION" | "TITLE_CHANNEL" | "QUERY_FALLBACK";
   metadataConfidence?: number;
+  coverStatus?: "pending" | "found" | "not_found" | "error";
+  coverUrl?: string;
+  coverSource?: "APPLE_ITUNES" | "MUSICBRAINZ_CAA";
+  coverWidth?: number;
+  coverHeight?: number;
+  coverLastCheckedAt?: number;
 };
 
 type Participant = { id: string; name: string; avatar?: string };
+
+const MIXPARTY_DEFAULT_COVER = "/branding/icon.png";
+
+function hasHdCover(song?: Song | null): boolean {
+  return Boolean(song?.coverStatus === "found" && song.coverUrl);
+}
+
+function getSongArtwork(song?: Song | null): string {
+  return hasHdCover(song) ? song!.coverUrl! : MIXPARTY_DEFAULT_COVER;
+}
 
 const DEFAULT_AVATARS = [
   "/avatars/default/001-panda.png",
@@ -1457,25 +1479,70 @@ export default function PartyPage() {
                               {playerAudit.length === 0 ? <div className="text-cyan-100/55">En attente du premier événement…</div> : playerAudit.slice(-12).map((entry, index) => <div key={`${entry.at}-${index}`} className="border-t border-white/5 py-0.5">{new Date(entry.at).toLocaleTimeString("fr-FR", { hour12: false })} — {entry.event}{entry.detail ? ` — ${entry.detail}` : ""}</div>)}
                             </div>
                           )}
-                          <div className="relative aspect-video w-full overflow-hidden rounded-[22px] bg-black">
-                            <div ref={setPlayerHostElement} className="mixparty-youtube-host absolute inset-0 h-full w-full min-w-0 max-w-full overflow-hidden" />
+                          <div className="premium-cover-stage relative aspect-video w-full overflow-hidden rounded-[22px] bg-[#090912]">
+                            <div
+                              ref={setPlayerHostElement}
+                              className="mixparty-youtube-host mixparty-youtube-host--audio-only absolute inset-0 h-full w-full min-w-0 max-w-full overflow-hidden"
+                              aria-hidden="true"
+                            />
+
+                            <div
+                              className={`premium-cover-backdrop ${hasHdCover(party.currentSong) ? "premium-cover-backdrop--artwork" : "premium-cover-backdrop--mixparty"}`}
+                              style={hasHdCover(party.currentSong) ? { backgroundImage: `url(${getSongArtwork(party.currentSong)})` } : undefined}
+                            />
+                            <div className="premium-cover-stage__veil" />
+                            <div className="premium-cover-stage__orb premium-cover-stage__orb--one" />
+                            <div className="premium-cover-stage__orb premium-cover-stage__orb--two" />
+
+                            <div className="premium-cover-stage__content">
+                              <div className={`premium-cover-art ${hasHdCover(party.currentSong) ? "premium-cover-art--hd" : "premium-cover-art--logo"}`}>
+                                <span className="premium-cover-art__glow" />
+                                <img
+                                  src={getSongArtwork(party.currentSong)}
+                                  alt={hasHdCover(party.currentSong) ? `Jaquette de ${party.currentSong.title}` : "Logo MixParty"}
+                                />
+                              </div>
+                              <div className="premium-cover-stage__meta">
+                                <span className="premium-cover-stage__eyebrow">
+                                  {hasHdCover(party.currentSong) ? "Jaquette HD" : "MixParty · Jaquette en préparation"}
+                                </span>
+                                <strong>{party.currentSong.title}</strong>
+                                <span>{party.currentSong.artistName || party.currentSong.addedBy}</span>
+                              </div>
+                            </div>
+
                             {youtubeError !== null && (
-                              <div className="absolute inset-x-3 bottom-3 z-10 rounded-2xl border border-red-400/30 bg-red-950/90 p-3 text-sm shadow-2xl backdrop-blur">
+                              <div className="absolute inset-x-3 bottom-3 z-30 rounded-2xl border border-red-400/30 bg-red-950/90 p-3 text-sm shadow-2xl backdrop-blur">
                                 <p className="font-black text-red-200">Erreur YouTube {youtubeError}</p>
                                 <p className="mt-1 text-xs leading-5 text-red-100/75">{youtubeError === 2 && "Identifiant vidéo ou paramètres invalides."}{(youtubeError === 5 || youtubeError === 101 || youtubeError === 150) && "Cette vidéo refuse la lecture dans un lecteur intégré."}{youtubeError === 100 && "Cette vidéo est privée, supprimée ou introuvable."}{youtubeError === 153 && "YouTube ne reçoit pas correctement l’origine ou le référent de MixParty."}{![-1, 2, 5, 100, 101, 150, 153].includes(youtubeError) && "Erreur inconnue du lecteur intégré."}</p>
                               </div>
                             )}
                             {resumeRequired && (
-                              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/65 p-5 backdrop-blur-sm">
+                              <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/65 p-5 backdrop-blur-sm">
                                 <button type="button" onClick={resumePlayback} className="party-action party-action--orange group rounded-2xl px-6 py-4 text-base font-black"><span className="party-action__shine" aria-hidden="true" /><span className="party-action__content flex items-center gap-2"><Play className="h-5 w-5 fill-current" />Reprendre la lecture</span></button>
                               </div>
                             )}
                           </div>
                         </>
                       ) : (
-                        <div className="relative aspect-video overflow-hidden rounded-[22px] bg-[#0d0d18]">
-                          <img src={party.currentSong.thumbnail} alt="" className="h-full w-full object-cover opacity-45 blur-[1px]" />
-                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 px-6 text-center"><Radio className="mb-3 h-9 w-9 text-orange-300" /><p className="text-sm font-black uppercase tracking-[0.18em] text-orange-300">Lecture sur l’appareil DJ</p><p className="mt-2 text-sm text-white/65">Ton téléphone suit la soirée en direct.</p><p className="mt-3 text-xs font-bold text-white/45">{remotePlayback.state === 1 ? "Lecture en cours" : "Lecture en pause"} · {Math.floor(remotePlayback.time / 60)}:{String(Math.floor(remotePlayback.time % 60)).padStart(2, "0")}</p></div>
+                        <div className="premium-cover-stage relative aspect-video overflow-hidden rounded-[22px] bg-[#0d0d18]">
+                          <div
+                            className={`premium-cover-backdrop ${hasHdCover(party.currentSong) ? "premium-cover-backdrop--artwork" : "premium-cover-backdrop--mixparty"}`}
+                            style={hasHdCover(party.currentSong) ? { backgroundImage: `url(${getSongArtwork(party.currentSong)})` } : undefined}
+                          />
+                          <div className="premium-cover-stage__veil" />
+                          <div className="premium-cover-stage__content premium-cover-stage__content--remote">
+                            <div className={`premium-cover-art premium-cover-art--remote ${hasHdCover(party.currentSong) ? "premium-cover-art--hd" : "premium-cover-art--logo"}`}>
+                              <span className="premium-cover-art__glow" />
+                              <img src={getSongArtwork(party.currentSong)} alt={hasHdCover(party.currentSong) ? `Jaquette de ${party.currentSong.title}` : "Logo MixParty"} />
+                            </div>
+                            <div className="premium-cover-stage__meta">
+                              <span className="premium-cover-stage__eyebrow"><Radio className="h-3.5 w-3.5" /> Lecture sur l’appareil DJ</span>
+                              <strong>{party.currentSong.title}</strong>
+                              <span>{party.currentSong.artistName || party.currentSong.addedBy}</span>
+                              <small>{remotePlayback.state === 1 ? "Lecture en cours" : "Lecture en pause"} · {Math.floor(remotePlayback.time / 60)}:{String(Math.floor(remotePlayback.time % 60)).padStart(2, "0")}</small>
+                            </div>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -1483,7 +1550,7 @@ export default function PartyPage() {
 
                   <div className="v53-player-dashboard">
                     <div className="v53-track-identity">
-                      <div className="v53-cover-wrap"><span className="v53-cover-glow" /><img src={party.currentSong.thumbnail} alt={party.currentSong.title} /></div>
+                      <div className={`v53-cover-wrap ${hasHdCover(party.currentSong) ? "v53-cover-wrap--hd" : "v53-cover-wrap--logo"}`}><span className="v53-cover-glow" /><img src={getSongArtwork(party.currentSong)} alt={hasHdCover(party.currentSong) ? party.currentSong.title : "MixParty"} /></div>
                       <div className="min-w-0">
                         <span className="v53-track-badge"><Radio className="h-3.5 w-3.5" />{isPlaybackController ? "Appareil DJ" : "Synchronisé"}</span>
                         <h2>{party.currentSong.title}</h2>
@@ -2342,7 +2409,7 @@ export default function PartyPage() {
 
         {tvModeActive && (
           <section className={`v60-tv ${tvPlayback.state === 1 ? "v60-tv--playing" : "v60-tv--paused"}`} aria-label="Mode TV MixParty">
-            <div className="v60-tv__backdrop" style={party.currentSong?.thumbnail ? { backgroundImage: `url(${party.currentSong.thumbnail})` } : undefined} />
+            <div className="v60-tv__backdrop" style={party.currentSong && hasHdCover(party.currentSong) ? { backgroundImage: `url(${getSongArtwork(party.currentSong)})` } : undefined} />
             <div className="v60-tv__veil" />
 
             <header className="v60-tv__header">
@@ -2365,7 +2432,7 @@ export default function PartyPage() {
                   <div className="v60-tv__cover-wrap">
                     <div className="v60-tv__cover-glow" />
                     {party.currentSong?.thumbnail ? (
-                      <img src={party.currentSong.thumbnail} alt="Pochette du morceau en lecture" className="v60-tv__cover" />
+                      <img src={getSongArtwork(party.currentSong)} alt={hasHdCover(party.currentSong) ? "Pochette du morceau en lecture" : "Logo MixParty"} className={`v60-tv__cover ${hasHdCover(party.currentSong) ? "" : "v60-tv__cover--logo"}`} />
                     ) : (
                       <div className="v60-tv__cover v60-tv__cover--empty"><Music4 /></div>
                     )}
