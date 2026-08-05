@@ -1890,24 +1890,6 @@ export default function PartyPage() {
 
                           <div className="v53-queue-added"><span className="v53-queue-avatar"><img src={party.participants.find((participant) => participant.name === song.addedBy)?.avatar || defaultAvatarForParticipant(song.addedBy)} alt="" /></span><span>Ajouté par <strong>{song.addedBy}</strong></span></div>
 
-                          <div className="mt-2 sm:hidden">
-
-                            <button
-                              type="button"
-                              onClick={() => vote(originalIndex)}
-                              className={`vote-button vote-button--compact vote-button--mobile-single ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""}`}
-                              aria-label={`Voter pour ${song.title}. ${song.votes} vote${song.votes > 1 ? "s" : ""} actuellement`}
-                            >
-                              <span className="vote-button__plus">+1</span>
-                              <span className="flex items-center gap-1.5">
-                                <ArrowBigUp className="h-4 w-4" />
-                                <strong>{song.votes}</strong>
-                                <span>Voter</span>
-                              </span>
-                            </button>
-
-                          </div>
-
                         </div>
 
                         <div className="v53-queue-actions hidden sm:flex">
