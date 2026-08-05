@@ -2074,47 +2074,55 @@ body {
 }
 
 /* =========================================================
-   MIXPARTY TV — NÉON AUTOUR DE LA JAQUETTE
-   Modifie uniquement la jaquette. Aucun changement des fonds TV.
+   MIXPARTY — NÉON JAQUETTE MODE LECTURE UNIQUEMENT
+   Cible seulement .dj-console-cover.
+   Ne modifie ni le mode TV, ni les fonds, ni la file d'attente.
    ========================================================= */
 
-@keyframes v60-cover-neon-flow {
+@keyframes dj-console-cover-neon-pulse {
   0%, 100% {
+    opacity: .82;
     filter: brightness(1) saturate(1.05);
     box-shadow:
-      0 0 8px rgba(168, 85, 247, .95),
-      0 0 20px rgba(236, 72, 153, .78),
-      0 0 42px rgba(249, 115, 22, .38);
+      0 0 7px rgba(34, 211, 238, .72),
+      0 0 16px rgba(168, 85, 247, .72),
+      0 0 30px rgba(236, 72, 153, .58),
+      0 0 46px rgba(249, 115, 22, .28);
   }
 
   50% {
-    filter: brightness(1.18) saturate(1.22);
+    opacity: 1;
+    filter: brightness(1.18) saturate(1.2);
     box-shadow:
-      0 0 12px rgba(34, 211, 238, .9),
-      0 0 28px rgba(236, 72, 153, .9),
-      0 0 58px rgba(249, 115, 22, .48);
+      0 0 9px rgba(34, 211, 238, .9),
+      0 0 22px rgba(168, 85, 247, .88),
+      0 0 38px rgba(236, 72, 153, .72),
+      0 0 58px rgba(249, 115, 22, .38);
   }
 }
 
-.v60-tv__cover-wrap {
+.dj-console-cover {
   isolation: isolate;
   overflow: visible;
-  border-radius: 24px;
+  border-color: transparent !important;
+  box-shadow:
+    0 24px 58px rgba(0, 0, 0, .48),
+    0 0 24px rgba(236, 72, 153, .2) !important;
 }
 
-.v60-tv__cover-wrap::before {
+.dj-console-cover::after {
   content: "";
   position: absolute;
   inset: -4px;
-  z-index: 1;
-  border-radius: 26px;
+  z-index: -1;
+  border-radius: 25px;
   padding: 3px;
   pointer-events: none;
   background: linear-gradient(
     135deg,
     #22d3ee 0%,
-    #8b5cf6 24%,
-    #ec4899 52%,
+    #8b5cf6 25%,
+    #ec4899 55%,
     #fb7185 72%,
     #f97316 100%
   );
@@ -2123,37 +2131,45 @@ body {
     linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
-  animation: v60-cover-neon-flow 3.8s ease-in-out infinite;
+  animation: dj-console-cover-neon-pulse 3.6s ease-in-out infinite;
 }
 
-.v60-tv__cover-glow {
-  inset: -5% !important;
-  z-index: 0;
-  border-radius: 30px !important;
-  background:
-    linear-gradient(
-      135deg,
-      rgba(34, 211, 238, .82),
-      rgba(139, 92, 246, .9) 28%,
-      rgba(236, 72, 153, .92) 58%,
-      rgba(249, 115, 22, .82)
-    ) !important;
-  filter: blur(28px) !important;
-  opacity: .62 !important;
+.dj-console-cover__glow {
+  inset: -4% !important;
+  z-index: -2 !important;
+  border-radius: 28px !important;
+  background: linear-gradient(
+    135deg,
+    rgba(34, 211, 238, .72),
+    rgba(139, 92, 246, .82) 28%,
+    rgba(236, 72, 153, .86) 58%,
+    rgba(249, 115, 22, .7)
+  ) !important;
+  filter: blur(24px) !important;
+  opacity: .58 !important;
 }
 
-.v60-tv__cover {
+.dj-console-cover > img {
+  position: relative;
   z-index: 2;
-  border: 1px solid rgba(255, 255, 255, .34) !important;
-  border-radius: 22px !important;
-  box-shadow:
-    0 28px 72px rgba(0, 0, 0, .62),
-    0 0 18px rgba(236, 72, 153, .34),
-    inset 0 1px 0 rgba(255, 255, 255, .22) !important;
+  border-radius: inherit;
+}
+
+.dj-console-cover .mixparty-youtube-host {
+  border-radius: inherit;
+  overflow: hidden;
+}
+
+@media (max-width: 720px) {
+  .dj-console-cover::after {
+    inset: -3px;
+    padding: 2px;
+    border-radius: 20px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .v60-tv__cover-wrap::before {
+  .dj-console-cover::after {
     animation: none !important;
   }
 }

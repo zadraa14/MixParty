@@ -1,2 +1,2 @@
-Ajoute uniquement un contour néon autour de la jaquette du mode TV.
-Les fonds d'écran du mode TV ne sont pas modifiés.
+Correctif ciblé : néon uniquement autour de la jaquette du mode lecture.
+Aucun changement du mode TV, des fonds d'écran ou de la file d'attente.
