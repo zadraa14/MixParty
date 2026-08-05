@@ -75,16 +75,7 @@ type Stats = {
       songsAdded?: number;
     }>;
   };
-  covers: {
-    downloaded: number;
-    pending: number;
-    activeDownloads: number;
-    exactMatches: number;
-    artistFallbacks: number;
-    notFound: number;
-    errors: number;
-    unrequested: number;
-  };
+ 
   totals: {
     searches: number;
     additions: number;
