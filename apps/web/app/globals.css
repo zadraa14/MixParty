@@ -2051,3 +2051,24 @@ body {
   position: relative;
   z-index: 2;
 }
+
+
+/* =========================================================
+   MIXPARTY TV — DOUBLE FOND FINAL
+   Image nette dans le bloc lecture + même image ultra floue derrière.
+   ========================================================= */
+
+.v60-tv__now {
+  background-image:
+    linear-gradient(
+      180deg,
+      rgba(3, 4, 13, .10) 0%,
+      rgba(3, 4, 13, .08) 46%,
+      rgba(2, 2, 9, .34) 100%
+    ),
+    url("/tv/mixparty-nightclub-4k.webp") !important;
+  background-position: center center, center center !important;
+  background-repeat: no-repeat, no-repeat !important;
+  background-size: cover, cover !important;
+  background-color: #070711 !important;
+}
