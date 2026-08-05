@@ -1900,3 +1900,33 @@ body {
 @media(max-width:760px){.dj-console-main{grid-template-columns:110px minmax(0,1fr);gap:13px;padding:12px;border-radius:21px}.dj-console-cover{border-radius:17px}.dj-console-track h2{font-size:20px}.dj-console-track>p{font-size:13px}.dj-console-added{display:none}.dj-console-timeline{grid-column:1/-1;margin-top:14px}.dj-console-waveform{height:30px}.dj-console-actions{grid-column:1/-1}.dj-console-votes{display:none}}
 @media(max-width:520px){.dj-console-main{grid-template-columns:82px minmax(0,1fr);gap:11px}.dj-console-cover--logo img{padding:20%}.dj-console-track__topline{margin-bottom:5px}.dj-console-status{padding:4px 7px;font-size:8px}.dj-console-track h2{font-size:17px}.dj-console-track>p{margin-top:4px;font-size:11px}.dj-console-timeline{margin-top:12px}.dj-console-play{width:48px;height:48px;border-radius:16px}.dj-console-next{min-height:48px;padding:8px 11px}.dj-console-next span{font-size:11px}.dj-console-next small{font-size:8px}}
 @media(prefers-reduced-motion:reduce){.dj-console-waveform span{animation:none!important}}
+
+
+/* MixParty — Clip DJ visible sans recréer le lecteur YouTube */
+.dj-console-visible-player {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 24px;
+  background: #05030a;
+  box-shadow: 0 24px 70px rgba(0,0,0,.38);
+}
+.dj-console-visible-player iframe,
+.mixparty-youtube-host--visible iframe {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+.mixparty-youtube-host--visible {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+@media (max-width: 767px) {
+  .dj-console-visible-player { border-radius: 18px; }
+}

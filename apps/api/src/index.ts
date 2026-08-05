@@ -68,7 +68,7 @@ type YoutubeSuggestion = {
 };
 
 type CoverStatus = "pending" | "found" | "not_found" | "error";
-type CoverSource = "APPLE_ITUNES" | "MUSICBRAINZ_CAA";
+type CoverSource = "APPLE_ITUNES" | "MUSICBRAINZ_CAA" | "APPLE_ARTIST_FALLBACK";
 
 type Song = {
   title:string;
@@ -617,6 +617,7 @@ type Party = {
   createdAt: number;
   creatorToken: string;
   partyBrainAutoRelayEnabled: boolean;
+  showVideoClip: boolean;
 };
 
 let parties: Party[] = [];
@@ -637,6 +638,7 @@ if(fs.existsSync(dataFilePath)){
     );
     party.creatorToken = typeof party.creatorToken === "string" && party.creatorToken ? party.creatorToken : randomUUID();
     party.partyBrainAutoRelayEnabled = Boolean(party.partyBrainAutoRelayEnabled);
+    party.showVideoClip = Boolean(party.showVideoClip);
   });
 
   cleanOldParties();
@@ -923,7 +925,7 @@ async function searchAppleCover(song: MusicBrainSong): Promise<CoverLookupResult
     if (!best || score > best.score) best = { item, score };
   }
 
-  if (!best || best.score < 0.68) return null;
+  if (!best || best.score < 0.76) return null;
   const artwork = appleHdArtworkUrl(String(best.item.artworkUrl100 || best.item.artworkUrl60 || ""));
   if (!artwork) return null;
   return {
@@ -932,6 +934,36 @@ async function searchAppleCover(song: MusicBrainSong): Promise<CoverLookupResult
     width: 1200,
     height: 1200,
     confidence: Math.round(Math.min(100, best.score * 100)),
+  };
+}
+
+async function searchAppleArtistFallback(song: MusicBrainSong): Promise<CoverLookupResult | null> {
+  const term = encodeURIComponent(song.artistName.trim());
+  const country = encodeURIComponent(process.env.ITUNES_STOREFRONT || "FR");
+  const url = `https://itunes.apple.com/search?term=${term}&country=${country}&media=music&entity=album&limit=20`;
+  const data = await fetchJsonWithTimeout<{ results?: Array<Record<string, any>> }>(url);
+  const results = Array.isArray(data?.results) ? data!.results! : [];
+
+  let best: { item: Record<string, any>; score: number } | null = null;
+  for (const item of results) {
+    const artistScore = coverTextSimilarity(song.artistName, String(item.artistName || ""));
+    if (artistScore < 0.82) continue;
+    const artwork = String(item.artworkUrl100 || item.artworkUrl60 || "");
+    if (!artwork) continue;
+    const recencyBonus = item.releaseDate ? Math.max(0, 0.04 - Math.min(0.04, (Date.now() - Date.parse(item.releaseDate)) / 3.154e11 * 0.01)) : 0;
+    const score = artistScore + recencyBonus;
+    if (!best || score > best.score) best = { item, score };
+  }
+
+  if (!best) return null;
+  const artwork = appleHdArtworkUrl(String(best.item.artworkUrl100 || best.item.artworkUrl60 || ""));
+  if (!artwork) return null;
+  return {
+    url: artwork,
+    source: "APPLE_ARTIST_FALLBACK",
+    width: 1200,
+    height: 1200,
+    confidence: Math.round(Math.min(88, best.score * 90)),
   };
 }
 
@@ -1022,7 +1054,13 @@ function queueHdCoverLookup(videoId: string) {
         await new Promise((resolve) => setTimeout(resolve, 1100));
       });
       await musicBrainzCoverQueue;
-      persistCoverResult(videoId, musicBrainzResult, false);
+      if (musicBrainzResult) {
+        persistCoverResult(videoId, musicBrainzResult, false);
+        return;
+      }
+
+      const artistFallback = await searchAppleArtistFallback(learnedSong);
+      persistCoverResult(videoId, artistFallback, false);
     } catch (error) {
       console.error("HD COVER LOOKUP ERROR", videoId, error);
       persistCoverResult(videoId, null, true);
@@ -1293,6 +1331,21 @@ function musicBrainStats() {
       youtubeCalls: youtubeSearchStats.youtubeCalls,
       quotaSaved: youtubeSearchStats.quotaSaved,
     },
+    covers: (() => {
+      const allSongs = Object.values(musicBrain.songs || {});
+      const count = (status: CoverStatus) => allSongs.filter((song) => song.coverStatus === status).length;
+      return {
+        total: allSongs.length,
+        found: count("found"),
+        pending: count("pending"),
+        notFound: count("not_found"),
+        error: count("error"),
+        unrequested: allSongs.filter((song) => !song.coverStatus).length,
+        inFlight: coverLookupsInFlight.size,
+        exact: allSongs.filter((song) => song.coverSource === "APPLE_ITUNES" || song.coverSource === "MUSICBRAINZ_CAA").length,
+        artistFallback: allSongs.filter((song) => song.coverSource === "APPLE_ARTIST_FALLBACK").length,
+      };
+    })(),
     academy: academyDashboard(),
     topArtists,
     topSongs,
@@ -2110,7 +2163,9 @@ const party:Party = {
 
   creatorToken: randomUUID(),
 
-  partyBrainAutoRelayEnabled: false
+  partyBrainAutoRelayEnabled: false,
+
+  showVideoClip: false
 
 };
 
@@ -2665,6 +2720,22 @@ app.post("/party/:code/play/:index",(req,res)=>{
 });
 
 // Activer ou désactiver le relais automatique PartyBrain
+app.post("/party/:code/display/clip", (req, res) => {
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  const providedCreatorToken = String(
+    req.body.creatorToken || req.headers["x-mixparty-creator-token"] || ""
+  );
+  if (!providedCreatorToken || providedCreatorToken !== party.creatorToken) {
+    return res.status(403).json({ error: "Seul le créateur peut modifier l’affichage du clip" });
+  }
+
+  party.showVideoClip = req.body.enabled === true;
+  updateParty(party);
+  return res.json(toPublicParty(party));
+});
+
 app.post("/party/:code/partybrain/auto-relay", (req, res) => {
   const party = findParty(req.params.code);
 

@@ -86,6 +86,17 @@ type Stats = {
     youtubeCalls: number;
     quotaSaved: number;
   };
+  covers: {
+    total: number;
+    found: number;
+    pending: number;
+    notFound: number;
+    error: number;
+    unrequested: number;
+    inFlight: number;
+    exact: number;
+    artistFallback: number;
+  };
   topArtists: Array<{
     key: string;
     name: string;
@@ -313,6 +324,35 @@ export default function MusicBrainAdminPage() {
                     {stats.storage.persistent ? "● Stockage persistant Railway actif" : "● Stockage local — ajouter un volume Railway avant production"}
                   </p>
                 </div>
+              </div>
+            </section>
+
+            <section className="mb-7 rounded-[28px] border border-emerald-400/20 bg-gradient-to-br from-emerald-500/10 via-cyan-500/10 to-violet-500/10 p-5 backdrop-blur-xl sm:p-7">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[.24em] text-emerald-300">HD Cover System</p>
+                  <h2 className="mt-1 text-2xl font-black">Bibliothèque de jaquettes</h2>
+                  <p className="mt-2 text-sm text-white/50">Suivi en direct des pochettes exactes et des secours artiste.</p>
+                </div>
+                <div className={`rounded-full border px-3 py-2 text-xs font-black ${stats.covers.inFlight > 0 ? "border-cyan-300/25 bg-cyan-400/10 text-cyan-200" : "border-white/10 bg-white/5 text-white/45"}`}>
+                  {stats.covers.inFlight > 0 ? `${stats.covers.inFlight} téléchargement(s) actif(s)` : "Aucun téléchargement actif"}
+                </div>
+              </div>
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
+                {[
+                  ["Téléchargées", stats.covers.found, "text-emerald-300"],
+                  ["En attente", stats.covers.pending, "text-cyan-300"],
+                  ["Exactes", stats.covers.exact, "text-violet-300"],
+                  ["Secours artiste", stats.covers.artistFallback, "text-fuchsia-300"],
+                  ["Introuvables", stats.covers.notFound, "text-amber-300"],
+                  ["Erreurs", stats.covers.error, "text-red-300"],
+                  ["Non recherchées", stats.covers.unrequested, "text-white/55"],
+                ].map(([label, value, tone]) => (
+                  <div key={String(label)} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[.14em] text-white/35">{label}</p>
+                    <p className={`mt-2 text-2xl font-black ${tone}`}>{number.format(Number(value))}</p>
+                  </div>
+                ))}
               </div>
             </section>
 
