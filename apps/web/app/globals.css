@@ -1913,26 +1913,3 @@ body {
 .dj-console-cover--clip:before{opacity:0}
 .dj-console-cover__artwork--hidden{opacity:0!important;pointer-events:none}
 @media(max-width:640px){.dj-console-clip-toggle span{display:none}.dj-console-clip-toggle{width:40px;height:40px;padding:0;border-radius:12px}}
-
-
-/* =========================================================
-   MIXPARTY TV — FOND BOÎTE DE NUIT STABLE
-   Étape 1 : fond uniquement, sans modifier le JSX ni les boutons.
-   ========================================================= */
-
-.v60-tv__now {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(3, 4, 13, .18) 0%,
-      rgba(3, 4, 13, .10) 48%,
-      rgba(2, 2, 9, .46) 100%
-    ),
-    url("/tv/nightclub-crowd.webp") center center / cover no-repeat !important;
-}
-
-/* Le fond est décoratif : aucune zone de clic n'est ajoutée. */
-.v60-tv__now,
-.v60-tv__now * {
-  pointer-events: auto;
-}
