@@ -1,2 +1,3 @@
-Version sûre du fond TV : page.tsx inchangée, fond ajouté uniquement en CSS.
-Les overlays ont pointer-events:none et les commandes restent au-dessus.
+Fond TV validé.
+Ce pack modifie uniquement globals.css et ajoute l'image 4K.
+Aucun changement dans page.tsx ni dans les boutons du mode TV.

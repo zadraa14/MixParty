@@ -1913,3 +1913,15 @@ body {
 .dj-console-cover--clip:before{opacity:0}
 .dj-console-cover__artwork--hidden{opacity:0!important;pointer-events:none}
 @media(max-width:640px){.dj-console-clip-toggle span{display:none}.dj-console-clip-toggle{width:40px;height:40px;padding:0;border-radius:12px}}
+
+/* =========================================================
+   MIXPARTY TV — FOND BOÎTE DE NUIT 4K VALIDÉ
+   Image uniquement, sans calque interactif ni modification du lecteur.
+   ========================================================= */
+
+.v60-tv__now {
+  background-image: url("/tv/mixparty-nightclub-4k.webp") !important;
+  background-position: center center !important;
+  background-repeat: no-repeat !important;
+  background-size: cover !important;
+}
