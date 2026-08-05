@@ -1916,84 +1916,23 @@ body {
 
 
 /* =========================================================
-   MIXPARTY TV — FOND CONCERT DIRECT ET VISIBLE
-   Aucun pseudo-élément : le fond est posé directement sur la scène.
+   MIXPARTY TV — FOND BOÎTE DE NUIT STABLE
+   Étape 1 : fond uniquement, sans modifier le JSX ni les boutons.
    ========================================================= */
 
-@keyframes mp-tv-visible-bg {
-  0%, 100% {
-    background-position: center 52%;
-  }
-  50% {
-    background-position: center 48%;
-  }
-}
-
 .v60-tv__now {
-  position: relative !important;
-  isolation: isolate !important;
-  overflow: hidden !important;
-
-  background-image:
+  background:
     linear-gradient(
       180deg,
-      rgba(4, 5, 15, .18) 0%,
-      rgba(4, 5, 15, .08) 42%,
-      rgba(3, 3, 11, .42) 100%
+      rgba(3, 4, 13, .18) 0%,
+      rgba(3, 4, 13, .10) 48%,
+      rgba(2, 2, 9, .46) 100%
     ),
-    url("/tv/crowd-visible.webp") !important;
-
-  background-size: cover, cover !important;
-  background-repeat: no-repeat, no-repeat !important;
-  background-position: center, center 52% !important;
-  background-color: #070711 !important;
-
-  animation: mp-tv-visible-bg 16s ease-in-out infinite;
+    url("/tv/nightclub-crowd.webp") center center / cover no-repeat !important;
 }
 
-/* Le contenu reste entièrement visible et cliquable */
-.v60-tv__now > * {
-  position: relative;
-  z-index: 2;
-}
-
-.v60-tv__controls,
-.v60-tv__controls button,
-.v60-tv__close,
-.v60-tv__queue,
-.v60-tv__queue button {
-  position: relative;
-  z-index: 20;
+/* Le fond est décoratif : aucune zone de clic n'est ajoutée. */
+.v60-tv__now,
+.v60-tv__now * {
   pointer-events: auto;
-}
-
-/* Halos lumineux très légers, sans masquer l'image */
-.v60-tv__now-grid {
-  position: relative;
-  z-index: 3;
-}
-
-.v60-tv__now-grid::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at 18% 10%, rgba(34,211,238,.15), transparent 26%),
-    radial-gradient(circle at 48% 7%, rgba(236,72,153,.18), transparent 30%),
-    radial-gradient(circle at 78% 12%, rgba(249,115,22,.13), transparent 28%);
-}
-
-/* Le badge EN COURS reste compact */
-.v60-tv__current-pill {
-  position: relative;
-  z-index: 10;
-  width: fit-content;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .v60-tv__now {
-    animation: none !important;
-  }
 }
