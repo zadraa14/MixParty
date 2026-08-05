@@ -2055,3 +2055,85 @@ body {
     animation: none !important;
   }
 }
+
+
+/* =========================================================
+   MIXPARTY TV — HOTFIX VISIBILITÉ FOND CONCERT
+   ========================================================= */
+
+.v60-tv__now {
+  background: transparent !important;
+}
+
+/* Le badge EN COURS reste petit en haut à gauche */
+.v60-tv__current-pill {
+  position: absolute !important;
+  left: 24px !important;
+  top: 18px !important;
+  width: auto !important;
+  z-index: 20 !important;
+}
+
+/* La foule occupe toute la scène et reste visible */
+.v60-tv__crowd {
+  inset: 0 !important;
+  height: 100% !important;
+  opacity: .88 !important;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(3,4,12,.16) 0%,
+      rgba(3,4,12,.08) 42%,
+      rgba(2,2,8,.20) 100%
+    ),
+    url("/tv/crowd.webp") center center / cover no-repeat !important;
+  filter: saturate(1.35) brightness(1.12) contrast(1.08) !important;
+  -webkit-mask-image: none !important;
+  mask-image: none !important;
+}
+
+/* Voile très léger : il protège la lisibilité sans noircir la scène */
+.v60-tv__veil {
+  z-index: 4 !important;
+  background:
+    linear-gradient(
+      90deg,
+      rgba(2,3,10,.22) 0%,
+      rgba(2,3,10,.07) 38%,
+      rgba(2,3,10,.12) 70%,
+      rgba(2,3,10,.26) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(2,3,10,.12) 0%,
+      transparent 35%,
+      rgba(2,3,10,.22) 100%
+    ) !important;
+}
+
+/* Les couleurs de scène restent visibles derrière la foule */
+.v60-tv__backdrop {
+  z-index: 1 !important;
+  opacity: .82 !important;
+}
+
+/* Les spots restent devant le décor mais derrière l'interface */
+.v60-tv__lights {
+  z-index: 5 !important;
+}
+
+.v60-tv__spot {
+  opacity: .26;
+  filter: blur(10px);
+}
+
+/* Le contenu réel passe toujours au-dessus */
+.v60-tv__now-grid {
+  position: relative !important;
+  z-index: 15 !important;
+}
+
+.v60-tv__now > :not(.v60-tv__bg-scene):not(.v60-tv__current-pill) {
+  position: relative;
+  z-index: 15;
+}
