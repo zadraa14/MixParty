@@ -281,6 +281,18 @@ export default function PartyPage() {
     setPlayerAudit((previous) => [...previous.slice(-39), entry]);
   }
 
+  function forceYoutubeVolume(player: any) {
+    if (!player) return;
+
+    try {
+      player.unMute?.();
+      player.setVolume?.(100);
+      addPlayerAudit("VOLUME_100", "lecteur YouTube rétabli à 100 %");
+    } catch (error) {
+      console.warn("Impossible de remettre le volume YouTube à 100 %", error);
+    }
+  }
+
   useEffect(() => {
     const saved = localStorage.getItem("playerName");
     const resolvedName = saved || "";
@@ -945,6 +957,7 @@ export default function PartyPage() {
           onReady: (event: any) => {
             if (cancelled) return;
             playerReadyRef.current = true;
+            forceYoutubeVolume(event.target);
             setYoutubeError(null);
             addPlayerAudit("READY", firstVideoId || "sans vidéo");
 
@@ -960,6 +973,7 @@ export default function PartyPage() {
               loadedVideoIdRef.current = pending;
               addPlayerAudit("LOAD_PENDING", pending);
               event.target?.loadVideoById?.(pending);
+              forceYoutubeVolume(event.target);
             }
 
             socketRef.current?.emit("request_playback_sync", code);
@@ -982,7 +996,10 @@ export default function PartyPage() {
               });
             }
 
-            if (event.data === 1) setResumeRequired(false);
+            if (event.data === 1) {
+              forceYoutubeVolume(event.target);
+              setResumeRequired(false);
+            }
             if (djModeActiveRef.current && isPlaybackControllerRef.current && (event.data === 2 || event.data === 5)) {
               window.setTimeout(() => {
                 const state = playerRef.current?.getPlayerState?.();
@@ -1061,6 +1078,7 @@ export default function PartyPage() {
     addPlayerAudit("LOAD_VIDEO_BY_ID", nextVideoId);
     try {
       player.loadVideoById(nextVideoId);
+      forceYoutubeVolume(player);
     } catch (error) {
       console.warn("Chargement de la vidéo suivante impossible", error);
       addPlayerAudit("LOAD_VIDEO_FAILED", nextVideoId);
@@ -1105,6 +1123,7 @@ export default function PartyPage() {
       console.warn("Plein écran indisponible", error);
     }
     try {
+      forceYoutubeVolume(playerRef.current);
       playerRef.current?.playVideo?.();
     } catch {}
   }
@@ -1127,6 +1146,7 @@ export default function PartyPage() {
 
   function resumePlayback() {
     try {
+      forceYoutubeVolume(playerRef.current);
       playerRef.current?.playVideo?.();
       setResumeRequired(false);
       setYoutubeError(null);
