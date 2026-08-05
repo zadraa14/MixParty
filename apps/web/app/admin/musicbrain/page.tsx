@@ -127,6 +127,45 @@ type Stats = {
   }>;
 };
 
+
+type CoverFilter =
+  | "downloaded"
+  | "pending"
+  | "active"
+  | "exact"
+  | "artist_fallback"
+  | "not_found"
+  | "error"
+  | "unrequested";
+
+type CoverLibrarySong = {
+  videoId: string;
+  title: string;
+  artistName: string;
+  albumName?: string;
+  thumbnail: string;
+  coverStatus?: "pending" | "found" | "not_found" | "error";
+  coverUrl?: string;
+  coverSource?: "APPLE_ITUNES" | "MUSICBRAINZ_CAA" | "APPLE_ARTIST_FALLBACK" | "MANUAL";
+  coverWidth?: number;
+  coverHeight?: number;
+  coverLastCheckedAt?: number;
+  coverAttempts: number;
+  category: string;
+  active: boolean;
+};
+
+const coverFilterLabels: Record<CoverFilter, string> = {
+  downloaded: "Jaquettes téléchargées",
+  pending: "En attente",
+  active: "Téléchargements actifs",
+  exact: "Correspondances exactes",
+  artist_fallback: "Secours artiste",
+  not_found: "Introuvables",
+  error: "Erreurs",
+  unrequested: "Pas encore recherchées",
+};
+
 const number = new Intl.NumberFormat("fr-FR");
 
 export default function MusicBrainAdminPage() {
@@ -138,6 +177,18 @@ export default function MusicBrainAdminPage() {
   const [maintenanceLoading, setMaintenanceLoading] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState("");
   const [maintenanceError, setMaintenanceError] = useState("");
+
+  const [activeCoverFilter, setActiveCoverFilter] = useState<CoverFilter | null>(null);
+  const [coverLibrary, setCoverLibrary] = useState<CoverLibrarySong[]>([]);
+  const [coverLibraryTotal, setCoverLibraryTotal] = useState(0);
+  const [coverLibraryLoading, setCoverLibraryLoading] = useState(false);
+  const [coverLibraryError, setCoverLibraryError] = useState("");
+  const [coverSearch, setCoverSearch] = useState("");
+  const [coverActionVideoId, setCoverActionVideoId] = useState("");
+  const [manualCoverVideoId, setManualCoverVideoId] = useState("");
+  const [manualCoverUrl, setManualCoverUrl] = useState("");
+  const [coverActionMessage, setCoverActionMessage] = useState("");
+
 
   async function loadStats() {
     setLoading(true);
@@ -190,6 +241,135 @@ export default function MusicBrainAdminPage() {
       setMaintenanceError(err instanceof Error ? err.message : "Impossible de vider le cache YouTube");
     } finally {
       setMaintenanceLoading(false);
+    }
+  }
+
+
+  async function loadCoverLibrary(filter: CoverFilter, searchValue = coverSearch) {
+    setActiveCoverFilter(filter);
+    setCoverLibraryLoading(true);
+    setCoverLibraryError("");
+    setCoverActionMessage("");
+
+    try {
+      const params = new URLSearchParams({
+        status: filter,
+        limit: "10000",
+      });
+      if (searchValue.trim()) params.set("q", searchValue.trim());
+
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/covers?${params.toString()}`, {
+        cache: "no-store",
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Impossible de charger les jaquettes.");
+
+      setCoverLibrary(Array.isArray(data?.items) ? data.items : []);
+      setCoverLibraryTotal(Number(data?.total || 0));
+    } catch (err) {
+      setCoverLibraryError(err instanceof Error ? err.message : "Impossible de charger les jaquettes.");
+    } finally {
+      setCoverLibraryLoading(false);
+    }
+  }
+
+  function closeCoverLibrary() {
+    setActiveCoverFilter(null);
+    setCoverLibrary([]);
+    setCoverLibraryError("");
+    setCoverActionMessage("");
+    setManualCoverVideoId("");
+    setManualCoverUrl("");
+    setCoverSearch("");
+  }
+
+  function coverAdminHeaders() {
+    return {
+      "Content-Type": "application/json",
+      "x-partybrain-admin-token": adminToken.trim(),
+    };
+  }
+
+  async function retryCover(song: CoverLibrarySong) {
+    if (!adminToken.trim()) {
+      setCoverLibraryError("Entre d’abord le code administrateur Railway dans la zone Maintenance sécurisée.");
+      return;
+    }
+
+    setCoverActionVideoId(song.videoId);
+    setCoverLibraryError("");
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/covers/${encodeURIComponent(song.videoId)}/retry`, {
+        method: "POST",
+        headers: coverAdminHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Impossible de relancer la recherche.");
+      setCoverActionMessage(data?.message || "Recherche relancée.");
+      if (activeCoverFilter) await loadCoverLibrary(activeCoverFilter);
+      await loadStats();
+    } catch (err) {
+      setCoverLibraryError(err instanceof Error ? err.message : "Impossible de relancer la recherche.");
+    } finally {
+      setCoverActionVideoId("");
+    }
+  }
+
+  async function saveManualCover(song: CoverLibrarySong) {
+    if (!adminToken.trim()) {
+      setCoverLibraryError("Entre d’abord le code administrateur Railway dans la zone Maintenance sécurisée.");
+      return;
+    }
+    if (!manualCoverUrl.trim()) {
+      setCoverLibraryError("Colle l’URL complète de la nouvelle jaquette.");
+      return;
+    }
+
+    setCoverActionVideoId(song.videoId);
+    setCoverLibraryError("");
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/covers/${encodeURIComponent(song.videoId)}`, {
+        method: "PUT",
+        headers: coverAdminHeaders(),
+        body: JSON.stringify({ coverUrl: manualCoverUrl.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Impossible d’enregistrer la jaquette.");
+      setCoverActionMessage(data?.message || "Jaquette enregistrée.");
+      setManualCoverVideoId("");
+      setManualCoverUrl("");
+      if (activeCoverFilter) await loadCoverLibrary(activeCoverFilter);
+      await loadStats();
+    } catch (err) {
+      setCoverLibraryError(err instanceof Error ? err.message : "Impossible d’enregistrer la jaquette.");
+    } finally {
+      setCoverActionVideoId("");
+    }
+  }
+
+  async function deleteCover(song: CoverLibrarySong) {
+    if (!adminToken.trim()) {
+      setCoverLibraryError("Entre d’abord le code administrateur Railway dans la zone Maintenance sécurisée.");
+      return;
+    }
+    if (!window.confirm(`Supprimer la jaquette de « ${song.title} » ?`)) return;
+
+    setCoverActionVideoId(song.videoId);
+    setCoverLibraryError("");
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/covers/${encodeURIComponent(song.videoId)}`, {
+        method: "DELETE",
+        headers: coverAdminHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Impossible de supprimer la jaquette.");
+      setCoverActionMessage(data?.message || "Jaquette supprimée.");
+      if (activeCoverFilter) await loadCoverLibrary(activeCoverFilter);
+      await loadStats();
+    } catch (err) {
+      setCoverLibraryError(err instanceof Error ? err.message : "Impossible de supprimer la jaquette.");
+    } finally {
+      setCoverActionVideoId("");
     }
   }
 
@@ -315,19 +495,25 @@ export default function MusicBrainAdminPage() {
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {[
-                  ["Jaquettes téléchargées", coverStats.downloaded, "text-emerald-300"],
-                  ["En attente", coverStats.pending, "text-amber-300"],
-                  ["Téléchargements actifs", coverStats.active, "text-cyan-300"],
-                  ["Correspondances exactes", coverStats.exactMatches, "text-fuchsia-300"],
-                  ["Secours artiste", coverStats.artistFallback, "text-violet-300"],
-                  ["Introuvables", coverStats.notFound, "text-white/55"],
-                  ["Erreurs", coverStats.errors, "text-red-300"],
-                  ["Pas encore recherchées", coverStats.unrequested, "text-white/40"],
-                ].map(([label, value, tone]) => (
-                  <article key={String(label)} className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-[10px] font-black uppercase tracking-[.15em] text-white/35">{String(label)}</p>
-                    <p className={`mt-3 text-2xl font-black ${String(tone)}`}>{number.format(Number(value))}</p>
-                  </article>
+                  { filter: "downloaded" as CoverFilter, label: "Jaquettes téléchargées", value: coverStats.downloaded, tone: "text-emerald-300" },
+                  { filter: "pending" as CoverFilter, label: "En attente", value: coverStats.pending, tone: "text-amber-300" },
+                  { filter: "active" as CoverFilter, label: "Téléchargements actifs", value: coverStats.active, tone: "text-cyan-300" },
+                  { filter: "exact" as CoverFilter, label: "Correspondances exactes", value: coverStats.exactMatches, tone: "text-fuchsia-300" },
+                  { filter: "artist_fallback" as CoverFilter, label: "Secours artiste", value: coverStats.artistFallback, tone: "text-violet-300" },
+                  { filter: "not_found" as CoverFilter, label: "Introuvables", value: coverStats.notFound, tone: "text-white/55" },
+                  { filter: "error" as CoverFilter, label: "Erreurs", value: coverStats.errors, tone: "text-red-300" },
+                  { filter: "unrequested" as CoverFilter, label: "Pas encore recherchées", value: coverStats.unrequested, tone: "text-white/40" },
+                ].map(({ filter, label, value, tone }) => (
+                  <button
+                    type="button"
+                    key={filter}
+                    onClick={() => void loadCoverLibrary(filter, "")}
+                    className="group rounded-2xl border border-white/10 bg-black/20 p-4 text-left transition hover:-translate-y-0.5 hover:border-orange-300/30 hover:bg-white/[0.06]"
+                  >
+                    <p className="text-[10px] font-black uppercase tracking-[.15em] text-white/35">{label}</p>
+                    <p className={`mt-3 text-2xl font-black ${tone}`}>{number.format(Number(value))}</p>
+                    <p className="mt-2 text-[10px] font-bold text-orange-200/0 transition group-hover:text-orange-200/70">Voir le détail →</p>
+                  </button>
                 ))}
               </div>
             </section>
@@ -688,6 +874,157 @@ export default function MusicBrainAdminPage() {
           </>
         )}
       </section>
+
+      {activeCoverFilter ? (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-3 backdrop-blur-md sm:p-6">
+          <section className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-orange-300/20 bg-[#100817] shadow-[0_30px_100px_rgba(0,0,0,.65)]">
+            <header className="flex flex-col gap-4 border-b border-white/10 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[.22em] text-orange-300">Bibliothèque de jaquettes</p>
+                <h2 className="mt-1 text-2xl font-black">{coverFilterLabels[activeCoverFilter]}</h2>
+                <p className="mt-1 text-sm text-white/45">{number.format(coverLibraryTotal)} morceau(x) dans cette catégorie</p>
+              </div>
+              <button
+                type="button"
+                onClick={closeCoverLibrary}
+                className="grid h-11 w-11 place-items-center self-end rounded-2xl border border-white/10 bg-white/5 text-xl font-black text-white/70 hover:bg-white/10 sm:self-auto"
+                aria-label="Fermer"
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="flex flex-col gap-3 border-b border-white/10 p-4 sm:flex-row sm:items-center sm:p-5">
+              <label className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-white/10 bg-black/25 px-3 py-3">
+                <Search className="h-4 w-4 text-white/40" />
+                <input
+                  value={coverSearch}
+                  onChange={(event) => setCoverSearch(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && activeCoverFilter) void loadCoverLibrary(activeCoverFilter, coverSearch);
+                  }}
+                  placeholder="Rechercher un titre ou un artiste…"
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-white/30"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={() => activeCoverFilter && void loadCoverLibrary(activeCoverFilter, coverSearch)}
+                className="rounded-2xl border border-orange-300/20 bg-orange-500/10 px-5 py-3 text-sm font-black text-orange-100 hover:bg-orange-500/15"
+              >
+                Rechercher
+              </button>
+            </div>
+
+            {coverLibraryError ? <p className="mx-5 mt-4 rounded-2xl border border-red-400/20 bg-red-500/10 p-3 text-sm font-bold text-red-200">{coverLibraryError}</p> : null}
+            {coverActionMessage ? <p className="mx-5 mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-3 text-sm font-bold text-emerald-200">{coverActionMessage}</p> : null}
+
+            <div className="overflow-y-auto p-4 sm:p-5">
+              {coverLibraryLoading ? (
+                <div className="py-16 text-center text-white/50">
+                  <RefreshCw className="mx-auto mb-3 h-7 w-7 animate-spin" />
+                  Chargement des morceaux…
+                </div>
+              ) : coverLibrary.length ? (
+                <div className="space-y-3">
+                  {coverLibrary.map((song) => {
+                    const preview = song.coverUrl || song.thumbnail || "/branding/icon.png";
+                    const isEditing = manualCoverVideoId === song.videoId;
+                    const isWorking = coverActionVideoId === song.videoId;
+
+                    return (
+                      <article key={song.videoId} className="rounded-2xl border border-white/10 bg-black/25 p-3 sm:p-4">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+                          <img src={preview} alt="" className="h-24 w-24 shrink-0 rounded-2xl border border-white/10 object-cover" />
+                          <div className="min-w-0 flex-1">
+                            <h3 className="truncate font-black">{song.title}</h3>
+                            <p className="mt-1 truncate text-sm text-fuchsia-200/75">{song.artistName || "Artiste inconnu"}</p>
+                            {song.albumName ? <p className="mt-1 truncate text-xs text-cyan-200/50">Album : {song.albumName}</p> : null}
+                            <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[.12em]">
+                              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-white/55">
+                                {song.coverSource === "APPLE_ITUNES" ? "Apple exact" :
+                                 song.coverSource === "MUSICBRAINZ_CAA" ? "MusicBrainz exact" :
+                                 song.coverSource === "APPLE_ARTIST_FALLBACK" ? "Secours artiste" :
+                                 song.coverSource === "MANUAL" ? "Ajout manuel" :
+                                 song.active ? "Recherche active" :
+                                 song.coverStatus || "Non recherchée"}
+                              </span>
+                              <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-white/40">
+                                {song.coverAttempts} tentative(s)
+                              </span>
+                              {song.coverLastCheckedAt ? (
+                                <span className="rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-white/40">
+                                  {new Date(song.coverLastCheckedAt).toLocaleString("fr-FR")}
+                                </span>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 lg:max-w-[410px] lg:justify-end">
+                            <button
+                              type="button"
+                              onClick={() => void retryCover(song)}
+                              disabled={isWorking || song.active}
+                              className="inline-flex items-center gap-2 rounded-xl border border-cyan-400/20 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-40"
+                            >
+                              <RefreshCw className={`h-3.5 w-3.5 ${isWorking ? "animate-spin" : ""}`} />
+                              Relancer
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setManualCoverVideoId(isEditing ? "" : song.videoId);
+                                setManualCoverUrl(isEditing ? "" : song.coverUrl || "");
+                              }}
+                              disabled={isWorking}
+                              className="rounded-xl border border-fuchsia-400/20 bg-fuchsia-500/10 px-3 py-2 text-xs font-black text-fuchsia-100 disabled:opacity-40"
+                            >
+                              {song.coverUrl ? "Modifier l’URL" : "Ajouter une jaquette"}
+                            </button>
+                            {song.coverUrl ? (
+                              <button
+                                type="button"
+                                onClick={() => void deleteCover(song)}
+                                disabled={isWorking}
+                                className="inline-flex items-center gap-2 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs font-black text-red-100 disabled:opacity-40"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Supprimer
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {isEditing ? (
+                          <div className="mt-4 flex flex-col gap-2 border-t border-white/10 pt-4 sm:flex-row">
+                            <input
+                              value={manualCoverUrl}
+                              onChange={(event) => setManualCoverUrl(event.target.value)}
+                              placeholder="https://adresse-de-la-jaquette.jpg"
+                              className="min-w-0 flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-3 text-sm outline-none placeholder:text-white/25"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void saveManualCover(song)}
+                              disabled={isWorking}
+                              className="rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm font-black text-emerald-100 disabled:opacity-40"
+                            >
+                              Enregistrer
+                            </button>
+                          </div>
+                        ) : null}
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="py-16 text-center text-white/40">Aucun morceau dans cette catégorie.</div>
+              )}
+            </div>
+          </section>
+        </div>
+      ) : null}
+
     </main>
   );
 }
