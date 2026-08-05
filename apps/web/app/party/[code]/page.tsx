@@ -15,8 +15,6 @@ import {
   Crown,
   Disc3,
   Expand,
-  Eye,
-  EyeOff,
   Headphones,
   Gauge,
   ListMusic,
@@ -154,7 +152,7 @@ type Party = {
   history: Song[];
   participants: Participant[];
   partyBrainAutoRelayEnabled?: boolean;
-  showVideoClip?: boolean;
+  showYoutubeClip?: boolean;
 };
 
 function normalizeParty(data: Partial<Party> | null | undefined): Party | null {
@@ -167,7 +165,7 @@ function normalizeParty(data: Partial<Party> | null | undefined): Party | null {
     history: Array.isArray(data.history) ? data.history : [],
     participants: Array.isArray(data.participants) ? data.participants : [],
     partyBrainAutoRelayEnabled: Boolean(data.partyBrainAutoRelayEnabled),
-    showVideoClip: Boolean(data.showVideoClip),
+    showYoutubeClip: Boolean(data.showYoutubeClip),
   };
 }
 
@@ -753,39 +751,6 @@ export default function PartyPage() {
     setParty(updated);
   }
 
-  async function toggleClipDisplay() {
-    if (!isPlaybackController || clipDisplayUpdating) return;
-    const creatorToken = localStorage.getItem(`mixparty_creator_${code}`) || "";
-    if (!creatorToken) {
-      window.alert("Le contrôle du clip est réservé au créateur de la soirée.");
-      return;
-    }
-
-    setClipDisplayUpdating(true);
-    try {
-      const response = await fetch(`${getApiBaseUrl()}/party/${code}/display/clip`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          enabled: !Boolean(party?.showVideoClip),
-          creatorToken,
-        }),
-      });
-      const updated = await response.json();
-      if (!response.ok || updated.error) {
-        window.alert(updated.error || "Impossible de modifier l’affichage du clip.");
-        return;
-      }
-      const normalized = normalizeParty(updated);
-      if (normalized) setParty(normalized);
-    } catch (error) {
-      console.error("Affichage du clip indisponible", error);
-      window.alert("Impossible de modifier l’affichage du clip pour le moment.");
-    } finally {
-      setClipDisplayUpdating(false);
-    }
-  }
-
   async function togglePartyBrainAutoRelay() {
     if (!isPlaybackController || partyBrainRelayUpdating) return;
 
@@ -830,6 +795,40 @@ export default function PartyPage() {
       window.alert("Impossible de joindre PartyBrain pour le moment.");
     } finally {
       setPartyBrainRelayUpdating(false);
+    }
+  }
+
+  async function toggleClipDisplay() {
+    if (!isPlaybackController || clipDisplayUpdating) return;
+
+    const creatorToken = localStorage.getItem(`mixparty_creator_${code}`) || "";
+    if (!creatorToken) {
+      window.alert("Le réglage du clip est réservé au créateur de la soirée.");
+      return;
+    }
+
+    setClipDisplayUpdating(true);
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/party/${code}/display/clip`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: !Boolean(party?.showYoutubeClip),
+          creatorToken,
+        }),
+      });
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        window.alert(data.error || "Impossible de modifier l’affichage du clip.");
+        return;
+      }
+      const normalized = normalizeParty(data);
+      if (normalized) setParty(normalized);
+    } catch (error) {
+      console.error("Réglage du clip indisponible", error);
+      window.alert("Impossible de modifier l’affichage du clip pour le moment.");
+    } finally {
+      setClipDisplayUpdating(false);
     }
   }
 
@@ -1574,6 +1573,19 @@ export default function PartyPage() {
                     <h1>Console DJ</h1>
                   </div>
                 </div>
+                {isPlaybackController && (
+                  <button
+                    type="button"
+                    onClick={toggleClipDisplay}
+                    disabled={clipDisplayUpdating}
+                    className={`dj-console-clip-toggle ${party.showYoutubeClip ? "dj-console-clip-toggle--active" : ""}`}
+                    aria-pressed={Boolean(party.showYoutubeClip)}
+                  >
+                    {clipDisplayUpdating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Disc3 className="h-4 w-4" />}
+                    <span>{party.showYoutubeClip ? "Masquer le clip" : "Afficher le clip"}</span>
+                  </button>
+                )}
+
                 <div className="v53-player-audience">
                   <UsersRound className="h-4 w-4" />
                   <strong>{party.participants.length}</strong>
@@ -1585,26 +1597,22 @@ export default function PartyPage() {
                 <div className="dj-console-redesign">
                   <div className="dj-console-main">
                     <div
-                      className={party.showVideoClip ? "dj-console-visible-player" : "dj-console-hidden-player"}
-                      aria-hidden={!party.showVideoClip}
+                      className={`dj-console-cover ${hasHdCover(party.currentSong) ? "dj-console-cover--hd" : "dj-console-cover--logo"} ${party.showYoutubeClip ? "dj-console-cover--clip" : ""}`}
+                      style={hasHdCover(party.currentSong) && !party.showYoutubeClip ? { backgroundImage: `url(${getSongArtwork(party.currentSong)})` } : undefined}
                     >
                       {isPlaybackController && (
                         <div
                           ref={setPlayerHostElement}
-                          className={`mixparty-youtube-host absolute inset-0 h-full w-full min-w-0 max-w-full overflow-hidden ${party.showVideoClip ? "mixparty-youtube-host--visible" : "mixparty-youtube-host--audio-only"}`}
+                          className={`mixparty-youtube-host absolute inset-0 h-full w-full min-w-0 max-w-full overflow-hidden ${party.showYoutubeClip ? "mixparty-youtube-host--clip-visible" : "mixparty-youtube-host--audio-only"}`}
                         />
                       )}
+                      <span className={`dj-console-cover__glow ${party.showYoutubeClip ? "opacity-0" : ""}`} />
+                      <img
+                        className={party.showYoutubeClip ? "dj-console-cover__artwork--hidden" : ""}
+                        src={getSongArtwork(party.currentSong)}
+                        alt={hasHdCover(party.currentSong) ? `Jaquette de ${party.currentSong.title}` : "Logo MixParty"}
+                      />
                     </div>
-
-                    {!party.showVideoClip && (
-                      <div
-                        className={`dj-console-cover ${hasHdCover(party.currentSong) ? "dj-console-cover--hd" : "dj-console-cover--logo"}`}
-                        style={hasHdCover(party.currentSong) ? { backgroundImage: `url(${getSongArtwork(party.currentSong)})` } : undefined}
-                      >
-                        <span className="dj-console-cover__glow" />
-                        <img src={getSongArtwork(party.currentSong)} alt={hasHdCover(party.currentSong) ? `Jaquette de ${party.currentSong.title}` : "Logo MixParty"} />
-                      </div>
-                    )}
 
                     <div className="dj-console-track">
                       <div className="dj-console-track__topline">
@@ -2514,20 +2522,6 @@ export default function PartyPage() {
                   >
                     <RefreshCw className="h-3 w-3" />
                     Reprendre
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={toggleClipDisplay}
-                    disabled={clipDisplayUpdating || !isPlaybackController}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-[10px] font-black transition disabled:opacity-40 ${
-                      party.showVideoClip
-                        ? "border-cyan-300/25 bg-cyan-400/15 text-cyan-100"
-                        : "border-white/10 bg-white/[0.06] text-white/60"
-                    }`}
-                  >
-                    {party.showVideoClip ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
-                    {clipDisplayUpdating ? "Mise à jour…" : party.showVideoClip ? "Masquer le clip" : "Afficher le clip"}
                   </button>
 
                   <button

@@ -75,6 +75,16 @@ type Stats = {
       songsAdded?: number;
     }>;
   };
+  covers: {
+    downloaded: number;
+    pending: number;
+    activeDownloads: number;
+    exactMatches: number;
+    artistFallbacks: number;
+    notFound: number;
+    errors: number;
+    unrequested: number;
+  };
   totals: {
     searches: number;
     additions: number;
@@ -85,17 +95,6 @@ type Stats = {
     transitions: number;
     youtubeCalls: number;
     quotaSaved: number;
-  };
-  covers: {
-    total: number;
-    found: number;
-    pending: number;
-    notFound: number;
-    error: number;
-    unrequested: number;
-    inFlight: number;
-    exact: number;
-    artistFallback: number;
   };
   topArtists: Array<{
     key: string;
@@ -327,35 +326,6 @@ export default function MusicBrainAdminPage() {
               </div>
             </section>
 
-            <section className="mb-7 rounded-[28px] border border-emerald-400/20 bg-gradient-to-br from-emerald-500/10 via-cyan-500/10 to-violet-500/10 p-5 backdrop-blur-xl sm:p-7">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-xs font-black uppercase tracking-[.24em] text-emerald-300">HD Cover System</p>
-                  <h2 className="mt-1 text-2xl font-black">Bibliothèque de jaquettes</h2>
-                  <p className="mt-2 text-sm text-white/50">Suivi en direct des pochettes exactes et des secours artiste.</p>
-                </div>
-                <div className={`rounded-full border px-3 py-2 text-xs font-black ${stats.covers.inFlight > 0 ? "border-cyan-300/25 bg-cyan-400/10 text-cyan-200" : "border-white/10 bg-white/5 text-white/45"}`}>
-                  {stats.covers.inFlight > 0 ? `${stats.covers.inFlight} téléchargement(s) actif(s)` : "Aucun téléchargement actif"}
-                </div>
-              </div>
-              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7">
-                {[
-                  ["Téléchargées", stats.covers.found, "text-emerald-300"],
-                  ["En attente", stats.covers.pending, "text-cyan-300"],
-                  ["Exactes", stats.covers.exact, "text-violet-300"],
-                  ["Secours artiste", stats.covers.artistFallback, "text-fuchsia-300"],
-                  ["Introuvables", stats.covers.notFound, "text-amber-300"],
-                  ["Erreurs", stats.covers.error, "text-red-300"],
-                  ["Non recherchées", stats.covers.unrequested, "text-white/55"],
-                ].map(([label, value, tone]) => (
-                  <div key={String(label)} className="rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <p className="text-[10px] font-black uppercase tracking-[.14em] text-white/35">{label}</p>
-                    <p className={`mt-2 text-2xl font-black ${tone}`}>{number.format(Number(value))}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-
             <section className="mb-7 rounded-[28px] border border-cyan-400/20 bg-gradient-to-br from-cyan-500/10 via-violet-500/10 to-fuchsia-500/10 p-5 backdrop-blur-xl sm:p-7">
               <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                 <div className="max-w-2xl">
@@ -559,6 +529,36 @@ export default function MusicBrainAdminPage() {
                     {!stats.academy.logs.length ? <p className="text-sm text-white/45">Le journal se remplira lors de la première session.</p> : null}
                   </div>
                 </div>
+              </div>
+            </section>
+
+            <section className="mb-7 rounded-[28px] border border-orange-400/15 bg-gradient-to-br from-orange-500/[0.08] via-fuchsia-500/[0.05] to-cyan-500/[0.06] p-5 backdrop-blur-xl sm:p-6">
+              <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[.22em] text-orange-300">HD Cover System</p>
+                  <h2 className="mt-1 text-2xl font-black">Bibliothèque de jaquettes</h2>
+                  <p className="mt-2 text-sm text-white/45">Correspondance exacte artiste + titre, puis secours fiable du même artiste.</p>
+                </div>
+                <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-xs font-black text-white/55">
+                  {number.format(stats.covers.downloaded)} téléchargée(s)
+                </span>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                {[
+                  ["Jaquettes téléchargées", stats.covers.downloaded, "text-emerald-300"],
+                  ["En attente", stats.covers.pending, "text-amber-300"],
+                  ["Téléchargements actifs", stats.covers.activeDownloads, "text-cyan-300"],
+                  ["Correspondances exactes", stats.covers.exactMatches, "text-fuchsia-300"],
+                  ["Secours artiste", stats.covers.artistFallbacks, "text-violet-300"],
+                  ["Introuvables", stats.covers.notFound, "text-white/55"],
+                  ["Erreurs", stats.covers.errors, "text-red-300"],
+                  ["Pas encore recherchées", stats.covers.unrequested, "text-white/40"],
+                ].map(([label, value, tone]) => (
+                  <article key={String(label)} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[.15em] text-white/35">{String(label)}</p>
+                    <p className={`mt-3 text-2xl font-black ${String(tone)}`}>{number.format(Number(value))}</p>
+                  </article>
+                ))}
               </div>
             </section>
 

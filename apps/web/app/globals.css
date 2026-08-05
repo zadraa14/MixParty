@@ -1902,31 +1902,14 @@ body {
 @media(prefers-reduced-motion:reduce){.dj-console-waveform span{animation:none!important}}
 
 
-/* MixParty — Clip DJ visible sans recréer le lecteur YouTube */
-.dj-console-visible-player {
-  position: relative;
-  width: 100%;
-  min-width: 0;
-  aspect-ratio: 16 / 9;
-  overflow: hidden;
-  border-radius: 24px;
-  background: #05030a;
-  box-shadow: 0 24px 70px rgba(0,0,0,.38);
-}
-.dj-console-visible-player iframe,
-.mixparty-youtube-host--visible iframe {
-  position: absolute !important;
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  max-width: 100% !important;
-  opacity: 1 !important;
-  pointer-events: auto !important;
-}
-.mixparty-youtube-host--visible {
-  opacity: 1 !important;
-  pointer-events: auto !important;
-}
-@media (max-width: 767px) {
-  .dj-console-visible-player { border-radius: 18px; }
-}
+/* MixParty — affichage clip sans recréer le lecteur YouTube */
+.dj-console-clip-toggle{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid rgba(255,255,255,.11);border-radius:14px;background:rgba(255,255,255,.055);padding:9px 12px;color:rgba(255,255,255,.72);font-size:11px;font-weight:900;transition:.2s ease}
+.dj-console-clip-toggle:hover{background:rgba(255,255,255,.1);color:#fff}
+.dj-console-clip-toggle--active{border-color:rgba(34,211,238,.28);background:rgba(34,211,238,.12);color:#a5f3fc;box-shadow:0 0 22px rgba(34,211,238,.12)}
+.dj-console-cover .mixparty-youtube-host{z-index:4;opacity:.001;pointer-events:none;transition:opacity .22s ease}
+.dj-console-cover .mixparty-youtube-host iframe{position:absolute!important;inset:0!important;width:100%!important;height:100%!important;max-width:100%!important;border:0!important}
+.dj-console-cover .mixparty-youtube-host--clip-visible{opacity:1;pointer-events:auto}
+.dj-console-cover--clip{background:#000}
+.dj-console-cover--clip:before{opacity:0}
+.dj-console-cover__artwork--hidden{opacity:0!important;pointer-events:none}
+@media(max-width:640px){.dj-console-clip-toggle span{display:none}.dj-console-clip-toggle{width:40px;height:40px;padding:0;border-radius:12px}}
