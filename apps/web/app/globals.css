@@ -1913,3 +1913,186 @@ body {
 .dj-console-cover--clip:before{opacity:0}
 .dj-console-cover__artwork--hidden{opacity:0!important;pointer-events:none}
 @media(max-width:640px){.dj-console-clip-toggle span{display:none}.dj-console-clip-toggle{width:40px;height:40px;padding:0;border-radius:12px}}
+
+
+/* =========================================================
+   MIXPARTY V6.0 — TV CONCERT LIGHTS
+   Spots lumineux animés, subtils et adaptés au mode TV
+   ========================================================= */
+
+@keyframes v60-tv-backdrop-drift {
+  0%, 100% {
+    transform: scale(1.12) translate3d(-1.2%, -0.5%, 0);
+    filter: blur(32px) saturate(1.45) brightness(.86);
+  }
+  50% {
+    transform: scale(1.18) translate3d(1.4%, .8%, 0);
+    filter: blur(36px) saturate(1.62) brightness(1.02);
+  }
+}
+
+@keyframes v60-tv-spot-left {
+  0%, 100% {
+    transform: translate3d(-11%, -7%, 0) rotate(-15deg) scaleX(.86);
+    opacity: .26;
+  }
+  38% {
+    transform: translate3d(8%, -1%, 0) rotate(-4deg) scaleX(1.05);
+    opacity: .52;
+  }
+  72% {
+    transform: translate3d(-1%, 3%, 0) rotate(-10deg) scaleX(.94);
+    opacity: .36;
+  }
+}
+
+@keyframes v60-tv-spot-right {
+  0%, 100% {
+    transform: translate3d(10%, -8%, 0) rotate(14deg) scaleX(.9);
+    opacity: .22;
+  }
+  42% {
+    transform: translate3d(-10%, 0, 0) rotate(3deg) scaleX(1.08);
+    opacity: .48;
+  }
+  76% {
+    transform: translate3d(2%, 4%, 0) rotate(9deg) scaleX(.96);
+    opacity: .32;
+  }
+}
+
+@keyframes v60-tv-stage-glow {
+  0%, 100% {
+    background-position: 12% 18%, 78% 16%, 50% 100%;
+    opacity: .62;
+  }
+  50% {
+    background-position: 27% 24%, 65% 21%, 52% 92%;
+    opacity: .92;
+  }
+}
+
+@keyframes v60-tv-light-pulse {
+  0%, 100% { opacity: .48; filter: blur(10px) brightness(.9); }
+  50% { opacity: .82; filter: blur(13px) brightness(1.14); }
+}
+
+.v60-tv__backdrop {
+  animation: v60-tv-backdrop-drift 18s ease-in-out infinite;
+  will-change: transform, filter;
+}
+
+.v60-tv__veil {
+  background:
+    radial-gradient(circle at 18% 8%, rgba(34,211,238,.13), transparent 24%),
+    radial-gradient(circle at 48% 5%, rgba(236,72,153,.18), transparent 28%),
+    radial-gradient(circle at 82% 8%, rgba(249,115,22,.12), transparent 24%),
+    radial-gradient(circle at 31% 35%, rgba(124,58,237,.19), transparent 34%),
+    radial-gradient(circle at 72% 24%, rgba(236,72,153,.14), transparent 38%),
+    linear-gradient(135deg,rgba(2,2,9,.84),rgba(8,4,18,.91) 55%,rgba(2,2,8,.97));
+  background-size: 120% 120%, 120% 120%, 120% 120%, 100% 100%, 100% 100%, 100% 100%;
+  animation: v60-tv-stage-glow 14s ease-in-out infinite;
+}
+
+.v60-tv__now {
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.v60-tv__now::before,
+.v60-tv__now::after {
+  content: "";
+  position: absolute;
+  top: -18%;
+  z-index: 0;
+  width: 43%;
+  height: 94%;
+  pointer-events: none;
+  transform-origin: 50% 0%;
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
+  clip-path: polygon(42% 0, 58% 0, 100% 100%, 0 100%);
+  filter: blur(8px);
+}
+
+.v60-tv__now::before {
+  left: 4%;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(103,232,249,.55) 0%,
+      rgba(139,92,246,.24) 25%,
+      rgba(236,72,153,.11) 58%,
+      transparent 100%
+    );
+  animation: v60-tv-spot-left 11s ease-in-out infinite;
+}
+
+.v60-tv__now::after {
+  right: 4%;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(251,113,133,.52) 0%,
+      rgba(236,72,153,.26) 28%,
+      rgba(249,115,22,.10) 62%,
+      transparent 100%
+    );
+  animation: v60-tv-spot-right 13s ease-in-out infinite;
+}
+
+.v60-tv__now-grid {
+  position: relative;
+  z-index: 2;
+}
+
+.v60-tv__current-pill {
+  z-index: 5;
+}
+
+.v60-tv__now-grid::before {
+  content: "";
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  bottom: 0;
+  z-index: -1;
+  height: 23%;
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 18% 100%, rgba(34,211,238,.2), transparent 42%),
+    radial-gradient(ellipse at 48% 100%, rgba(236,72,153,.21), transparent 45%),
+    radial-gradient(ellipse at 82% 100%, rgba(249,115,22,.17), transparent 42%);
+  filter: blur(18px);
+  animation: v60-tv-light-pulse 4.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.v60-tv__queue {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.v60-tv__queue::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(circle at 78% 18%, rgba(236,72,153,.11), transparent 34%),
+    radial-gradient(circle at 18% 82%, rgba(34,211,238,.08), transparent 36%);
+  animation: v60-tv-stage-glow 16s ease-in-out infinite reverse;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v60-tv__backdrop,
+  .v60-tv__veil,
+  .v60-tv__now::before,
+  .v60-tv__now::after,
+  .v60-tv__now-grid::before,
+  .v60-tv__queue::before {
+    animation: none !important;
+  }
+}
