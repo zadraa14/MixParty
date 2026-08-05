@@ -1133,11 +1133,96 @@ function logarithmicRatio(value: number, reference: number) {
   return clampScore(Math.log1p(value) / Math.log1p(Math.max(1, reference)), 0, 1);
 }
 
+
+type PartyBrainGenreTag =
+  | "rap_fr"
+  | "rap_us"
+  | "afro"
+  | "dance_electro"
+  | "pop"
+  | "rock"
+  | "latin"
+  | "disco_funk"
+  | "chanson_fr"
+  | "unknown";
+
+function inferPartyBrainGenre(title: string, artistName: string): PartyBrainGenreTag {
+  const value = normalizeMusicQuery(`${artistName} ${title}`);
+  const contains = (...terms: string[]) => terms.some((term) => value.includes(term));
+
+  if (contains("jul", "ninho", "gazo", "sdm", "tiakola", "sch", "booba", "damso", "nekfeu", "orelsan", "pnl", "koba", "naps", "soprano", "rap francais", "rap fr")) return "rap_fr";
+  if (contains("drake", "travis scott", "eminem", "kanye", "kendrick", "50 cent", "lil ", "hip hop", "rap us")) return "rap_us";
+  if (contains("aya nakamura", "burna boy", "wizkid", "afrobeat", "afro", "amapiano", "dadju", "tayc")) return "afro";
+  if (contains("david guetta", "calvin harris", "avicii", "dj snake", "martin garrix", "house", "techno", "electro", "dance")) return "dance_electro";
+  if (contains("reggaeton", "bad bunny", "j balvin", "daddy yankee", "latin", "bachata", "salsa")) return "latin";
+  if (contains("disco", "funk", "earth wind", "kool and the gang", "nuit de folie")) return "disco_funk";
+  if (contains("rock", "metallica", "nirvana", "ac dc", "queen", "linkin park")) return "rock";
+  if (contains("stromae", "indila", "louane", "vianney", "chanson francaise")) return "chanson_fr";
+  if (contains("pop", "dua lipa", "the weeknd", "rihanna", "lady gaga", "katy perry", "bruno mars")) return "pop";
+  return "unknown";
+}
+
+function partyBrainGenreCompatibility(from: PartyBrainGenreTag, to: PartyBrainGenreTag) {
+  if (from === "unknown" || to === "unknown") return 0;
+  if (from === to) return 1;
+  const compatible: Record<PartyBrainGenreTag, PartyBrainGenreTag[]> = {
+    rap_fr: ["afro", "rap_us", "pop"],
+    rap_us: ["rap_fr", "afro", "pop"],
+    afro: ["rap_fr", "rap_us", "latin", "pop", "dance_electro"],
+    dance_electro: ["pop", "disco_funk", "afro", "latin"],
+    pop: ["dance_electro", "afro", "disco_funk", "rock", "chanson_fr"],
+    rock: ["pop"],
+    latin: ["afro", "dance_electro", "pop"],
+    disco_funk: ["dance_electro", "pop"],
+    chanson_fr: ["pop"],
+    unknown: [],
+  };
+  return compatible[from].includes(to) ? 0.55 : -0.35;
+}
+
+function recentPartyBrainSelectionStats(events: PartyIntelligenceEvent[]) {
+  const now = Date.now();
+  const stats = new Map<string, { count: number; lastAt: number }>();
+  for (const event of events) {
+    if (event.event !== "SONG_ADDED" || event.source !== "partybrain_suggestion" || !event.song?.videoId) continue;
+    const relayMode = String(event.context?.relayMode || "");
+    if (!relayMode) continue;
+    const current = stats.get(event.song.videoId) || { count: 0, lastAt: 0 };
+    current.count += 1;
+    current.lastAt = Math.max(current.lastAt, event.at);
+    stats.set(event.song.videoId, current);
+  }
+  return { now, stats };
+}
+
+function chooseDiversifiedPartyBrainRecommendation(
+  recommendations: PartyBrainRecommendation[],
+  party: Party
+): PartyBrainRecommendation | null {
+  if (!recommendations.length) return null;
+  const current = party.currentSong || party.history?.[party.history.length - 1] || null;
+  const currentGenre = inferPartyBrainGenre(current?.title || "", current?.artistName || "");
+  const top = recommendations.slice(0, Math.min(5, recommendations.length));
+  const weighted = top.map((item, index) => {
+    const genre = inferPartyBrainGenre(item.title, item.artistName);
+    const genreBonus = partyBrainGenreCompatibility(currentGenre, genre) * 18;
+    const rankPenalty = index * 1.5;
+    const seedText = `${party.code}:${current?.videoId || "none"}:${item.videoId}:${Math.floor(Date.now() / 600000)}`;
+    let hash = 0;
+    for (let i = 0; i < seedText.length; i += 1) hash = (hash * 31 + seedText.charCodeAt(i)) >>> 0;
+    const rotationBonus = (hash % 1000) / 1000 * 5;
+    return { item, value: item.score + genreBonus + rotationBonus - rankPenalty };
+  });
+  weighted.sort((a, b) => b.value - a.value);
+  return weighted[0].item;
+}
+
 function buildPartyBrainRecommendationScores(
   party: Party,
   requestedLimit = 10
 ): PartyBrainRecommendation[] {
   const events = readPartyEvents(50000).sort((a, b) => a.at - b.at);
+  const relaySelections = recentPartyBrainSelectionStats(events);
   const currentHour = new Date().getHours();
 
   const songOutcomes = new Map<string, {
@@ -1380,6 +1465,12 @@ function buildPartyBrainRecommendationScores(
 
     const artistAffinityPart = clampScore((recentAffinity / Math.max(1, recentArtists.length * 0.7)) * 18, 0, 18);
 
+    const currentGenre = inferPartyBrainGenre(currentSong?.title || "", currentSong?.artistName || "");
+    const candidateGenre = inferPartyBrainGenre(candidate.title, candidate.artistName || "");
+    const genreCompatibility = partyBrainGenreCompatibility(currentGenre, candidateGenre);
+    const coldStartGenreBonus = genreCompatibility > 0 ? genreCompatibility * 12 : 0;
+    const coldStartGenrePenalty = genreCompatibility < 0 ? Math.abs(genreCompatibility) * 9 : 0;
+
     const popularityRatio =
       logarithmicRatio(candidate.searchCount, maxSearches) * 0.15 +
       logarithmicRatio(candidate.addedCount, maxAdds) * 0.35 +
@@ -1421,6 +1512,16 @@ function buildPartyBrainRecommendationScores(
     if (candidate.durationSeconds && (candidate.durationSeconds < 90 || candidate.durationSeconds > 480)) penalties += 4;
     if (Number(candidate.metadataConfidence || 0) < 30) penalties += 3;
 
+    const relaySelection = relaySelections.stats.get(candidate.videoId);
+    if (relaySelection) {
+      const hoursSinceSelection = (relaySelections.now - relaySelection.lastAt) / 3600000;
+      penalties += Math.min(24, relaySelection.count * 4);
+      if (hoursSinceSelection < 6) penalties += 20;
+      else if (hoursSinceSelection < 24) penalties += 12;
+      else if (hoursSinceSelection < 72) penalties += 6;
+    }
+    penalties += coldStartGenrePenalty;
+
     const rawScore =
       transitionPart +
       artistAffinityPart +
@@ -1428,7 +1529,8 @@ function buildPartyBrainRecommendationScores(
       completionPart +
       votesPart +
       hourFitPart +
-      freshnessPart -
+      freshnessPart +
+      coldStartGenreBonus -
       penalties;
 
     const score = Math.round(clampScore(rawScore));
@@ -1453,11 +1555,13 @@ function buildPartyBrainRecommendationScores(
 
     const reasons: string[] = [];
     if (directTransitionCount > 0) reasons.push(`déjà joué ${directTransitionCount} fois après le morceau actuel`);
+    if (genreCompatibility >= 0.55) reasons.push("style compatible avec le morceau précédent");
     else if (artistTransitionCount + knownArtistRelation > 0) reasons.push("enchaînement d’artistes déjà validé");
     if (smoothedCompletionRate >= 0.72) reasons.push("bon taux de lecture jusqu’au bout");
     if (candidate.voteCount >= 2) reasons.push("reçoit régulièrement des votes");
     if (hourRate >= 0.62 && combinedHourSamples > 0) reasons.push(`fonctionne bien autour de ${String(currentHour).padStart(2, "0")} h`);
     if (popularityPart >= 10) reasons.push("titre populaire dans l’historique MixParty");
+    if (relaySelection?.count) reasons.push("rotation appliquée pour éviter les répétitions PartyBrain");
     if (!reasons.length) reasons.push("meilleur équilibre disponible avec les données actuelles");
 
     recommendations.push({
@@ -1517,6 +1621,10 @@ type PartyBrainFallbackSong = {
 };
 
 function selectPartyBrainFallbackSong(party: Party): PartyBrainFallbackSong | null {
+  const allEvents = readPartyEvents(50000);
+  const relaySelections = recentPartyBrainSelectionStats(allEvents);
+  const currentSong = party.currentSong || party.history?.[party.history.length - 1] || null;
+  const currentGenre = inferPartyBrainGenre(currentSong?.title || "", currentSong?.artistName || "");
   const excludedVideoIds = new Set([
     ...(party.history || []).map((song) => song.videoId),
     ...(party.currentSong ? [party.currentSong.videoId] : []),
@@ -1538,7 +1646,7 @@ function selectPartyBrainFallbackSong(party: Party): PartyBrainFallbackSong | nu
     removed: number;
   }>();
 
-  for (const event of readPartyEvents(50000)) {
+  for (const event of allEvents) {
     const videoId = event.song?.videoId;
     if (!videoId) continue;
 
@@ -1591,7 +1699,18 @@ function selectPartyBrainFallbackSong(party: Party): PartyBrainFallbackSong | nu
         outcomes.completed * 8;
 
       const metadataBonus = Math.round(Number(song.metadataConfidence || 40) / 10);
-      const fallbackScore = positiveSignal + metadataBonus - repeatedArtistPenalty - negativePenalty;
+      const candidateGenre = inferPartyBrainGenre(song.title, song.artistName || "");
+      const genreCompatibility = partyBrainGenreCompatibility(currentGenre, candidateGenre);
+      const genreBonus = genreCompatibility > 0 ? genreCompatibility * 30 : genreCompatibility * 18;
+      const relaySelection = relaySelections.stats.get(song.videoId);
+      let recentRelayPenalty = relaySelection ? Math.min(35, relaySelection.count * 7) : 0;
+      if (relaySelection) {
+        const hoursSinceSelection = (relaySelections.now - relaySelection.lastAt) / 3600000;
+        if (hoursSinceSelection < 6) recentRelayPenalty += 30;
+        else if (hoursSinceSelection < 24) recentRelayPenalty += 18;
+        else if (hoursSinceSelection < 72) recentRelayPenalty += 8;
+      }
+      const fallbackScore = positiveSignal + metadataBonus + genreBonus - repeatedArtistPenalty - negativePenalty - recentRelayPenalty;
 
       return {
         videoId: song.videoId,
@@ -1603,9 +1722,11 @@ function selectPartyBrainFallbackSong(party: Party): PartyBrainFallbackSong | nu
         metadataConfidence: song.metadataConfidence,
         fallbackScore,
         reason:
-          positiveSignal > 0
-            ? "Titre de secours populaire et peu risqué dans l’historique MixParty."
-            : "Titre de secours disponible avec des métadonnées valides.",
+          genreCompatibility >= 0.55
+            ? "Titre de secours compatible avec le style du morceau précédent."
+            : positiveSignal > 0
+              ? "Titre de secours populaire, diversifié et peu risqué dans l’historique MixParty."
+              : "Titre de secours disponible avec des métadonnées valides.",
       } satisfies PartyBrainFallbackSong;
     })
     .sort((a, b) => b.fallbackScore - a.fallbackScore);
@@ -2388,7 +2509,8 @@ app.post("/party/:code/next",(req,res)=>{
       });
     }
 
-    const [bestRecommendation] = buildPartyBrainRecommendationScores(party, 1);
+    const recommendationPool = buildPartyBrainRecommendationScores(party, 5);
+    const bestRecommendation = chooseDiversifiedPartyBrainRecommendation(recommendationPool, party);
 
     const minimumScore = Number(
       process.env.PARTYBRAIN_RELAY_MIN_SCORE || 55
