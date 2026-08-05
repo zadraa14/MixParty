@@ -2580,20 +2580,7 @@ export default function PartyPage() {
 
             <main className="v60-tv__grid">
               <section className="v60-tv__now">
-                
-              <div className="v60-tv__bg-scene" aria-hidden="true">
-                <div className="v60-tv__backdrop" />
-                <div className="v60-tv__veil" />
-                <div className="v60-tv__crowd" />
-                <div className="v60-tv__lights">
-                  <span className="v60-tv__spot v60-tv__spot--1" />
-                  <span className="v60-tv__spot v60-tv__spot--2" />
-                  <span className="v60-tv__spot v60-tv__spot--3" />
-                  <span className="v60-tv__spot v60-tv__spot--4" />
-                  <span className="v60-tv__spot v60-tv__spot--5" />
-                </div>
-              </div>
-<div className="v60-tv__current-pill">EN COURS</div>
+                <div className="v60-tv__current-pill">EN COURS</div>
                 <div className="v60-tv__now-grid">
                   <div className="v60-tv__cover-wrap">
                     <div className="v60-tv__cover-glow" />

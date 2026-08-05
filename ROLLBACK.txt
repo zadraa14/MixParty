@@ -1,0 +1,2 @@
+Ce pack restaure la version stable avant les modifications du fond TV.
+Après extraction, supprime éventuellement public/tv/crowd.webp s'il existe encore.
