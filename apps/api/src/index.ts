@@ -1312,6 +1312,47 @@ function musicBrainStats() {
     .sort((a, b) => (b.searchCount + b.totalAdds * 2 + b.totalVotes) - (a.searchCount + a.totalAdds * 2 + a.totalVotes))
     .slice(0, 20);
 
+  const coverStats = songs.reduce(
+    (stats, song) => {
+      const status = song.coverStatus;
+      const source = String(song.coverSource || "");
+
+      if (status === "found" && song.coverUrl) {
+        stats.downloaded += 1;
+
+        if (source === "APPLE_ARTIST_FALLBACK") {
+          stats.artistFallback += 1;
+        } else if (
+          source === "APPLE_ITUNES" ||
+          source === "MUSICBRAINZ_CAA" ||
+          source === "MANUAL"
+        ) {
+          stats.exactMatches += 1;
+        }
+      } else if (status === "pending") {
+        stats.pending += 1;
+      } else if (status === "not_found") {
+        stats.notFound += 1;
+      } else if (status === "error") {
+        stats.errors += 1;
+      } else {
+        stats.unrequested += 1;
+      }
+
+      return stats;
+    },
+    {
+      downloaded: 0,
+      pending: 0,
+      active: coverLookupsInFlight.size,
+      exactMatches: 0,
+      artistFallback: 0,
+      notFound: 0,
+      errors: 0,
+      unrequested: 0,
+    }
+  );
+
   const topTransitions = Object.values(musicBrain.transitions)
     .sort((a, b) => b.count - a.count)
     .slice(0, 20)
@@ -1356,6 +1397,7 @@ function musicBrainStats() {
       youtubeCalls: youtubeSearchStats.youtubeCalls,
       quotaSaved: youtubeSearchStats.quotaSaved,
     },
+    covers: coverStats,
     academy: academyDashboard(),
     topArtists,
     topSongs,
