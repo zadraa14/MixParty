@@ -2173,3 +2173,80 @@ body {
     animation: none !important;
   }
 }
+
+/* =========================================================
+   MIXPARTY — OPTIMISATION MOBILE PERFORMANCE V1
+   Fond statique sur téléphone + effets continus allégés.
+   La version ordinateur et le mode TV ne sont pas modifiés.
+   ========================================================= */
+
+@media (max-width: 767px) {
+  /* Le fond conserve ses couleurs mais ne bouge plus. */
+  .v54-mobile-app .mp-aurora,
+  .v54-mobile-app .mp-ribbon,
+  .v54-mobile-app .mp-wave,
+  .v54-mobile-app .mp-grid,
+  .v54-mobile-app .mp-particle {
+    animation: none !important;
+    will-change: auto !important;
+  }
+
+  /* Les éléments les plus coûteux sont retirés uniquement sur téléphone. */
+  .v54-mobile-app .mp-ribbon,
+  .v54-mobile-app .mp-wave,
+  .v54-mobile-app .mp-grid,
+  .v54-mobile-app .mp-particle,
+  .v54-mobile-app .mp-noise {
+    display: none !important;
+  }
+
+  /* Deux halos statiques suffisent pour conserver l'identité MixParty. */
+  .v54-mobile-app .mp-aurora--purple,
+  .v54-mobile-app .mp-aurora--pink {
+    display: block !important;
+    opacity: .48 !important;
+    filter: blur(58px) !important;
+    transform: none !important;
+  }
+
+  .v54-mobile-app .mp-aurora--orange,
+  .v54-mobile-app .mp-aurora--magenta {
+    display: none !important;
+  }
+
+  /* Réduction du coût GPU des grandes surfaces vitrées. */
+  .v54-mobile-header,
+  .v54-mobile-nav {
+    animation: none !important;
+    backdrop-filter: blur(16px) saturate(1.08) !important;
+    -webkit-backdrop-filter: blur(16px) saturate(1.08) !important;
+  }
+
+  .v54-mobile-app .premium-glass-card,
+  .v54-mobile-app .v53-player-shell,
+  .v54-mobile-app .v53-queue-panel,
+  .v54-mobile-app .participants-panel {
+    backdrop-filter: blur(14px) saturate(1.05) !important;
+    -webkit-backdrop-filter: blur(14px) saturate(1.05) !important;
+  }
+
+  /* Les animations continues du lecteur sont figées sur mobile. */
+  .v54-mobile-app .v53-player-live__dot,
+  .v54-mobile-app .v53-waveform span,
+  .v54-mobile-app .dj-console-waveform span,
+  .v54-mobile-app .dj-console-cover::after,
+  .v54-mobile-app .dj-console-cover__glow,
+  .v54-mobile-app .participant-avatar-ring,
+  .v54-mobile-app .participant-online-dot,
+  .v54-mobile-app .participants-count__dot {
+    animation: none !important;
+  }
+
+  /* Un seul bouton de vote, avec le score intégré. */
+  .vote-button--mobile-single {
+    width: 100%;
+    min-height: 42px;
+    justify-content: center;
+    padding-inline: 14px;
+  }
+}

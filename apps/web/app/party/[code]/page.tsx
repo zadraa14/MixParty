@@ -1890,18 +1890,20 @@ export default function PartyPage() {
 
                           <div className="v53-queue-added"><span className="v53-queue-avatar"><img src={party.participants.find((participant) => participant.name === song.addedBy)?.avatar || defaultAvatarForParticipant(song.addedBy)} alt="" /></span><span>Ajouté par <strong>{song.addedBy}</strong></span></div>
 
-                          <div className="mt-2 flex items-center gap-2 sm:hidden">
-
-                            <span className="rounded-full bg-purple-500/15 px-2.5 py-1 text-xs font-bold text-purple-300">
-                              <ArrowBigUp className="mr-1 inline h-3.5 w-3.5" />{song.votes}
-                            </span>
+                          <div className="mt-2 sm:hidden">
 
                             <button
+                              type="button"
                               onClick={() => vote(originalIndex)}
-                              className={`vote-button vote-button--compact ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""}`}
+                              className={`vote-button vote-button--compact vote-button--mobile-single ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""}`}
+                              aria-label={`Voter pour ${song.title}. ${song.votes} vote${song.votes > 1 ? "s" : ""} actuellement`}
                             >
                               <span className="vote-button__plus">+1</span>
-                              <span className="flex items-center gap-1"><ArrowBigUp className="h-3.5 w-3.5" />Voter</span>
+                              <span className="flex items-center gap-1.5">
+                                <ArrowBigUp className="h-4 w-4" />
+                                <strong>{song.votes}</strong>
+                                <span>Voter</span>
+                              </span>
                             </button>
 
                           </div>
