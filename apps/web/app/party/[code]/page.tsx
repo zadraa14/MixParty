@@ -1782,8 +1782,8 @@ export default function PartyPage() {
                 <div className="v53-player-empty"><div><Music4 className="h-7 w-7" /></div><h2>Aucun morceau en lecture</h2><p>Ajoute des musiques à la file puis lance le DJ.</p><button onClick={nextSong} className="party-action party-action--purple group mt-5 rounded-2xl px-6 py-3"><span className="party-action__shine" aria-hidden="true" /><span className="party-action__content flex items-center justify-center gap-2"><Play className="h-4 w-4 fill-current" />Lancer le DJ</span></button></div>
               )}
 
-              <div className="mt-4 border-t border-white/[0.07] pt-4 md:hidden">
-                <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="relative z-20 mt-6 clear-both border-t border-white/[0.07] pt-5 md:hidden">
+                <div className="mb-4 flex flex-col items-stretch gap-3 min-[380px]:flex-row min-[380px]:items-end min-[380px]:justify-between">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-purple-300">
                       À suivre
@@ -1793,20 +1793,20 @@ export default function PartyPage() {
                   <button
                     type="button"
                     onClick={() => switchMobileTab("queue")}
-                    className="rounded-full border border-purple-400/15 bg-purple-500/10 px-3 py-1.5 text-[11px] font-black text-purple-200"
+                    className="relative z-10 self-end rounded-full border border-purple-400/15 bg-purple-500/10 px-3 py-2 text-[11px] font-black text-purple-200 min-[380px]:self-auto"
                   >
                     Voir la file
                   </button>
                 </div>
 
                 {queue.length > 0 ? (
-                  <div className="space-y-2">
+                  <div className="relative z-10 grid gap-3">
                     {queue.slice(0, 4).map((song, index) => (
                       <button
                         key={`playback-next-${song.videoId}-${song.addedAt}`}
                         type="button"
                         onClick={() => switchMobileTab("queue")}
-                        className="flex w-full items-center gap-3 rounded-2xl border border-white/[0.07] bg-black/20 p-2.5 text-left"
+                        className="relative flex min-h-[72px] w-full items-center gap-3 overflow-hidden rounded-2xl border border-white/[0.07] bg-black/20 p-2.5 text-left"
                       >
                         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-purple-400/15 bg-purple-500/10 text-xs font-black text-purple-200">
                           {index + 1}

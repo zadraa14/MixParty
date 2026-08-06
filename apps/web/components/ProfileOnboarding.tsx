@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, Check, Sparkles, UserRound } from "lucide-react";
+import { Camera, Check, Images, Sparkles, UserRound } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 const NAME_KEY = "playerName";
@@ -49,7 +49,8 @@ async function compressProfilePhoto(file: File): Promise<string> {
 }
 
 export default function ProfileOnboarding() {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
   const [ready, setReady] = useState(false);
   const [open, setOpen] = useState(false);
   const [firstName, setFirstName] = useState("");
@@ -159,9 +160,9 @@ export default function ProfileOnboarding() {
 
         <button
           type="button"
-          onClick={() => fileInputRef.current?.click()}
+          onClick={() => galleryInputRef.current?.click()}
           className="group relative mx-auto mt-6 block h-32 w-32 rounded-[30px] border border-white/15 bg-black/25 p-1 shadow-[0_20px_55px_rgba(0,0,0,.35)]"
-          aria-label="Choisir une photo de profil"
+          aria-label="Choisir une photo de profil dans la galerie"
         >
           <span className="absolute -inset-1 -z-10 rounded-[34px] bg-gradient-to-br from-violet-500 via-fuchsia-500 to-orange-400 opacity-55 blur-md transition group-hover:opacity-85" />
 
@@ -189,11 +190,44 @@ export default function ProfileOnboarding() {
           </span>
         </button>
 
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            disabled={processingPhoto}
+            onClick={() => cameraInputRef.current?.click()}
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-pink-400/25 bg-pink-500/10 px-3 py-3 text-sm font-black text-pink-100 transition hover:border-pink-300/45 hover:bg-pink-500/15 disabled:cursor-wait disabled:opacity-50"
+          >
+            <Camera className="h-5 w-5 shrink-0" />
+            <span>Prendre une photo</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={processingPhoto}
+            onClick={() => galleryInputRef.current?.click()}
+            className="inline-flex min-h-12 items-center justify-center gap-2 rounded-2xl border border-purple-400/25 bg-purple-500/10 px-3 py-3 text-sm font-black text-purple-100 transition hover:border-purple-300/45 hover:bg-purple-500/15 disabled:cursor-wait disabled:opacity-50"
+          >
+            <Images className="h-5 w-5 shrink-0" />
+            <span>Choisir dans la galerie</span>
+          </button>
+        </div>
+
         <input
-          ref={fileInputRef}
+          ref={cameraInputRef}
           type="file"
           accept="image/*"
           capture="user"
+          className="hidden"
+          onChange={(event) => {
+            void choosePhoto(event.target.files?.[0] || null);
+            event.currentTarget.value = "";
+          }}
+        />
+
+        <input
+          ref={galleryInputRef}
+          type="file"
+          accept="image/*"
           className="hidden"
           onChange={(event) => {
             void choosePhoto(event.target.files?.[0] || null);
