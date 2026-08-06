@@ -1,3 +1,7 @@
-Correctif mobile ciblé : suppression du grand bouton de vote ajouté au-dessus.
-Le petit compteur + bouton Voter à droite reste inchangé.
-Aucun changement dans globals.css, les fonds, les néons ou le mode TV.
+PartyBrain Relay V2
+- compatibilité stricte
+- priorité même artiste
+- transitions apprises prioritaires
+- bonus aléatoire supprimé
+- fallback désactivé par défaut
+- seuils 62/35

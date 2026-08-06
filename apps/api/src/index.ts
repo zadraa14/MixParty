@@ -1552,28 +1552,49 @@ function chooseDiversifiedPartyBrainRecommendation(
   party: Party
 ): PartyBrainRecommendation | null {
   if (!recommendations.length) return null;
+
   const current = party.currentSong || party.history?.[party.history.length - 1] || null;
+  const currentArtistKey = normalizeMusicQuery(current?.artistName || "");
   const currentGenre = inferPartyBrainContextGenre(party);
+
+  // Relay V2 : ne jamais réintroduire les recommandations incompatibles.
   const compatibleRecommendations = recommendations.filter((item) => {
     const genre = inferPartyBrainGenre(item.title, item.artistName);
     return partyBrainGenreCompatibility(currentGenre, genre) >= 0.55;
   });
-  const sourcePool = compatibleRecommendations.length >= 2
-    ? compatibleRecommendations
-    : recommendations;
-  const top = sourcePool.slice(0, Math.min(8, sourcePool.length));
-  const weighted = top.map((item, index) => {
-    const genre = inferPartyBrainGenre(item.title, item.artistName);
-    const genreBonus = partyBrainGenreCompatibility(currentGenre, genre) * 18;
-    const rankPenalty = index * 1.5;
-    const seedText = `${party.code}:${current?.videoId || "none"}:${item.videoId}:${Math.floor(Date.now() / 600000)}`;
-    let hash = 0;
-    for (let i = 0; i < seedText.length; i += 1) hash = (hash * 31 + seedText.charCodeAt(i)) >>> 0;
-    const rotationBonus = (hash % 1000) / 1000 * 5;
-    return { item, value: item.score + genreBonus + rotationBonus - rankPenalty };
-  });
-  weighted.sort((a, b) => b.value - a.value);
-  return weighted[0].item;
+
+  if (!compatibleRecommendations.length) return null;
+
+  const ranked = compatibleRecommendations
+    .slice(0, Math.min(12, compatibleRecommendations.length))
+    .map((item, index) => {
+      const candidateArtistKey = normalizeMusicQuery(item.artistName || "");
+      const sameArtist = Boolean(
+        currentArtistKey &&
+        candidateArtistKey &&
+        currentArtistKey === candidateArtistKey
+      );
+
+      const directOrArtistEvidence =
+        Number(item.evidence.directTransitions || 0) * 2 +
+        Number(item.evidence.artistTransitions || 0);
+
+      const sameArtistBonus = sameArtist ? 34 : 0;
+      const learnedTransitionBonus = Math.min(24, directOrArtistEvidence * 4);
+      const rankPenalty = index * 1.25;
+
+      return {
+        item,
+        value:
+          item.score +
+          sameArtistBonus +
+          learnedTransitionBonus -
+          rankPenalty,
+      };
+    })
+    .sort((a, b) => b.value - a.value);
+
+  return ranked[0]?.item || null;
 }
 
 function buildPartyBrainRecommendationScores(
@@ -2884,11 +2905,11 @@ app.post("/party/:code/next",(req,res)=>{
     const bestRecommendation = chooseDiversifiedPartyBrainRecommendation(recommendationPool, party);
 
     const minimumScore = Number(
-      process.env.PARTYBRAIN_RELAY_MIN_SCORE || 55
+      process.env.PARTYBRAIN_RELAY_MIN_SCORE || 62
     );
 
     const minimumConfidence = Number(
-      process.env.PARTYBRAIN_RELAY_MIN_CONFIDENCE || 30
+      process.env.PARTYBRAIN_RELAY_MIN_CONFIDENCE || 35
     );
 
     const recommendationAccepted = Boolean(
@@ -2898,7 +2919,7 @@ app.post("/party/:code/next",(req,res)=>{
     );
 
     const fallbackEnabled =
-      String(process.env.PARTYBRAIN_RELAY_FALLBACK_ENABLED || "true").toLowerCase() !== "false";
+      String(process.env.PARTYBRAIN_RELAY_FALLBACK_ENABLED || "false").toLowerCase() === "true";
 
     const fallbackSong =
       !recommendationAccepted && fallbackEnabled
@@ -2913,8 +2934,8 @@ app.post("/party/:code/next",(req,res)=>{
           relayUsed: false,
           fallbackAttempted: fallbackEnabled,
           reason: bestRecommendation
-            ? "La recommandation n’atteint pas les seuils et aucun secours sûr n’est disponible."
-            : "Aucune recommandation ni musique de secours disponible.",
+            ? "Aucune transition musicale suffisamment sûre n’est disponible."
+            : "PartyBrain ne possède encore aucune transition musicale compatible.",
           thresholds: {
             minimumScore,
             minimumConfidence

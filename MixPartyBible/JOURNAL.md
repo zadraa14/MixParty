@@ -269,3 +269,151 @@ Reprise de la roadmap fonctionnelle (MixMate, IA, animations, statistiques, etc.
 - Participants pseudonymisés par hash ; aucun nom en clair dans le journal analytique.
 - Ajouts distingués entre recherche manuelle et suggestion PartyBrain.
 - API de statistiques, consultation et export JSONL.
+## V6.3 — Finition 
+
+Design du mode TV
+
+On a finalisé tout le rendu du mode TV :
+
+ajout d’une image de foule/concert dans le bloc de lecture ;
+ajout de la même image en arrière-plan général ;
+arrière-plan général fortement flouté pour ne garder que les couleurs ;
+conservation de l’image nette dans le bloc de lecture ;
+correction du fond qui avait disparu dans le bloc ;
+ajout d’un contour néon autour de la jaquette du mode TV ;
+conservation des boutons, du lecteur, des avatars et du volume YouTube.
+Console DJ
+
+On a aussi amélioré la jaquette de la console de lecture normale :
+
+ajout d’un néon autour de la jaquette du mode lecture ;
+modification ciblée uniquement sur la jaquette ;
+aucun changement sur le mode TV, les fonds ou la file d’attente.
+Avatars des interactions
+
+On a rétabli les avatars dans Dernières interactions :
+
+avatar lors de l’arrivée d’un participant ;
+avatar lors de l’ajout d’une musique ;
+avatar lors d’un vote ;
+avatar animal par défaut lorsqu’il n’y a pas de photo personnelle.
+Optimisation mobile
+
+On a fait une première vraie passe d’optimisation pour téléphone :
+
+désactivation des animations lourdes du fond sur mobile ;
+suppression des particules, rubans, vagues, grille et bruit animé ;
+réduction des effets de flou trop coûteux ;
+arrêt de plusieurs animations continues sur téléphone ;
+conservation d’un fond statique avec les couleurs MixParty ;
+aucun changement sur la version ordinateur.
+Correction des votes sur téléphone
+
+On a corrigé le problème des doubles boutons :
+
+première correction pour regrouper le compteur et le vote ;
+puis, après ton test, suppression du grand bouton horizontal ;
+conservation uniquement du petit bouton de vote à droite dans la file.
+Railway
+
+On a vérifié les erreurs rouges dans les logs :
+
+le message SIGTERM correspond principalement à l’arrêt de l’ancien conteneur lors d’un nouveau déploiement ;
+ton serveur démarre correctement ;
+ta consommation actuelle est très faible ;
+environ 0,43 $ utilisés sur la période affichée ;
+le forfait Railway Hobby à 5 $/mois devrait largement suffire pour la bêta ;
+on a repéré beaucoup de logs envoyés rapidement, à nettoyer plus tard.
+Première version publique
+
+On a conclu que l’application était prête pour une :
+
+MixParty V1 — Bêta publique
+
+Il reste surtout à faire tester l’application dans de vraies conditions avec plusieurs téléphones et un ordinateur.
+
+Nom de domaine
+
+On a recherché un domaine :
+
+mixparty.fr était déjà pris ;
+mixpartyapp.fr était disponible ;
+tu as acheté mixpartyapp.fr chez OVH ;
+prix payé : 5,99 € TTC pour la première année ;
+DNSSEC et une adresse Zimbra Starter sont inclus ;
+aucune offre d’hébergement OVH supplémentaire n’a été achetée.
+Adresse e-mail professionnelle
+
+On a prévu de créer :
+
+contact@mixpartyapp.fr
+
+Ton compte OVH reste associé à ton adresse e-mail personnelle pour éviter de perdre l’accès au domaine.
+
+Recherche sur la marque MixParty
+
+On a fait une première recherche sérieuse :
+
+le nom n’est pas totalement vierge ;
+il existe des usages de MixParty ou Mix Party dans plusieurs pays ;
+il existe une activité française liée aux soirées avec un nom proche ;
+aucune marque française ou européenne exacte clairement identifiée pour une application musicale collaborative ;
+niveau de risque estimé : modéré ;
+dépôt INPI à envisager plus tard, après une recherche de similarités plus approfondie.
+
+Tarif envisagé pour le dépôt :
+
+1 classe : 190 €
+2 classes : 230 €
+3 classes : 270 €
+Connexion du domaine à Railway
+
+On a commencé la configuration :
+
+ajout de mixpartyapp.fr dans Railway ;
+récupération du CNAME Railway ;
+récupération du TXT de vérification ;
+création d’un compte Cloudflare ;
+ajout de mixpartyapp.fr dans Cloudflare ;
+import automatique des DNS OVH ;
+conservation des enregistrements e-mail OVH :
+MX ;
+SPF ;
+ajout du CNAME Railway ;
+ajout du TXT _railway-verify ;
+choix du mode DNS uniquement pour commencer.
+Étape actuellement en attente
+
+Chez OVH, DNSSEC est actuellement :
+
+En cours de désactivation
+
+On s’est arrêté ici pour éviter de casser le domaine.
+
+Demain, on devra :
+
+vérifier que DNSSEC est bien désactivé ;
+remplacer les serveurs DNS OVH par :
+konnor.ns.cloudflare.com
+lara.ns.cloudflare.com
+attendre l’activation de Cloudflare ;
+vérifier la validation du domaine dans Railway ;
+tester :
+https://mixpartyapp.fr
+créer ensuite :
+contact@mixpartyapp.fr
+À ajouter dans la MixParty Bible
+- Mode TV finalisé avec double fond net/flou
+- Néon ajouté autour de la jaquette TV
+- Néon ajouté autour de la jaquette Console DJ
+- Avatars des interactions restaurés
+- Optimisation mobile V1
+- Animations lourdes désactivées sur téléphone
+- Double bouton de vote corrigé
+- MixParty validée pour une bêta publique V1
+- Domaine mixpartyapp.fr acheté chez OVH
+- Cloudflare configuré
+- CNAME et TXT Railway ajoutés
+- DNSSEC OVH en cours de désactivation
+- Connexion finale du domaine à terminer
+- Adresse contact@mixpartyapp.fr à créer
