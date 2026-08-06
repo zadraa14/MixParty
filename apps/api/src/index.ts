@@ -1095,6 +1095,77 @@ function queueHdCoverLookup(videoId: string) {
   })();
 }
 
+/* =========================================================
+   PARTYBRAIN — RECHERCHE AUTONOME DES JAQUETTES CONNUES
+   Réutilise exactement le moteur de jaquettes existant.
+   ========================================================= */
+
+function knownCoverLookupPriority(song: MusicBrainSong) {
+  return (
+    Number(song.playedCount || 0) * 8 +
+    Number(song.addedCount || 0) * 6 +
+    Number(song.voteCount || 0) * 5 +
+    Number(song.searchCount || 0) * 2
+  );
+}
+
+function nextKnownSongNeedingCover(): MusicBrainSong | null {
+  const now = Date.now();
+  const candidates = Object.values(musicBrain.songs)
+    .filter((song) => {
+      if (!song.videoId || !song.title || !song.artistName) return false;
+      if (song.coverStatus === "found" && song.coverUrl) return false;
+      if (song.coverStatus === "pending") return false;
+      if (coverLookupsInFlight.has(song.videoId)) return false;
+      const lastCheckedAt = Number(song.coverLastCheckedAt || 0);
+      const retryDelay =
+        song.coverStatus === "not_found"
+          ? 7 * 24 * 60 * 60 * 1000
+          : song.coverStatus === "error"
+            ? 6 * 60 * 60 * 1000
+            : 0;
+      return !lastCheckedAt || now - lastCheckedAt >= retryDelay;
+    })
+    .sort((a, b) => {
+      const priorityDifference = knownCoverLookupPriority(b) - knownCoverLookupPriority(a);
+      if (priorityDifference !== 0) return priorityDifference;
+      return Number(a.coverLastCheckedAt || 0) - Number(b.coverLastCheckedAt || 0);
+    });
+  return candidates[0] || null;
+}
+
+function runKnownCoverDiscoveryBatch(batchSize = 1) {
+  const safeBatchSize = Math.max(1, Math.min(3, Number(batchSize) || 1));
+  let queued = 0;
+  while (queued < safeBatchSize) {
+    const song = nextKnownSongNeedingCover();
+    if (!song) break;
+    queueHdCoverLookup(song.videoId);
+    queued += 1;
+  }
+  return queued;
+}
+
+const coverDiscoveryEnabled =
+  String(process.env.PARTYBRAIN_COVER_DISCOVERY_ENABLED || "true").toLowerCase() !== "false";
+const coverDiscoveryIntervalMs = Math.max(
+  20_000,
+  Number(process.env.PARTYBRAIN_COVER_DISCOVERY_INTERVAL_MS || 45_000)
+);
+const coverDiscoveryBatchSize = Math.max(
+  1,
+  Math.min(3, Number(process.env.PARTYBRAIN_COVER_DISCOVERY_BATCH_SIZE || 1))
+);
+
+if (coverDiscoveryEnabled) {
+  setTimeout(() => {
+    runKnownCoverDiscoveryBatch(coverDiscoveryBatchSize);
+  }, 8_000);
+  setInterval(() => {
+    runKnownCoverDiscoveryBatch(coverDiscoveryBatchSize);
+  }, coverDiscoveryIntervalMs);
+}
+
 function learnedCoverFor(videoId: string) {
   const learnedSong = musicBrain.songs[videoId];
   if (!learnedSong || learnedSong.coverStatus !== "found" || !learnedSong.coverUrl) {
@@ -1584,44 +1655,66 @@ function chooseDiversifiedPartyBrainRecommendation(
   const currentArtistKey = normalizeMusicQuery(current?.artistName || "");
   const currentGenre = inferPartyBrainContextGenre(party);
 
-  // Relay V2 : ne jamais réintroduire les recommandations incompatibles.
-  const compatibleRecommendations = recommendations.filter((item) => {
-    const genre = inferPartyBrainGenre(item.title, item.artistName);
-    return partyBrainGenreCompatibility(currentGenre, genre) >= 0.55;
+  const enriched = recommendations.map((item, index) => {
+    const candidateArtistKey = normalizeMusicQuery(item.artistName || "");
+    const candidateGenre = inferPartyBrainGenre(item.title, item.artistName);
+    const compatibility = partyBrainGenreCompatibility(currentGenre, candidateGenre);
+    const sameArtist = Boolean(currentArtistKey && candidateArtistKey === currentArtistKey);
+    const learnedEvidence =
+      Number(item.evidence.directTransitions || 0) * 2 +
+      Number(item.evidence.artistTransitions || 0);
+
+    return {
+      item,
+      index,
+      compatibility,
+      sameArtist,
+      learnedEvidence,
+    };
   });
 
-  if (!compatibleRecommendations.length) return null;
+  // 1. Même artiste : idéal pour prolonger naturellement une série Gims, Jul, etc.
+  const sameArtistPool = enriched.filter((entry) => entry.sameArtist);
 
-  const ranked = compatibleRecommendations
-    .slice(0, Math.min(12, compatibleRecommendations.length))
-    .map((item, index) => {
-      const candidateArtistKey = normalizeMusicQuery(item.artistName || "");
-      const sameArtist = Boolean(
-        currentArtistKey &&
-        candidateArtistKey &&
-        currentArtistKey === candidateArtistKey
-      );
+  // 2. Style compatible reconnu.
+  const compatiblePool = enriched.filter((entry) => entry.compatibility >= 0.55);
 
-      const directOrArtistEvidence =
-        Number(item.evidence.directTransitions || 0) * 2 +
-        Number(item.evidence.artistTransitions || 0);
+  // 3. Transition réellement apprise, même lorsque le genre est encore inconnu.
+  const learnedPool = enriched.filter((entry) => entry.learnedEvidence > 0);
 
-      const sameArtistBonus = sameArtist ? 34 : 0;
-      const learnedTransitionBonus = Math.min(24, directOrArtistEvidence * 4);
-      const rankPenalty = index * 1.25;
+  // 4. Démarrage à froid : les morceaux sont déjà filtrés contre les contenus amateurs.
+  // On autorise donc le meilleur candidat sûr lorsque PartyBrain ne connaît pas encore le genre.
+  const sourcePool = sameArtistPool.length
+    ? sameArtistPool
+    : compatiblePool.length
+      ? compatiblePool
+      : learnedPool.length
+        ? learnedPool
+        : currentGenre === "unknown"
+          ? enriched
+          : [];
+
+  if (!sourcePool.length) return null;
+
+  return sourcePool
+    .slice(0, Math.min(12, sourcePool.length))
+    .map((entry) => {
+      const sameArtistBonus = entry.sameArtist ? 30 : 0;
+      const compatibilityBonus = entry.compatibility >= 0.55 ? entry.compatibility * 16 : 0;
+      const learnedTransitionBonus = Math.min(22, entry.learnedEvidence * 4);
+      const rankPenalty = entry.index * 1.1;
 
       return {
-        item,
+        item: entry.item,
         value:
-          item.score +
+          entry.item.score +
           sameArtistBonus +
+          compatibilityBonus +
           learnedTransitionBonus -
           rankPenalty,
       };
     })
-    .sort((a, b) => b.value - a.value);
-
-  return ranked[0]?.item || null;
+    .sort((a, b) => b.value - a.value)[0]?.item || null;
 }
 
 function buildPartyBrainRecommendationScores(
@@ -2934,11 +3027,11 @@ app.post("/party/:code/next",(req,res)=>{
     const bestRecommendation = chooseDiversifiedPartyBrainRecommendation(recommendationPool, party);
 
     const minimumScore = Number(
-      process.env.PARTYBRAIN_RELAY_MIN_SCORE || 62
+      process.env.PARTYBRAIN_RELAY_MIN_SCORE || 45
     );
 
     const minimumConfidence = Number(
-      process.env.PARTYBRAIN_RELAY_MIN_CONFIDENCE || 35
+      process.env.PARTYBRAIN_RELAY_MIN_CONFIDENCE || 20
     );
 
     const recommendationAccepted = Boolean(
