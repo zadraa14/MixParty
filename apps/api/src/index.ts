@@ -1547,6 +1547,33 @@ function recentPartyBrainSelectionStats(events: PartyIntelligenceEvent[]) {
   return { now, stats };
 }
 
+
+function isPartyBrainRelaySafeSong(song: MusicBrainSong) {
+  const titleText = `${song.rawTitle || ""} ${song.title || ""}`.toLowerCase();
+  const channelText = String(song.channelTitle || "").toLowerCase();
+  const combined = `${titleText} ${channelText}`;
+
+  // PartyBrain Relay doit éviter les reprises amateurs, karaokés, parodies,
+  // auditions et autres vidéos qui ne correspondent pas à la version officielle.
+  if (/(karaoke|instrumental|cover|reprise|tribute|hommage|parodie|fanmade|fan made|amateur|audition|the voice|incroyable talent|chorale|choir|school|école|concours|talent show)/i.test(combined)) {
+    return false;
+  }
+
+  if (/(reaction|reacts?|interview|podcast|documentary|documentaire|making of|behind the scenes|shorts?|#shorts)/i.test(combined)) {
+    return false;
+  }
+
+  const artistKey = normalizeMusicQuery(song.artistName || "");
+  const channelKey = normalizeMusicQuery(song.channelTitle || "");
+  const officialChannel = /(official|vevo|topic|provided to youtube)/i.test(channelText);
+  const artistChannel = Boolean(artistKey && channelKey && (channelKey.includes(artistKey) || artistKey.includes(channelKey)));
+  const trustedMetadata =
+    song.metadataSource === "ART_TRACK_DESCRIPTION" ||
+    Number(song.metadataConfidence || 0) >= 65;
+
+  return officialChannel || artistChannel || trustedMetadata;
+}
+
 function chooseDiversifiedPartyBrainRecommendation(
   recommendations: PartyBrainRecommendation[],
   party: Party
@@ -1779,6 +1806,7 @@ function buildPartyBrainRecommendationScores(
 
   for (const candidate of Object.values(musicBrain.songs)) {
     if (!candidate.videoId || !candidate.title || recentVideoIds.has(candidate.videoId)) continue;
+    if (!isPartyBrainRelaySafeSong(candidate)) continue;
 
     const candidateArtistKey = normalizeMusicQuery(candidate.artistName || "");
     const outcomes = songOutcomes.get(candidate.videoId) || {
@@ -2046,6 +2074,7 @@ function selectPartyBrainFallbackSong(party: Party): PartyBrainFallbackSong | nu
   const candidates = Object.values(musicBrain.songs)
     .filter((song) => {
       if (!song.videoId || !song.title || excludedVideoIds.has(song.videoId)) return false;
+      if (!isPartyBrainRelaySafeSong(song)) return false;
 
       const confidence = Number(song.metadataConfidence || 0);
       const duration = Number(song.durationSeconds || 0);
@@ -3636,7 +3665,7 @@ async function requestYoutubeMusic(
       .filter((result: any) => result.embeddable && result.privacyStatus !== "private")
       .filter((result: YoutubeSearchResult) => {
         const text = `${result.title} ${result.channelTitle || ""}`.toLowerCase();
-        return !/(podcast|interview|reaction|reacts?|documentary|documentaire|#shorts|\bshorts?\b)/i.test(text);
+        return !/(podcast|interview|reaction|reacts?|documentary|documentaire|#shorts|\bshorts?\b|karaoke|instrumental|cover|reprise|tribute|hommage|parodie|fanmade|fan made|amateur|audition|the voice|incroyable talent|chorale|choir|school|école|concours|talent show)/i.test(text);
       })
       .sort((a: YoutubeSearchResult, b: YoutubeSearchResult) =>
         scoreMusicResult(b, query) - scoreMusicResult(a, query)
