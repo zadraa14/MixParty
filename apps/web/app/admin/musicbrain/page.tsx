@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, BarChart3, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Clock3, Database, KeyRound, Music2, Network, RefreshCw, Search, ShieldCheck, Sparkles, ThumbsUp, Timer, Trash2, type LucideIcon } from "lucide-react";
+import { Activity, AlertTriangle, BarChart3, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Clock3, Database, KeyRound, Music2, Network, RefreshCw, Search, ShieldCheck, Sparkles, ThumbsUp, Timer, Trash2, UsersRound, Wifi, type LucideIcon } from "lucide-react";
 import { getApiBaseUrl } from "../../../lib/config";
 
 type Stats = {
@@ -128,6 +128,25 @@ type Stats = {
 };
 
 
+
+type LiveUsersData = {
+  generatedAt: number;
+  onlineWindowMs: number;
+  totalUsers: number;
+  activePartyCount: number;
+  parties: Array<{
+    code: string;
+    userCount: number;
+    currentSong: { title: string; artistName?: string } | null;
+    users: Array<{
+      id: string;
+      name: string;
+      avatar?: string;
+      lastSeen: number;
+    }>;
+  }>;
+};
+
 type CoverFilter =
   | "downloaded"
   | "pending"
@@ -176,6 +195,9 @@ export default function MusicBrainAdminPage() {
   const [adminToken, setAdminToken] = useState("");
   const [maintenanceLoading, setMaintenanceLoading] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState("");
+  const [liveUsers, setLiveUsers] = useState<LiveUsersData | null>(null);
+  const [liveUsersError, setLiveUsersError] = useState("");
+
   const [maintenanceError, setMaintenanceError] = useState("");
 
   const [activeCoverFilter, setActiveCoverFilter] = useState<CoverFilter | null>(null);
@@ -189,6 +211,25 @@ export default function MusicBrainAdminPage() {
   const [manualCoverUrl, setManualCoverUrl] = useState("");
   const [coverActionMessage, setCoverActionMessage] = useState("");
 
+
+
+  async function loadLiveUsers() {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/live-users`, {
+        cache: "no-store",
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Présences MixParty indisponibles");
+      }
+      setLiveUsers(data);
+      setLiveUsersError("");
+    } catch (err) {
+      setLiveUsersError(
+        err instanceof Error ? err.message : "Présences MixParty indisponibles"
+      );
+    }
+  }
 
   async function loadStats() {
     setLoading(true);
@@ -206,7 +247,14 @@ export default function MusicBrainAdminPage() {
   }
 
   useEffect(() => {
-    loadStats();
+    void loadStats();
+    void loadLiveUsers();
+
+    const liveTimer = window.setInterval(() => {
+      void loadLiveUsers();
+    }, 5_000);
+
+    return () => window.clearInterval(liveTimer);
   }, []);
 
   async function clearYoutubeCache() {
@@ -464,6 +512,74 @@ export default function MusicBrainAdminPage() {
           <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white/60">Chargement de MusicBrain…</div>
         ) : (
           <>
+
+            <section className="mb-7 rounded-[28px] border border-emerald-400/20 bg-gradient-to-br from-emerald-500/10 via-cyan-500/[0.08] to-violet-500/10 p-5 backdrop-blur-xl sm:p-7">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="relative grid h-12 w-12 place-items-center rounded-2xl bg-emerald-400/15 text-emerald-200">
+                    <UsersRound className="h-6 w-6" />
+                    <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.9)]" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[.22em] text-emerald-300">MixParty en direct</p>
+                    <h2 className="mt-1 text-2xl font-black">
+                      {liveUsers?.totalUsers ?? 0} personne{(liveUsers?.totalUsers ?? 0) > 1 ? "s" : ""} connectée{(liveUsers?.totalUsers ?? 0) > 1 ? "s" : ""}
+                    </h2>
+                    <p className="mt-1 text-sm text-white/45">
+                      {liveUsers?.activePartyCount ?? 0} soirée{(liveUsers?.activePartyCount ?? 0) > 1 ? "s" : ""} active{(liveUsers?.activePartyCount ?? 0) > 1 ? "s" : ""} • actualisation toutes les 5 secondes
+                    </p>
+                  </div>
+                </div>
+                <button type="button" onClick={() => void loadLiveUsers()} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-300/15 bg-emerald-400/10 px-4 py-3 text-sm font-black text-emerald-100 transition hover:bg-emerald-400/15">
+                  <RefreshCw className="h-4 w-4" />
+                  Actualiser les connexions
+                </button>
+              </div>
+
+              {liveUsersError ? (
+                <div className="mt-5 rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-100">{liveUsersError}</div>
+              ) : !liveUsers?.parties.length ? (
+                <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-5 text-sm text-white/45">Aucune personne connectée pour le moment.</div>
+              ) : (
+                <div className="mt-5 grid gap-4 lg:grid-cols-2">
+                  {liveUsers.parties.map((liveParty) => (
+                    <article key={liveParty.code} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <Wifi className="h-4 w-4 text-emerald-300" />
+                            <h3 className="font-black">Soirée {liveParty.code}</h3>
+                          </div>
+                          <p className="mt-1 text-xs text-white/40">
+                            {liveParty.currentSong
+                              ? `En lecture : ${liveParty.currentSong.title}${liveParty.currentSong.artistName ? ` — ${liveParty.currentSong.artistName}` : ""}`
+                              : "Aucun morceau en lecture"}
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-emerald-300/15 bg-emerald-400/10 px-3 py-1 text-xs font-black text-emerald-200">{liveParty.userCount} en ligne</span>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {liveParty.users.map((user) => (
+                          <div key={`${liveParty.code}-${user.id}`} className="flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] py-1.5 pl-1.5 pr-3">
+                            <div className="relative h-8 w-8 overflow-hidden rounded-full border border-emerald-300/25 bg-white/10">
+                              {user.avatar ? (
+                                <img src={user.avatar} alt="" className="h-full w-full object-cover" />
+                              ) : (
+                                <div className="grid h-full w-full place-items-center text-xs font-black">{user.name.charAt(0).toUpperCase()}</div>
+                              )}
+                              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-[#101018] bg-emerald-400" />
+                            </div>
+                            <span className="text-sm font-bold text-white/85">{user.name}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </section>
+
             <section className="mb-7 rounded-[28px] border border-fuchsia-400/20 bg-gradient-to-r from-fuchsia-500/10 via-violet-500/10 to-cyan-500/10 p-5 backdrop-blur-xl sm:p-7">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>

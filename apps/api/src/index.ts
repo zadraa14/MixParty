@@ -4276,6 +4276,47 @@ app.get("/musicbrain/artists/:key", (req, res) => {
 });
 
 app.get("/partybrain/stats", (_req, res) => res.json(musicBrainStats()));
+
+app.get("/partybrain/live-users", (_req, res) => {
+  const now = Date.now();
+  const onlineWindowMs = 30_000;
+
+  const activeParties = parties
+    .map((party) => {
+      const users = (party.participants || [])
+        .filter((participant) => now - Number(participant.lastSeen || 0) <= onlineWindowMs)
+        .map((participant) => ({
+          id: participant.id,
+          name: participant.name,
+          avatar: participant.avatar,
+          lastSeen: Number(participant.lastSeen || 0),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name, "fr"));
+
+      return {
+        code: party.code,
+        users,
+        userCount: users.length,
+        currentSong: party.currentSong
+          ? {
+              title: party.currentSong.title,
+              artistName: party.currentSong.artistName,
+            }
+          : null,
+      };
+    })
+    .filter((party) => party.userCount > 0)
+    .sort((a, b) => b.userCount - a.userCount || a.code.localeCompare(b.code));
+
+  return res.json({
+    generatedAt: now,
+    onlineWindowMs,
+    totalUsers: activeParties.reduce((total, party) => total + party.userCount, 0),
+    activePartyCount: activeParties.length,
+    parties: activeParties,
+  });
+});
+
 app.get("/partybrain/maintenance/youtube-cache", (_req, res) => {
   return res.json({
     entries: youtubeSearchCache.size,
