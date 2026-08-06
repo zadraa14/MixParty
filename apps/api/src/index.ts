@@ -31,6 +31,7 @@ const persistentDataDir = path.resolve(
 fs.mkdirSync(persistentDataDir, { recursive: true });
 const dataFilePath = path.resolve(persistentDataDir, "data.json");
 const partyEventsFilePath = path.resolve(persistentDataDir, "party-intelligence-events.jsonl");
+const attendanceHistoryFilePath = path.resolve(persistentDataDir, "party-attendance-history.json");
 const configuredOrigins = process.env.CORS_ORIGINS
   ?.split(",")
   .map((origin) => origin.trim())
@@ -675,6 +676,111 @@ function saveParties(){
 }
 
 
+
+
+
+type AttendanceParticipant = {
+  id: string;
+  name: string;
+  avatar?: string;
+  firstSeenAt: number;
+  lastSeenAt: number;
+};
+
+type AttendanceParty = {
+  code: string;
+  createdAt: number;
+  firstActivityAt: number;
+  lastActivityAt: number;
+  participants: Record<string, AttendanceParticipant>;
+};
+
+type AttendanceHistory = {
+  version: 1;
+  updatedAt: number;
+  parties: Record<string, AttendanceParty>;
+};
+
+function createEmptyAttendanceHistory(): AttendanceHistory {
+  return {
+    version: 1,
+    updatedAt: Date.now(),
+    parties: {},
+  };
+}
+
+let attendanceHistory: AttendanceHistory = createEmptyAttendanceHistory();
+
+function cleanupAttendanceHistory() {
+  const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  for (const [code, attendanceParty] of Object.entries(attendanceHistory.parties)) {
+    if (Number(attendanceParty.lastActivityAt || 0) < cutoff) {
+      delete attendanceHistory.parties[code];
+    }
+  }
+}
+
+function saveAttendanceHistory() {
+  cleanupAttendanceHistory();
+  attendanceHistory.updatedAt = Date.now();
+  fs.writeFileSync(
+    attendanceHistoryFilePath,
+    JSON.stringify(attendanceHistory, null, 2),
+    "utf-8"
+  );
+}
+
+function loadAttendanceHistory() {
+  if (!fs.existsSync(attendanceHistoryFilePath)) {
+    saveAttendanceHistory();
+    return;
+  }
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(attendanceHistoryFilePath, "utf-8"));
+    attendanceHistory = {
+      version: 1,
+      updatedAt: Number(parsed?.updatedAt || Date.now()),
+      parties: parsed?.parties && typeof parsed.parties === "object" ? parsed.parties : {},
+    };
+    cleanupAttendanceHistory();
+    saveAttendanceHistory();
+  } catch (error) {
+    console.warn("Historique des présences illisible, nouvelle base créée :", error);
+    attendanceHistory = createEmptyAttendanceHistory();
+    saveAttendanceHistory();
+  }
+}
+
+function recordAttendance(party: Party, participant: Participant) {
+  const now = Date.now();
+  const historyParty = attendanceHistory.parties[party.code] || {
+    code: party.code,
+    createdAt: Number(party.createdAt || now),
+    firstActivityAt: now,
+    lastActivityAt: now,
+    participants: {},
+  };
+
+  const historyParticipant = historyParty.participants[participant.id] || {
+    id: participant.id,
+    name: participant.name,
+    avatar: participant.avatar,
+    firstSeenAt: now,
+    lastSeenAt: now,
+  };
+
+  historyParticipant.name = participant.name;
+  historyParticipant.avatar = participant.avatar || historyParticipant.avatar;
+  historyParticipant.lastSeenAt = now;
+
+  historyParty.lastActivityAt = now;
+  historyParty.participants[participant.id] = historyParticipant;
+  attendanceHistory.parties[party.code] = historyParty;
+  saveAttendanceHistory();
+}
+
+loadAttendanceHistory();
 
 
 const musicBrainFilePath = path.resolve(persistentDataDir, "musicbrain.json");
@@ -2451,6 +2557,8 @@ app.post("/party/:code/join",(req,res)=>{
   if (isNewParticipant) {
     recordPartyEvent(party, "PARTICIPANT_JOINED", { actorHash: anonymizeActor(participantId) });
   }
+  const joinedParticipant = party.participants.find((participant) => participant.id === participantId);
+  if (joinedParticipant) recordAttendance(party, joinedParticipant);
   updateParty(party);
 
 
@@ -2491,6 +2599,8 @@ app.post("/party/:code/presence", (req, res) => {
     });
   }
 
+  const presentParticipant = party.participants.find((item) => item.id === id);
+  if (presentParticipant) recordAttendance(party, presentParticipant);
   updateParty(party);
   res.json(toPublicParty(party));
 });
@@ -4316,6 +4426,83 @@ app.get("/partybrain/live-users", (_req, res) => {
     parties: activeParties,
   });
 });
+
+
+app.get("/partybrain/attendance-history", (_req, res) => {
+  cleanupAttendanceHistory();
+
+  const now = Date.now();
+  const dayFormatter = new Intl.DateTimeFormat("fr-FR", {
+    timeZone: "Europe/Paris",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(now - index * 24 * 60 * 60 * 1000);
+    const dateKey = dayFormatter.format(date);
+    return {
+      dateKey,
+      dateAt: date.getTime(),
+      parties: [] as Array<{
+        code: string;
+        createdAt: number;
+        firstActivityAt: number;
+        lastActivityAt: number;
+        durationMinutes: number;
+        participantCount: number;
+        participants: Array<{
+          id: string;
+          name: string;
+          avatar?: string;
+          firstSeenAt: number;
+          lastSeenAt: number;
+        }>;
+      }>,
+    };
+  });
+
+  const byDate = new Map(days.map((day) => [day.dateKey, day]));
+
+  for (const historyParty of Object.values(attendanceHistory.parties)) {
+    const dateKey = dayFormatter.format(new Date(historyParty.firstActivityAt || historyParty.createdAt));
+    const day = byDate.get(dateKey);
+    if (!day) continue;
+
+    const participants = Object.values(historyParty.participants || {})
+      .sort((a, b) => a.firstSeenAt - b.firstSeenAt || a.name.localeCompare(b.name, "fr"));
+
+    day.parties.push({
+      code: historyParty.code,
+      createdAt: historyParty.createdAt,
+      firstActivityAt: historyParty.firstActivityAt,
+      lastActivityAt: historyParty.lastActivityAt,
+      durationMinutes: Math.max(
+        1,
+        Math.round((historyParty.lastActivityAt - historyParty.firstActivityAt) / 60_000)
+      ),
+      participantCount: participants.length,
+      participants,
+    });
+  }
+
+  for (const day of days) {
+    day.parties.sort((a, b) => b.lastActivityAt - a.lastActivityAt);
+  }
+
+  return res.json({
+    generatedAt: now,
+    retentionDays: 7,
+    totalParties: days.reduce((total, day) => total + day.parties.length, 0),
+    totalParticipations: days.reduce(
+      (total, day) => total + day.parties.reduce((sum, party) => sum + party.participantCount, 0),
+      0
+    ),
+    days,
+  });
+});
+
 
 app.get("/partybrain/maintenance/youtube-cache", (_req, res) => {
   return res.json({

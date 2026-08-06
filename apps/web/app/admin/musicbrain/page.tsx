@@ -147,6 +147,33 @@ type LiveUsersData = {
   }>;
 };
 
+
+type AttendanceHistoryData = {
+  generatedAt: number;
+  retentionDays: number;
+  totalParties: number;
+  totalParticipations: number;
+  days: Array<{
+    dateKey: string;
+    dateAt: number;
+    parties: Array<{
+      code: string;
+      createdAt: number;
+      firstActivityAt: number;
+      lastActivityAt: number;
+      durationMinutes: number;
+      participantCount: number;
+      participants: Array<{
+        id: string;
+        name: string;
+        avatar?: string;
+        firstSeenAt: number;
+        lastSeenAt: number;
+      }>;
+    }>;
+  }>;
+};
+
 type CoverFilter =
   | "downloaded"
   | "pending"
@@ -197,6 +224,9 @@ export default function MusicBrainAdminPage() {
   const [maintenanceMessage, setMaintenanceMessage] = useState("");
   const [liveUsers, setLiveUsers] = useState<LiveUsersData | null>(null);
   const [liveUsersError, setLiveUsersError] = useState("");
+  const [attendanceHistory, setAttendanceHistory] = useState<AttendanceHistoryData | null>(null);
+  const [attendanceHistoryError, setAttendanceHistoryError] = useState("");
+
 
   const [maintenanceError, setMaintenanceError] = useState("");
 
@@ -231,6 +261,25 @@ export default function MusicBrainAdminPage() {
     }
   }
 
+
+  async function loadAttendanceHistory() {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/attendance-history`, {
+        cache: "no-store",
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Historique des soirées indisponible");
+      }
+      setAttendanceHistory(data);
+      setAttendanceHistoryError("");
+    } catch (err) {
+      setAttendanceHistoryError(
+        err instanceof Error ? err.message : "Historique des soirées indisponible"
+      );
+    }
+  }
+
   async function loadStats() {
     setLoading(true);
     setError("");
@@ -249,12 +298,20 @@ export default function MusicBrainAdminPage() {
   useEffect(() => {
     void loadStats();
     void loadLiveUsers();
+    void loadAttendanceHistory();
 
     const liveTimer = window.setInterval(() => {
       void loadLiveUsers();
     }, 5_000);
 
-    return () => window.clearInterval(liveTimer);
+    const historyTimer = window.setInterval(() => {
+      void loadAttendanceHistory();
+    }, 60_000);
+
+    return () => {
+      window.clearInterval(liveTimer);
+      window.clearInterval(historyTimer);
+    };
   }, []);
 
   async function clearYoutubeCache() {
@@ -576,6 +633,119 @@ export default function MusicBrainAdminPage() {
                       </div>
                     </article>
                   ))}
+                </div>
+              )}
+            </section>
+
+
+            <section className="mb-7 rounded-[28px] border border-violet-400/20 bg-gradient-to-br from-violet-500/10 via-fuchsia-500/[0.07] to-cyan-500/[0.07] p-5 backdrop-blur-xl sm:p-7">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-4">
+                  <div className="grid h-12 w-12 place-items-center rounded-2xl bg-violet-400/15 text-violet-200">
+                    <CalendarDays className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[.22em] text-violet-300">
+                      Historique des connexions
+                    </p>
+                    <h2 className="mt-1 text-2xl font-black">Les 7 derniers jours</h2>
+                    <p className="mt-1 text-sm text-white/45">
+                      {attendanceHistory?.totalParties ?? 0} soirée{(attendanceHistory?.totalParties ?? 0) > 1 ? "s" : ""} • {attendanceHistory?.totalParticipations ?? 0} participation{(attendanceHistory?.totalParticipations ?? 0) > 1 ? "s" : ""}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void loadAttendanceHistory()}
+                  className="inline-flex items-center justify-center gap-2 rounded-2xl border border-violet-300/15 bg-violet-400/10 px-4 py-3 text-sm font-black text-violet-100 transition hover:bg-violet-400/15"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Actualiser l’historique
+                </button>
+              </div>
+
+              {attendanceHistoryError ? (
+                <div className="mt-5 rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm text-red-100">
+                  {attendanceHistoryError}
+                </div>
+              ) : (
+                <div className="mt-5 space-y-4">
+                  {(attendanceHistory?.days || []).map((day) => {
+                    const dayDate = new Date(day.dateAt);
+                    const label = dayDate.toLocaleDateString("fr-FR", {
+                      weekday: "long",
+                      day: "numeric",
+                      month: "long",
+                    });
+                    const uniqueNames = new Set(
+                      day.parties.flatMap((party) =>
+                        party.participants.map((participant) => participant.name.trim().toLocaleLowerCase("fr-FR"))
+                      )
+                    ).size;
+
+                    return (
+                      <article key={day.dateKey} className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <h3 className="text-lg font-black capitalize">{label}</h3>
+                            <p className="mt-1 text-xs text-white/40">
+                              {day.parties.length} soirée{day.parties.length > 1 ? "s" : ""} • {uniqueNames} personne{uniqueNames > 1 ? "s" : ""} différente{uniqueNames > 1 ? "s" : ""}
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-xs font-black text-white/55">
+                            {day.parties.reduce((total, party) => total + party.participantCount, 0)} participation{day.parties.reduce((total, party) => total + party.participantCount, 0) > 1 ? "s" : ""}
+                          </span>
+                        </div>
+
+                        {!day.parties.length ? (
+                          <p className="mt-4 text-sm text-white/35">Aucune soirée enregistrée ce jour-là.</p>
+                        ) : (
+                          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                            {day.parties.map((historyParty) => (
+                              <div key={`${day.dateKey}-${historyParty.code}`} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <p className="font-black">Soirée {historyParty.code}</p>
+                                    <p className="mt-1 flex items-center gap-1.5 text-xs text-white/40">
+                                      <Clock3 className="h-3.5 w-3.5" />
+                                      {new Date(historyParty.firstActivityAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                                      {" → "}
+                                      {new Date(historyParty.lastActivityAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                                      {" • "}
+                                      {historyParty.durationMinutes} min
+                                    </p>
+                                  </div>
+                                  <span className="rounded-full border border-violet-300/15 bg-violet-400/10 px-3 py-1 text-xs font-black text-violet-200">
+                                    {historyParty.participantCount} personne{historyParty.participantCount > 1 ? "s" : ""}
+                                  </span>
+                                </div>
+
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {historyParty.participants.map((participant) => (
+                                    <div
+                                      key={`${historyParty.code}-${participant.id}`}
+                                      className="flex items-center gap-2 rounded-full border border-white/10 bg-black/20 py-1.5 pl-1.5 pr-3"
+                                    >
+                                      <div className="h-7 w-7 overflow-hidden rounded-full border border-violet-300/20 bg-white/10">
+                                        {participant.avatar ? (
+                                          <img src={participant.avatar} alt="" className="h-full w-full object-cover" />
+                                        ) : (
+                                          <div className="grid h-full w-full place-items-center text-[11px] font-black">
+                                            {participant.name.charAt(0).toUpperCase()}
+                                          </div>
+                                        )}
+                                      </div>
+                                      <span className="text-xs font-bold text-white/80">{participant.name}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })}
                 </div>
               )}
             </section>
