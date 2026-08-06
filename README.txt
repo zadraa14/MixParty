@@ -1,15 +1,10 @@
-MixParty — Historique des connexions sur 7 jours
+MixParty — Recherche musicale élargie
 
-Inclus :
-- compteur en direct conservé ;
-- historique jour par jour pendant 7 jours ;
-- soirées regroupées par date ;
-- noms et avatars des participants ;
-- heure de première et dernière activité ;
-- durée estimée de chaque soirée ;
-- suppression automatique des données âgées de plus de 7 jours ;
-- stockage dans party-attendance-history.json dans PERSISTENT_DATA_DIR.
+Modifications :
+- conserve les remix, lives, paroles, instrumentaux, reprises et versions alternatives ;
+- déduplique uniquement les vidéos ayant exactement le même videoId ;
+- interroge toujours YouTube même si PartyBrain connaît déjà 20 titres ;
+- supprime le cache approximatif pouvant renvoyer les résultats d'une autre recherche ;
+- conserve le cache exact, les vidéos intégrables et l'exclusion des contenus clairement non musicaux.
 
-Fichiers à remplacer :
-- apps/api/src/index.ts
-- apps/web/app/admin/musicbrain/page.tsx
+Après le déploiement, vider une fois le cache YouTube depuis la page Admin PartyBrain afin de supprimer les anciens résultats filtrés.
