@@ -1,11 +1,9 @@
-PartyBrain Relay V2.2 — correctif démarrage à froid
+MixParty — choix photo mobile
 
-- PartyBrain redonne des morceaux même avec peu de données
-- priorité au même artiste
-- puis styles compatibles
-- puis transitions réellement apprises
-- si le genre est inconnu, sélection du meilleur morceau sûr
-- filtre anti-amateur conservé
-- fallback large/aléatoire toujours désactivé
-- seuils raisonnables : score 45, confiance 20
-- recherche autonome des jaquettes conservée et correction de sa file d'attente
+- Bouton Prendre une photo : ouvre la caméra frontale
+- Bouton Choisir dans la galerie : ouvre les photos du téléphone
+- Aperçu avant de rejoindre la soirée
+- Même choix disponible après connexion
+- Compression et stockage existants conservés
+
+Seul fichier modifié : apps/web/app/party/[code]/page.tsx

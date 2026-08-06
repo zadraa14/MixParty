@@ -8,6 +8,8 @@ import {
   ArrowBigUp,
   Activity,
   Battery,
+  Camera,
+  Images,
   Bot,
   BrainCircuit,
   Check,
@@ -275,6 +277,8 @@ export default function PartyPage() {
   const applyingRemotePlaybackRef = useRef(false);
   const changingSongRef = useRef(false);
   const mobileSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const cameraPhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryPhotoInputRef = useRef<HTMLInputElement | null>(null);
 
   function addPlayerAudit(event: string, detail?: string) {
     const entry = { at: Date.now(), event, detail };
@@ -633,6 +637,14 @@ export default function PartyPage() {
     } finally {
       setUploadingAvatar(false);
     }
+  }
+
+  function handleProfilePhotoSelection(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0] || null;
+    void handleProfilePhotoUpload(file);
+    event.target.value = "";
   }
 
   async function searchYoutube() {
@@ -2294,6 +2306,57 @@ export default function PartyPage() {
                   className="mt-5 w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-4 outline-none transition placeholder:text-white/25 focus:border-pink-400/50"
                 />
 
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    disabled={uploadingAvatar}
+                    onClick={() => cameraPhotoInputRef.current?.click()}
+                    className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-pink-400/25 bg-pink-500/10 px-3 py-3 text-sm font-black text-pink-100 transition hover:border-pink-300/45 hover:bg-pink-500/15 disabled:cursor-wait disabled:opacity-50"
+                  >
+                    <Camera className="h-5 w-5 shrink-0" />
+                    <span>{uploadingAvatar ? "Préparation…" : "Prendre une photo"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    disabled={uploadingAvatar}
+                    onClick={() => galleryPhotoInputRef.current?.click()}
+                    className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-purple-400/25 bg-purple-500/10 px-3 py-3 text-sm font-black text-purple-100 transition hover:border-purple-300/45 hover:bg-purple-500/15 disabled:cursor-wait disabled:opacity-50"
+                  >
+                    <Images className="h-5 w-5 shrink-0" />
+                    <span>Choisir dans la galerie</span>
+                  </button>
+                </div>
+
+                <input
+                  ref={cameraPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="user"
+                  className="hidden"
+                  disabled={uploadingAvatar}
+                  onChange={handleProfilePhotoSelection}
+                />
+
+                <input
+                  ref={galleryPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingAvatar}
+                  onChange={handleProfilePhotoSelection}
+                />
+
+                {participantAvatar && (
+                  <div className="mt-3 flex items-center gap-3 rounded-2xl border border-white/10 bg-black/20 p-3">
+                    <img src={participantAvatar} alt="Aperçu de ta photo" className="h-12 w-12 rounded-xl object-cover" />
+                    <div>
+                      <p className="text-sm font-black text-white">Photo sélectionnée</p>
+                      <p className="text-xs text-white/45">Elle sera utilisée comme avatar dans la soirée.</p>
+                    </div>
+                  </div>
+                )}
+
                 <button
                   onClick={joinParty}
                   className="group mt-3 w-full rounded-2xl border border-white/20 bg-gradient-to-r from-purple-600 via-pink-500 to-orange-400 px-5 py-4 font-black shadow-[0_14px_35px_rgba(168,85,247,0.2)] transition duration-300 hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:scale-[0.98]"
@@ -2332,17 +2395,44 @@ export default function PartyPage() {
 
                 </div>
 
-                <label className="mt-4 flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-bold text-white/65 transition hover:border-purple-400/30 hover:bg-purple-500/10">
-                  <UserPlus className="h-4 w-4 text-purple-300" />
-                  {uploadingAvatar ? "Préparation de la photo…" : "Choisir ma photo de profil"}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
                     disabled={uploadingAvatar}
-                    onChange={(event) => handleProfilePhotoUpload(event.target.files?.[0] || null)}
-                  />
-                </label>
+                    onClick={() => cameraPhotoInputRef.current?.click()}
+                    className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 text-sm font-bold text-white/70 transition hover:border-pink-400/30 hover:bg-pink-500/10 disabled:opacity-50"
+                  >
+                    <Camera className="h-4 w-4 text-pink-300" />
+                    Prendre une photo
+                  </button>
+                  <button
+                    type="button"
+                    disabled={uploadingAvatar}
+                    onClick={() => galleryPhotoInputRef.current?.click()}
+                    className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 text-sm font-bold text-white/70 transition hover:border-purple-400/30 hover:bg-purple-500/10 disabled:opacity-50"
+                  >
+                    <Images className="h-4 w-4 text-purple-300" />
+                    Galerie
+                  </button>
+                </div>
+
+                <input
+                  ref={cameraPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="user"
+                  className="hidden"
+                  disabled={uploadingAvatar}
+                  onChange={handleProfilePhotoSelection}
+                />
+                <input
+                  ref={galleryPhotoInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingAvatar}
+                  onChange={handleProfilePhotoSelection}
+                />
 
                 <div className="mt-3 rounded-2xl border border-white/[0.07] bg-black/20 px-4 py-3 text-sm text-white/50">
                   Sans photo personnelle, MixParty t’attribue automatiquement un avatar unique.
