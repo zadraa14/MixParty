@@ -195,11 +195,23 @@ type KaraokeAuditData = {
   localScan?: {
     scannedAt: number;
     scannedSongs: number;
+    directTopic: number;
+    directOfficialAudio: number;
+    alternativeTopic: number;
+    alternativeOfficialAudio: number;
     topic: number;
     officialAudio: number;
     compatible: number;
+    probableClip: number;
+    indeterminate: number;
     unclassified: number;
     coveragePercent: number;
+  };
+  youtubeAudit?: {
+    tested: number;
+    foundTopic: number;
+    foundOfficialAudio: number;
+    notFound: number;
   };
 };
 
@@ -341,7 +353,7 @@ export default function MusicBrainAdminPage() {
       const scan = data?.localScan;
       setKaraokeAuditMessage(
         scan
-          ? `Scan MusicBrain terminé : ${number.format(scan.scannedSongs)} morceaux analysés • ${number.format(scan.topic)} Topic / Art Track • ${number.format(scan.officialAudio)} Official Audio • ${number.format(scan.unclassified)} à rechercher plus tard. Aucun quota YouTube utilisé.`
+          ? `Scan MusicBrain terminé : ${number.format(scan.scannedSongs)} morceaux analysés • ${number.format(scan.directTopic)} Topic directs • ${number.format(scan.directOfficialAudio)} Official Audio directs • ${number.format(scan.alternativeTopic + scan.alternativeOfficialAudio)} versions audio alternatives déjà retrouvées dans MusicBrain • ${number.format(scan.probableClip)} clips probables • ${number.format(scan.indeterminate)} indéterminés. Aucun quota YouTube utilisé.`
           : (data?.message || "Scan MusicBrain terminé.")
       );
     } catch (err) {
@@ -1198,36 +1210,81 @@ export default function MusicBrainAdminPage() {
                   <p className="mt-2 text-3xl font-black">{number.format(karaokeAudit?.knownSongs ?? stats.totals.songs)}</p>
                 </article>
                 <article className="rounded-2xl border border-cyan-300/15 bg-cyan-500/[0.07] p-4">
-                  <p className="text-xs font-black uppercase tracking-[.16em] text-cyan-200/65">Topic / Art Track</p>
-                  <p className="mt-2 text-3xl font-black text-cyan-100">{number.format((karaokeAudit?.alreadyTopic ?? 0) + (karaokeAudit?.discoveredTopic ?? 0))}</p>
+                  <p className="text-xs font-black uppercase tracking-[.16em] text-cyan-200/65">Audio trouvé dans MusicBrain</p>
+                  <p className="mt-2 text-3xl font-black text-cyan-100">{number.format(karaokeAudit?.localScan?.compatible ?? karaokeAudit?.alreadyCompatible ?? 0)}</p>
                 </article>
                 <article className="rounded-2xl border border-violet-300/15 bg-violet-500/[0.07] p-4">
-                  <p className="text-xs font-black uppercase tracking-[.16em] text-violet-200/65">Official Audio</p>
-                  <p className="mt-2 text-3xl font-black text-violet-100">{number.format((karaokeAudit?.alreadyOfficialAudio ?? 0) + (karaokeAudit?.discoveredOfficialAudio ?? 0))}</p>
+                  <p className="text-xs font-black uppercase tracking-[.16em] text-violet-200/65">À chercher sur YouTube</p>
+                  <p className="mt-2 text-3xl font-black text-violet-100">{number.format(karaokeAudit?.localScan?.unclassified ?? karaokeAudit?.unchecked ?? 0)}</p>
                 </article>
                 <article className="rounded-2xl border border-emerald-300/15 bg-emerald-500/[0.07] p-4">
-                  <p className="text-xs font-black uppercase tracking-[.16em] text-emerald-200/65">Compatible confirmé</p>
+                  <p className="text-xs font-black uppercase tracking-[.16em] text-emerald-200/65">Couverture confirmée</p>
                   <p className="mt-2 text-3xl font-black text-emerald-100">{karaokeAudit?.confirmedCoveragePercent ?? 0} %</p>
                 </article>
               </div>
 
-              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <p className="text-sm font-black">
-                    {number.format(karaokeAudit?.localScan?.scannedSongs ?? karaokeAudit?.knownSongs ?? stats.totals.songs)} / {number.format(karaokeAudit?.knownSongs ?? stats.totals.songs)} morceaux scannés dans MusicBrain
-                  </p>
-                  <p className="text-xs font-bold text-cyan-200/60">Scan local : 100 % • quota YouTube : 0</p>
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-cyan-300/15 bg-black/20 p-4">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[.2em] text-cyan-300">MusicBrain uniquement</p>
+                      <p className="mt-1 text-sm font-black">
+                        {number.format(karaokeAudit?.localScan?.scannedSongs ?? karaokeAudit?.knownSongs ?? stats.totals.songs)} morceaux analysés localement
+                      </p>
+                    </div>
+                    <p className="text-xs font-bold text-cyan-200/60">Quota YouTube : 0</p>
+                  </div>
+                  <div className="mt-4 grid gap-2 text-xs sm:grid-cols-2">
+                    <div className="rounded-xl border border-white/8 bg-white/[0.035] p-3">
+                      <span className="text-white/45">Topic directs</span>
+                      <strong className="mt-1 block text-base text-cyan-100">{number.format(karaokeAudit?.localScan?.directTopic ?? 0)}</strong>
+                    </div>
+                    <div className="rounded-xl border border-white/8 bg-white/[0.035] p-3">
+                      <span className="text-white/45">Official Audio directs</span>
+                      <strong className="mt-1 block text-base text-violet-100">{number.format(karaokeAudit?.localScan?.directOfficialAudio ?? 0)}</strong>
+                    </div>
+                    <div className="rounded-xl border border-white/8 bg-white/[0.035] p-3">
+                      <span className="text-white/45">Alternatives Topic déjà connues</span>
+                      <strong className="mt-1 block text-base text-cyan-100">{number.format(karaokeAudit?.localScan?.alternativeTopic ?? 0)}</strong>
+                    </div>
+                    <div className="rounded-xl border border-white/8 bg-white/[0.035] p-3">
+                      <span className="text-white/45">Alternatives Official Audio déjà connues</span>
+                      <strong className="mt-1 block text-base text-violet-100">{number.format(karaokeAudit?.localScan?.alternativeOfficialAudio ?? 0)}</strong>
+                    </div>
+                    <div className="rounded-xl border border-white/8 bg-white/[0.035] p-3">
+                      <span className="text-white/45">Clips probables</span>
+                      <strong className="mt-1 block text-base text-amber-100">{number.format(karaokeAudit?.localScan?.probableClip ?? 0)}</strong>
+                    </div>
+                    <div className="rounded-xl border border-white/8 bg-white/[0.035] p-3">
+                      <span className="text-white/45">Indéterminés</span>
+                      <strong className="mt-1 block text-base text-white/80">{number.format(karaokeAudit?.localScan?.indeterminate ?? 0)}</strong>
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                  <div className="h-full rounded-full bg-gradient-to-r from-pink-500 via-violet-500 to-cyan-400" style={{ width: "100%" }} />
+
+                <div className="rounded-2xl border border-pink-300/15 bg-black/20 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[.2em] text-pink-300">Recherche YouTube séparée</p>
+                  <p className="mt-1 text-sm font-black">Uniquement après le scan MusicBrain</p>
+                  <div className="mt-4 grid gap-2 text-xs sm:grid-cols-2">
+                    <div className="rounded-xl border border-white/8 bg-white/[0.035] p-3">
+                      <span className="text-white/45">Testés sur YouTube</span>
+                      <strong className="mt-1 block text-base">{number.format(karaokeAudit?.youtubeAudit?.tested ?? karaokeAudit?.auditedMissing ?? 0)}</strong>
+                    </div>
+                    <div className="rounded-xl border border-white/8 bg-white/[0.035] p-3">
+                      <span className="text-white/45">Topic trouvés</span>
+                      <strong className="mt-1 block text-base text-cyan-100">{number.format(karaokeAudit?.youtubeAudit?.foundTopic ?? karaokeAudit?.discoveredTopic ?? 0)}</strong>
+                    </div>
+                    <div className="rounded-xl border border-white/8 bg-white/[0.035] p-3">
+                      <span className="text-white/45">Official Audio trouvés</span>
+                      <strong className="mt-1 block text-base text-violet-100">{number.format(karaokeAudit?.youtubeAudit?.foundOfficialAudio ?? karaokeAudit?.discoveredOfficialAudio ?? 0)}</strong>
+                    </div>
+                    <div className="rounded-xl border border-white/8 bg-white/[0.035] p-3">
+                      <span className="text-white/45">Sans résultat</span>
+                      <strong className="mt-1 block text-base text-red-100">{number.format(karaokeAudit?.youtubeAudit?.notFound ?? karaokeAudit?.noOfficialAudio ?? 0)}</strong>
+                    </div>
+                  </div>
+                  <p className="mt-4 text-xs leading-5 text-white/35">{karaokeAudit?.note || "Chargement de l’audit Karaoké…"}</p>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-white/45">
-                  <span>Déjà audio dans MusicBrain : <strong className="text-white/75">{number.format(karaokeAudit?.alreadyCompatible ?? 0)}</strong></span>
-                  <span>Trouvés par l’audit : <strong className="text-white/75">{number.format((karaokeAudit?.discoveredTopic ?? 0) + (karaokeAudit?.discoveredOfficialAudio ?? 0))}</strong></span>
-                  <span>Pas trouvés : <strong className="text-white/75">{number.format(karaokeAudit?.noOfficialAudio ?? 0)}</strong></span>
-                  <span>Non classés localement : <strong className="text-white/75">{number.format(karaokeAudit?.localScan?.unclassified ?? karaokeAudit?.unchecked ?? stats.totals.songs)}</strong></span>
-                </div>
-                <p className="mt-3 text-xs leading-5 text-white/35">{karaokeAudit?.note || "Chargement de l’audit Karaoké…"}</p>
               </div>
             </section>
 

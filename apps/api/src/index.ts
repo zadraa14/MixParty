@@ -4303,57 +4303,169 @@ function karaokeCandidateScore(source: MusicBrainSong, candidate: YoutubeSearchR
   return score;
 }
 
-function karaokeLocalMusicBrainScan() {
+type KaraokeLocalResolutionKind =
+  | "direct_topic"
+  | "direct_official_audio"
+  | "alternative_topic"
+  | "alternative_official_audio"
+  | "probable_clip"
+  | "indeterminate";
+
+function karaokeTrackKey(song: Pick<MusicBrainSong, "title" | "rawTitle" | "artistName">) {
+  const artist = normalizeMusicQuery(song.artistName || "");
+  const title = normalizeMusicQuery(song.title || song.rawTitle || "");
+  if (!artist || !title) return "";
+  return `${artist}::${title}`;
+}
+
+function karaokeLooksLikeClip(song: MusicBrainSong) {
+  const title = `${song.rawTitle || ""} ${song.title || ""}`.toLowerCase();
+  const channel = String(song.channelTitle || "").toLowerCase();
+  return (
+    /\bofficial\s+(music\s+)?video\b/i.test(title) ||
+    /\b(?:clip|vid[eé]o)\s+officiel(?:le)?\b/i.test(title) ||
+    /\bmusic\s+video\b/i.test(title) ||
+    /\bvevo\b/i.test(channel)
+  );
+}
+
+function karaokeLocalResolution() {
   const songs = Object.values(musicBrain.songs);
-  let topic = 0;
-  let officialAudio = 0;
-  let unclassified = 0;
+
+  const compatibleByTrack = new Map<
+    string,
+    { kind: "topic" | "official_audio"; videoId: string }
+  >();
 
   for (const song of songs) {
     const kind = karaokeKindForVideo(song);
-    if (kind === "topic") topic += 1;
-    else if (kind === "official_audio") officialAudio += 1;
-    else unclassified += 1;
+    if (!kind) continue;
+    const key = karaokeTrackKey(song);
+    if (!key) continue;
+
+    const current = compatibleByTrack.get(key);
+    if (!current || (kind === "topic" && current.kind !== "topic")) {
+      compatibleByTrack.set(key, { kind, videoId: song.videoId });
+    }
   }
 
+  const resolutionByVideoId = new Map<
+    string,
+    {
+      kind: KaraokeLocalResolutionKind;
+      candidateVideoId?: string;
+    }
+  >();
+
+  let directTopic = 0;
+  let directOfficialAudio = 0;
+  let alternativeTopic = 0;
+  let alternativeOfficialAudio = 0;
+  let probableClip = 0;
+  let indeterminate = 0;
+
+  for (const song of songs) {
+    const directKind = karaokeKindForVideo(song);
+    if (directKind === "topic") {
+      directTopic += 1;
+      resolutionByVideoId.set(song.videoId, { kind: "direct_topic", candidateVideoId: song.videoId });
+      continue;
+    }
+    if (directKind === "official_audio") {
+      directOfficialAudio += 1;
+      resolutionByVideoId.set(song.videoId, { kind: "direct_official_audio", candidateVideoId: song.videoId });
+      continue;
+    }
+
+    const key = karaokeTrackKey(song);
+    const alternative = key ? compatibleByTrack.get(key) : undefined;
+    if (alternative && alternative.videoId !== song.videoId) {
+      if (alternative.kind === "topic") {
+        alternativeTopic += 1;
+        resolutionByVideoId.set(song.videoId, {
+          kind: "alternative_topic",
+          candidateVideoId: alternative.videoId,
+        });
+      } else {
+        alternativeOfficialAudio += 1;
+        resolutionByVideoId.set(song.videoId, {
+          kind: "alternative_official_audio",
+          candidateVideoId: alternative.videoId,
+        });
+      }
+      continue;
+    }
+
+    if (karaokeLooksLikeClip(song)) {
+      probableClip += 1;
+      resolutionByVideoId.set(song.videoId, { kind: "probable_clip" });
+    } else {
+      indeterminate += 1;
+      resolutionByVideoId.set(song.videoId, { kind: "indeterminate" });
+    }
+  }
+
+  const topic = directTopic + alternativeTopic;
+  const officialAudio = directOfficialAudio + alternativeOfficialAudio;
+  const compatible = topic + officialAudio;
+  const unclassified = probableClip + indeterminate;
+
   return {
-    scannedAt: Date.now(),
-    scannedSongs: songs.length,
-    topic,
-    officialAudio,
-    compatible: topic + officialAudio,
-    unclassified,
-    coveragePercent: songs.length ? Math.round(((topic + officialAudio) / songs.length) * 1000) / 10 : 0,
+    resolutionByVideoId,
+    summary: {
+      scannedAt: Date.now(),
+      scannedSongs: songs.length,
+      directTopic,
+      directOfficialAudio,
+      alternativeTopic,
+      alternativeOfficialAudio,
+      topic,
+      officialAudio,
+      compatible,
+      probableClip,
+      indeterminate,
+      unclassified,
+      coveragePercent: songs.length
+        ? Math.round((compatible / songs.length) * 1000) / 10
+        : 0,
+    },
   };
+}
+
+function karaokeLocalMusicBrainScan() {
+  return karaokeLocalResolution().summary;
 }
 
 function karaokeAuditSummary() {
   const songs = Object.values(musicBrain.songs);
-  const localScan = karaokeLocalMusicBrainScan();
-  let alreadyTopic = 0;
-  let alreadyOfficialAudio = 0;
+  const localResolution = karaokeLocalResolution();
+  const localScan = localResolution.summary;
 
-  const baseCompatibleIds = new Set<string>();
-  for (const song of songs) {
-    const kind = karaokeKindForVideo(song);
-    if (kind === "topic") {
-      alreadyTopic += 1;
-      baseCompatibleIds.add(song.videoId);
-    } else if (kind === "official_audio") {
-      alreadyOfficialAudio += 1;
-      baseCompatibleIds.add(song.videoId);
-    }
-  }
+  const alreadyTopic = localScan.topic;
+  const alreadyOfficialAudio = localScan.officialAudio;
+  const alreadyCompatible = localScan.compatible;
+
+  const locallyCompatibleIds = new Set(
+    [...localResolution.resolutionByVideoId.entries()]
+      .filter(([, resolution]) =>
+        resolution.kind === "direct_topic" ||
+        resolution.kind === "direct_official_audio" ||
+        resolution.kind === "alternative_topic" ||
+        resolution.kind === "alternative_official_audio"
+      )
+      .map(([videoId]) => videoId)
+  );
 
   const relevantEntries = Object.values(karaokeAudit.entries).filter(
-    (entry) => Boolean(musicBrain.songs[entry.sourceVideoId]) && !baseCompatibleIds.has(entry.sourceVideoId)
+    (entry) =>
+      Boolean(musicBrain.songs[entry.sourceVideoId]) &&
+      !locallyCompatibleIds.has(entry.sourceVideoId)
   );
 
   const discoveredTopic = relevantEntries.filter((entry) => entry.kind === "topic").length;
   const discoveredOfficialAudio = relevantEntries.filter((entry) => entry.kind === "official_audio").length;
   const noOfficialAudio = relevantEntries.filter((entry) => entry.kind === "not_found").length;
   const auditedMissing = relevantEntries.length;
-  const alreadyCompatible = alreadyTopic + alreadyOfficialAudio;
   const confirmedCompatible = alreadyCompatible + discoveredTopic + discoveredOfficialAudio;
   const unchecked = Math.max(0, songs.length - alreadyCompatible - auditedMissing);
   const checkedSongs = Math.min(songs.length, alreadyCompatible + auditedMissing);
@@ -4375,7 +4487,13 @@ function karaokeAuditSummary() {
     confirmedCoveragePercent: songs.length ? Math.round((confirmedCompatible / songs.length) * 1000) / 10 : 0,
     checkedPercent: songs.length ? Math.round((checkedSongs / songs.length) * 1000) / 10 : 0,
     localScan,
-    note: "Le scan MusicBrain analyse 100 % de la base sans appeler YouTube. Les morceaux non classés localement pourront ensuite être recherchés séparément sur YouTube.",
+    youtubeAudit: {
+      tested: auditedMissing,
+      foundTopic: discoveredTopic,
+      foundOfficialAudio: discoveredOfficialAudio,
+      notFound: noOfficialAudio,
+    },
+    note: "MusicBrain est analysé localement d'abord : versions audio directes + autres videoId du même titre déjà connus. YouTube reste une seconde étape séparée uniquement pour les morceaux encore sans solution locale.",
     youtubeSearchesPerBatchMax: 10,
   };
 }
@@ -4402,8 +4520,12 @@ app.post("/partybrain/karaoke-audit/run", async (req, res) => {
   const requestedLimit = Number(req.body?.limit || 10);
   const limit = Math.max(1, Math.min(10, Number.isFinite(requestedLimit) ? requestedLimit : 10));
 
+  const localResolution = karaokeLocalResolution();
   const candidates = Object.values(musicBrain.songs)
-    .filter((song) => !karaokeKindForVideo(song))
+    .filter((song) => {
+      const resolution = localResolution.resolutionByVideoId.get(song.videoId);
+      return resolution?.kind === "probable_clip" || resolution?.kind === "indeterminate";
+    })
     .filter((song) => !karaokeAudit.entries[song.videoId])
     .sort((a, b) => {
       const score = (song: MusicBrainSong) =>
