@@ -5306,8 +5306,8 @@ function repairArtistLooksMulti(value: unknown) {
 }
 
 function channelConfirmsRepairArtist(channelTitle: unknown, artistName: unknown) {
-  const channelKey = normalizeMusicQuery(channelTitle || "");
-  const artistKey = normalizeMusicQuery(artistName || "");
+  const channelKey = normalizeMusicQuery(String(channelTitle || ""));
+  const artistKey = normalizeMusicQuery(String(artistName || ""));
   if (!channelKey || !artistKey) return false;
   return channelKey.includes(artistKey) || artistKey.includes(channelKey);
 }
