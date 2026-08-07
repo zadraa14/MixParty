@@ -522,7 +522,7 @@ export default function MusicBrainAdminPage() {
     }
 
     const confirmed = window.confirm(
-      `Appliquer ${repairable} réparation(s) sûre(s) ? Seules les propositions confirmées par une chaîne Topic ou par le titre + la chaîne seront modifiées. Aucun morceau ne sera supprimé.`
+      `Appliquer ${repairable} réparation(s) sûre(s) ? Seules les propositions où le titre ET la chaîne confirment le même artiste seront modifiées. Aucun morceau ne sera supprimé.`
     );
     if (!confirmed) return;
 
@@ -1639,7 +1639,7 @@ export default function MusicBrainAdminPage() {
                         Réparation des artistes mal attribués
                       </p>
                       <p className="mt-2 text-xs leading-5 text-white/40">
-                        DA, ART et autres noms suspects ne sont jamais supprimés automatiquement. PartyBrain sépare maintenant les réparations sûres des simples propositions. Seules les réparations confirmées par plusieurs signaux peuvent être appliquées automatiquement, sans quota YouTube.
+                        DA, ART et autres noms suspects ne sont jamais supprimés automatiquement. PartyBrain sépare maintenant les réparations sûres des simples propositions. Une réparation automatique exige maintenant deux signaux indépendants concordants : le titre YouTube doit identifier l’artiste ET la chaîne doit confirmer le même artiste. Une chaîne Topic seule reste à vérifier.
                       </p>
 
                       <button
@@ -1674,7 +1674,7 @@ export default function MusicBrainAdminPage() {
                           </div>
 
                           <div className="mt-4">
-                            <p className="text-[11px] font-black uppercase tracking-[.15em] text-emerald-200/70">Réparations sûres — applicables automatiquement</p>
+                            <p className="text-[11px] font-black uppercase tracking-[.15em] text-emerald-200/70">Réparations sûres — double confirmation</p>
                             <div className="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1">
                               {(artistRepairReport.safeRepairs || []).slice(0, 100).map((item: any) => (
                                 <article key={item.videoId} className="rounded-xl border border-emerald-300/10 bg-emerald-500/[0.04] p-3">

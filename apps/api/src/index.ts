@@ -5344,13 +5344,57 @@ function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRe
   const rawTitle = String(song.rawTitle || song.title || "");
   const channelTitle = String(song.channelTitle || "");
 
-  // 1) Cas le plus sûr : chaîne "Artiste - Topic".
+  const titleArtist = artistFromTitlePrefix(rawTitle);
   const topicArtist = artistFromTopicChannel(channelTitle);
-  if (
+
+  const titleArtistValid =
+    validRepairArtist(titleArtist) &&
+    !repairArtistLooksMulti(titleArtist) &&
+    normalizeMusicQuery(titleArtist) !== currentKey;
+
+  const topicArtistValid =
     validRepairArtist(topicArtist) &&
     !repairArtistLooksMulti(topicArtist) &&
-    normalizeMusicQuery(topicArtist) !== currentKey
+    normalizeMusicQuery(topicArtist) !== currentKey;
+
+  // RÈGLE V1.5.3 :
+  // Une réparation automatique exige AU MOINS DEUX signaux indépendants
+  // qui confirment exactement le même artiste.
+  //
+  // Signal 1 : le titre YouTube commence clairement par "Artiste - Morceau".
+  // Signal 2 : la chaîne YouTube confirme ce même artiste
+  //            (chaîne artiste, chaîne officielle ou "Artiste - Topic").
+  //
+  // Une chaîne Topic seule n'est JAMAIS suffisante.
+  if (
+    titleArtistValid &&
+    channelConfirmsRepairArtist(channelTitle, titleArtist)
   ) {
+    return {
+      videoId: song.videoId,
+      title: song.title,
+      rawTitle: song.rawTitle,
+      currentArtistName: song.artistName,
+      proposedArtistName: titleArtist,
+      channelTitle: song.channelTitle,
+      source: topicArtistValid && normalizeMusicQuery(topicArtist) === normalizeMusicQuery(titleArtist)
+        ? "TOPIC_CHANNEL"
+        : "TITLE_CHANNEL_MATCH",
+      sourceLabel:
+        topicArtistValid && normalizeMusicQuery(topicArtist) === normalizeMusicQuery(titleArtist)
+          ? "Titre + chaîne Topic concordants"
+          : "Titre + chaîne YouTube concordants",
+      confidence: 99,
+      level: "safe",
+      reason:
+        topicArtistValid && normalizeMusicQuery(topicArtist) === normalizeMusicQuery(titleArtist)
+          ? `Le titre identifie « ${titleArtist} » et la chaîne Topic confirme exactement le même artiste.`
+          : `Le titre identifie « ${titleArtist} » et la chaîne YouTube confirme exactement le même artiste.`,
+    };
+  }
+
+  // Une chaîne Topic seule = proposition à vérifier, jamais réparation auto.
+  if (topicArtistValid) {
     return {
       videoId: song.videoId,
       title: song.title,
@@ -5359,37 +5403,16 @@ function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRe
       proposedArtistName: topicArtist,
       channelTitle: song.channelTitle,
       source: "TOPIC_CHANNEL",
-      sourceLabel: "Chaîne YouTube Topic",
-      confidence: 99,
-      level: "safe",
-      reason: `La chaîne YouTube est « ${channelTitle} » : l’artiste Topic est explicite.`,
+      sourceLabel: "Chaîne YouTube Topic seule",
+      confidence: 75,
+      level: "review",
+      reason:
+        "La chaîne Topic suggère cet artiste, mais le titre YouTube ne fournit pas un second signal indépendant concordant.",
     };
   }
 
-  // 2) Titre "Artiste - Morceau" + chaîne qui confirme le même artiste.
-  const titleArtist = artistFromTitlePrefix(rawTitle);
-  if (
-    validRepairArtist(titleArtist) &&
-    !repairArtistLooksMulti(titleArtist) &&
-    normalizeMusicQuery(titleArtist) !== currentKey
-  ) {
-    if (channelConfirmsRepairArtist(channelTitle, titleArtist)) {
-      return {
-        videoId: song.videoId,
-        title: song.title,
-        rawTitle: song.rawTitle,
-        currentArtistName: song.artistName,
-        proposedArtistName: titleArtist,
-        channelTitle: song.channelTitle,
-        source: "TITLE_CHANNEL_MATCH",
-        sourceLabel: "Titre + chaîne YouTube cohérents",
-        confidence: 98,
-        level: "safe",
-        reason: `Le titre commence par « ${titleArtist} » et la chaîne YouTube confirme aussi cet artiste.`,
-      };
-    }
-
-    // Le titre seul n'est qu'une proposition manuelle.
+  // Titre seul = proposition manuelle.
+  if (titleArtistValid) {
     return {
       videoId: song.videoId,
       title: song.title,
@@ -5401,11 +5424,14 @@ function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRe
       sourceLabel: "Artiste présent avant le séparateur du titre YouTube",
       confidence: 70,
       level: "review",
-      reason: "Le titre suggère cet artiste, mais la chaîne YouTube ne le confirme pas. Vérification manuelle nécessaire.",
+      reason:
+        "Le titre suggère cet artiste, mais la chaîne YouTube ne le confirme pas. Vérification manuelle nécessaire.",
     };
   }
 
-  // 3) Nouvelle analyse locale : jamais automatique sans confirmation forte.
+  // Nouvelle analyse locale : proposition uniquement.
+  // Elle ne devient jamais automatique à elle seule, car elle repose sur
+  // les mêmes métadonnées déjà utilisées pour interpréter le titre/chaîne.
   const reparsed = extractMusicMetadata({
     rawTitle,
     channelTitle,
@@ -5419,9 +5445,6 @@ function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRe
     normalizeMusicQuery(reparsedArtist) !== currentKey &&
     Number(reparsed.metadataConfidence || 0) >= 65
   ) {
-    const channelMatches = channelConfirmsRepairArtist(channelTitle, reparsedArtist);
-    const safe = channelMatches && Number(reparsed.metadataConfidence || 0) >= 80;
-
     return {
       videoId: song.videoId,
       title: song.title,
@@ -5430,14 +5453,11 @@ function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRe
       proposedArtistName: reparsedArtist,
       channelTitle: song.channelTitle,
       source: "METADATA_REPARSE",
-      sourceLabel: safe
-        ? "Métadonnées + chaîne cohérentes"
-        : "Nouvelle analyse locale des métadonnées",
-      confidence: safe ? Math.max(90, Number(reparsed.metadataConfidence || 0)) : Number(reparsed.metadataConfidence || 0),
-      level: safe ? "safe" : "review",
-      reason: safe
-        ? "Les métadonnées et la chaîne YouTube confirment le même artiste."
-        : "Les métadonnées proposent un artiste, mais les preuves ne sont pas suffisantes pour une correction automatique.",
+      sourceLabel: "Nouvelle analyse locale des métadonnées",
+      confidence: Math.min(85, Number(reparsed.metadataConfidence || 0)),
+      level: "review",
+      reason:
+        "La nouvelle analyse propose cet artiste, mais elle ne constitue pas un second signal indépendant suffisant pour une correction automatique.",
     };
   }
 
