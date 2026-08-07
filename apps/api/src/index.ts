@@ -5258,7 +5258,8 @@ app.get("/partybrain/attendance-history", (_req, res) => {
 
 
 
-type MusicBrainArtistRepairSource = "TOPIC_CHANNEL" | "TITLE_PREFIX" | "METADATA_REPARSE";
+type MusicBrainArtistRepairSource = "TOPIC_CHANNEL" | "TITLE_CHANNEL_MATCH" | "TITLE_PREFIX" | "METADATA_REPARSE";
+type MusicBrainArtistRepairLevel = "safe" | "review";
 
 type MusicBrainArtistRepairProposal = {
   videoId: string;
@@ -5270,6 +5271,8 @@ type MusicBrainArtistRepairProposal = {
   source: MusicBrainArtistRepairSource;
   sourceLabel: string;
   confidence: number;
+  level: MusicBrainArtistRepairLevel;
+  reason: string;
 };
 
 function isSuspiciousArtistName(value: unknown) {
@@ -5295,6 +5298,18 @@ function validRepairArtist(value: unknown) {
   if (isSuspiciousArtistName(artist)) return false;
   if (/^(feat|featuring|ft|avec|official|officiel|music|topic)$/i.test(artist)) return false;
   return true;
+}
+
+function repairArtistLooksMulti(value: unknown) {
+  const artist = String(value || "").trim();
+  return /(?:,|\s&\s|\sx\s|\sfeat\.?\s|\sft\.?\s|\sfeaturing\s|\savec\s)/i.test(artist);
+}
+
+function channelConfirmsRepairArtist(channelTitle: unknown, artistName: unknown) {
+  const channelKey = normalizeMusicQuery(channelTitle || "");
+  const artistKey = normalizeMusicQuery(artistName || "");
+  if (!channelKey || !artistKey) return false;
+  return channelKey.includes(artistKey) || artistKey.includes(channelKey);
 }
 
 function artistFromTopicChannel(channelTitle: unknown) {
@@ -5326,10 +5341,14 @@ function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRe
   if (!isSuspiciousArtistName(song.artistName)) return null;
 
   const currentKey = normalizeMusicQuery(song.artistName || "");
+  const rawTitle = String(song.rawTitle || song.title || "");
+  const channelTitle = String(song.channelTitle || "");
 
-  const topicArtist = artistFromTopicChannel(song.channelTitle);
+  // 1) Cas le plus sûr : chaîne "Artiste - Topic".
+  const topicArtist = artistFromTopicChannel(channelTitle);
   if (
     validRepairArtist(topicArtist) &&
+    !repairArtistLooksMulti(topicArtist) &&
     normalizeMusicQuery(topicArtist) !== currentKey
   ) {
     return {
@@ -5341,15 +5360,36 @@ function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRe
       channelTitle: song.channelTitle,
       source: "TOPIC_CHANNEL",
       sourceLabel: "Chaîne YouTube Topic",
-      confidence: 98,
+      confidence: 99,
+      level: "safe",
+      reason: `La chaîne YouTube est « ${channelTitle} » : l’artiste Topic est explicite.`,
     };
   }
 
-  const titleArtist = artistFromTitlePrefix(song.rawTitle || song.title);
+  // 2) Titre "Artiste - Morceau" + chaîne qui confirme le même artiste.
+  const titleArtist = artistFromTitlePrefix(rawTitle);
   if (
     validRepairArtist(titleArtist) &&
+    !repairArtistLooksMulti(titleArtist) &&
     normalizeMusicQuery(titleArtist) !== currentKey
   ) {
+    if (channelConfirmsRepairArtist(channelTitle, titleArtist)) {
+      return {
+        videoId: song.videoId,
+        title: song.title,
+        rawTitle: song.rawTitle,
+        currentArtistName: song.artistName,
+        proposedArtistName: titleArtist,
+        channelTitle: song.channelTitle,
+        source: "TITLE_CHANNEL_MATCH",
+        sourceLabel: "Titre + chaîne YouTube cohérents",
+        confidence: 98,
+        level: "safe",
+        reason: `Le titre commence par « ${titleArtist} » et la chaîne YouTube confirme aussi cet artiste.`,
+      };
+    }
+
+    // Le titre seul n'est qu'une proposition manuelle.
     return {
       videoId: song.videoId,
       title: song.title,
@@ -5359,23 +5399,29 @@ function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRe
       channelTitle: song.channelTitle,
       source: "TITLE_PREFIX",
       sourceLabel: "Artiste présent avant le séparateur du titre YouTube",
-      confidence: 90,
+      confidence: 70,
+      level: "review",
+      reason: "Le titre suggère cet artiste, mais la chaîne YouTube ne le confirme pas. Vérification manuelle nécessaire.",
     };
   }
 
-  // Dernier essai 100 % local avec le moteur de métadonnées déjà présent.
+  // 3) Nouvelle analyse locale : jamais automatique sans confirmation forte.
   const reparsed = extractMusicMetadata({
-    rawTitle: String(song.rawTitle || song.title || ""),
-    channelTitle: song.channelTitle,
-    query: String(song.rawTitle || song.title || ""),
+    rawTitle,
+    channelTitle,
+    query: rawTitle,
   });
 
   const reparsedArtist = cleanArtistName(reparsed.artistName || "");
   if (
     validRepairArtist(reparsedArtist) &&
+    !repairArtistLooksMulti(reparsedArtist) &&
     normalizeMusicQuery(reparsedArtist) !== currentKey &&
     Number(reparsed.metadataConfidence || 0) >= 65
   ) {
+    const channelMatches = channelConfirmsRepairArtist(channelTitle, reparsedArtist);
+    const safe = channelMatches && Number(reparsed.metadataConfidence || 0) >= 80;
+
     return {
       videoId: song.videoId,
       title: song.title,
@@ -5384,8 +5430,14 @@ function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRe
       proposedArtistName: reparsedArtist,
       channelTitle: song.channelTitle,
       source: "METADATA_REPARSE",
-      sourceLabel: "Nouvelle analyse locale des métadonnées",
-      confidence: Math.max(65, Number(reparsed.metadataConfidence || 0)),
+      sourceLabel: safe
+        ? "Métadonnées + chaîne cohérentes"
+        : "Nouvelle analyse locale des métadonnées",
+      confidence: safe ? Math.max(90, Number(reparsed.metadataConfidence || 0)) : Number(reparsed.metadataConfidence || 0),
+      level: safe ? "safe" : "review",
+      reason: safe
+        ? "Les métadonnées et la chaîne YouTube confirment le même artiste."
+        : "Les métadonnées proposent un artiste, mais les preuves ne sont pas suffisantes pour une correction automatique.",
     };
   }
 
@@ -5393,7 +5445,8 @@ function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRe
 }
 
 function musicBrainArtistRepairReport() {
-  const repairable: MusicBrainArtistRepairProposal[] = [];
+  const safeRepairs: MusicBrainArtistRepairProposal[] = [];
+  const reviewProposals: MusicBrainArtistRepairProposal[] = [];
   const unresolved: Array<{
     videoId: string;
     title: string;
@@ -5406,8 +5459,10 @@ function musicBrainArtistRepairReport() {
     if (!isSuspiciousArtistName(song.artistName)) continue;
 
     const proposal = proposeMusicBrainArtistRepair(song);
-    if (proposal) {
-      repairable.push(proposal);
+    if (proposal?.level === "safe") {
+      safeRepairs.push(proposal);
+    } else if (proposal?.level === "review") {
+      reviewProposals.push(proposal);
     } else {
       unresolved.push({
         videoId: song.videoId,
@@ -5419,20 +5474,24 @@ function musicBrainArtistRepairReport() {
     }
   }
 
-  repairable.sort((a, b) =>
+  const sorter = (a: MusicBrainArtistRepairProposal, b: MusicBrainArtistRepairProposal) =>
     b.confidence - a.confidence ||
-    a.currentArtistName.localeCompare(b.currentArtistName, "fr")
-  );
+    a.currentArtistName.localeCompare(b.currentArtistName, "fr");
+
+  safeRepairs.sort(sorter);
+  reviewProposals.sort(sorter);
 
   return {
     generatedAt: Date.now(),
-    suspiciousCount: repairable.length + unresolved.length,
-    repairableCount: repairable.length,
+    suspiciousCount: safeRepairs.length + reviewProposals.length + unresolved.length,
+    safeRepairCount: safeRepairs.length,
+    reviewProposalCount: reviewProposals.length,
     unresolvedCount: unresolved.length,
-    repairable,
+    safeRepairs,
+    reviewProposals,
     unresolved: unresolved.slice(0, 1000),
     note:
-      "Aucun appel YouTube : les réparations utilisent uniquement les titres, chaînes et métadonnées déjà présents dans MusicBrain.",
+      "Aucun appel YouTube. Seules les réparations avec preuve forte peuvent être appliquées automatiquement. Les propositions basées sur le titre seul restent manuelles.",
   };
 }
 
@@ -5463,6 +5522,8 @@ function applyMusicBrainArtistRepair(proposal: MusicBrainArtistRepairProposal) {
   const freshProposal = proposeMusicBrainArtistRepair(song);
   if (
     !freshProposal ||
+    freshProposal.level !== "safe" ||
+    proposal.level !== "safe" ||
     freshProposal.proposedArtistName !== proposal.proposedArtistName ||
     freshProposal.source !== proposal.source
   ) {
@@ -5519,7 +5580,7 @@ function repairMusicBrainArtists() {
   const before = musicBrainArtistRepairReport();
   let repaired = 0;
 
-  for (const proposal of before.repairable) {
+  for (const proposal of before.safeRepairs) {
     if (applyMusicBrainArtistRepair(proposal)) repaired += 1;
   }
 
@@ -5551,7 +5612,7 @@ app.post("/partybrain/maintenance/musicbrain-artist-repair/run", (req, res) => {
   return res.json({
     ok: true,
     ...result,
-    message: `${result.repaired} artiste(s) de morceau(x) réparé(s) automatiquement. ${result.after.unresolvedCount} restent à vérifier manuellement.`,
+    message: `${result.repaired} réparation(s) sûre(s) appliquée(s). ${result.after.reviewProposalCount} proposition(s) restent à vérifier et ${result.after.unresolvedCount} restent non résolue(s).`,
   });
 });
 

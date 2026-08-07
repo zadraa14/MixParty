@@ -515,14 +515,14 @@ export default function MusicBrainAdminPage() {
       return;
     }
 
-    const repairable = Number(artistRepairReport?.repairableCount || 0);
+    const repairable = Number(artistRepairReport?.safeRepairCount || 0);
     if (repairable <= 0) {
       setArtistRepairError("Aucun artiste réparable automatiquement.");
       return;
     }
 
     const confirmed = window.confirm(
-      `Réparer automatiquement ${repairable} morceau(x) dont l’artiste semble mal attribué ? Aucun morceau ne sera supprimé.`
+      `Appliquer ${repairable} réparation(s) sûre(s) ? Seules les propositions confirmées par une chaîne Topic ou par le titre + la chaîne seront modifiées. Aucun morceau ne sera supprimé.`
     );
     if (!confirmed) return;
 
@@ -1639,7 +1639,7 @@ export default function MusicBrainAdminPage() {
                         Réparation des artistes mal attribués
                       </p>
                       <p className="mt-2 text-xs leading-5 text-white/40">
-                        DA, ART et autres noms suspects ne sont jamais supprimés automatiquement. PartyBrain tente d’abord de retrouver le vrai artiste avec les données déjà présentes dans MusicBrain, sans quota YouTube.
+                        DA, ART et autres noms suspects ne sont jamais supprimés automatiquement. PartyBrain sépare maintenant les réparations sûres des simples propositions. Seules les réparations confirmées par plusieurs signaux peuvent être appliquées automatiquement, sans quota YouTube.
                       </p>
 
                       <button
@@ -1654,47 +1654,81 @@ export default function MusicBrainAdminPage() {
 
                       {artistRepairReport ? (
                         <div className="mt-3">
-                          <div className="grid gap-2 sm:grid-cols-3">
+                          <div className="grid gap-2 sm:grid-cols-4">
                             <div className="rounded-xl border border-white/8 bg-black/20 p-3">
                               <p className="text-[10px] uppercase text-white/35">Suspects</p>
                               <p className="mt-1 text-xl font-black">{number.format(artistRepairReport.suspiciousCount || 0)}</p>
                             </div>
                             <div className="rounded-xl border border-emerald-300/15 bg-emerald-500/[0.07] p-3">
-                              <p className="text-[10px] uppercase text-emerald-200/55">Réparables</p>
-                              <p className="mt-1 text-xl font-black text-emerald-100">{number.format(artistRepairReport.repairableCount || 0)}</p>
+                              <p className="text-[10px] uppercase text-emerald-200/55">Réparations sûres</p>
+                              <p className="mt-1 text-xl font-black text-emerald-100">{number.format(artistRepairReport.safeRepairCount || 0)}</p>
                             </div>
                             <div className="rounded-xl border border-amber-300/15 bg-amber-500/[0.06] p-3">
-                              <p className="text-[10px] uppercase text-amber-200/55">À vérifier</p>
-                              <p className="mt-1 text-xl font-black text-amber-100">{number.format(artistRepairReport.unresolvedCount || 0)}</p>
+                              <p className="text-[10px] uppercase text-amber-200/55">Propositions à vérifier</p>
+                              <p className="mt-1 text-xl font-black text-amber-100">{number.format(artistRepairReport.reviewProposalCount || 0)}</p>
+                            </div>
+                            <div className="rounded-xl border border-white/8 bg-black/20 p-3">
+                              <p className="text-[10px] uppercase text-white/35">Non résolus</p>
+                              <p className="mt-1 text-xl font-black">{number.format(artistRepairReport.unresolvedCount || 0)}</p>
                             </div>
                           </div>
 
-                          <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
-                            {(artistRepairReport.repairable || []).slice(0, 100).map((item: any) => (
-                              <article key={item.videoId} className="rounded-xl border border-white/8 bg-black/20 p-3">
-                                <p className="truncate text-xs font-black text-white">{item.rawTitle || item.title}</p>
-                                <p className="mt-1 text-xs">
-                                  <span className="text-red-200/70">{item.currentArtistName}</span>
-                                  <span className="mx-2 text-white/25">→</span>
-                                  <strong className="text-emerald-200">{item.proposedArtistName}</strong>
-                                </p>
-                                <p className="mt-1 text-[10px] text-white/35">
-                                  {item.sourceLabel} • confiance {Math.round(Number(item.confidence || 0))} %
-                                </p>
-                              </article>
-                            ))}
+                          <div className="mt-4">
+                            <p className="text-[11px] font-black uppercase tracking-[.15em] text-emerald-200/70">Réparations sûres — applicables automatiquement</p>
+                            <div className="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1">
+                              {(artistRepairReport.safeRepairs || []).slice(0, 100).map((item: any) => (
+                                <article key={item.videoId} className="rounded-xl border border-emerald-300/10 bg-emerald-500/[0.04] p-3">
+                                  <p className="truncate text-xs font-black text-white">{item.rawTitle || item.title}</p>
+                                  <p className="mt-1 text-xs">
+                                    <span className="text-red-200/70">{item.currentArtistName}</span>
+                                    <span className="mx-2 text-white/25">→</span>
+                                    <strong className="text-emerald-200">{item.proposedArtistName}</strong>
+                                  </p>
+                                  <p className="mt-1 text-[10px] text-white/35">
+                                    {item.sourceLabel} • confiance {Math.round(Number(item.confidence || 0))} %
+                                  </p>
+                                  <p className="mt-1 text-[10px] text-emerald-100/55">{item.reason}</p>
+                                </article>
+                              ))}
+                              {!artistRepairReport.safeRepairs?.length ? (
+                                <p className="rounded-xl border border-white/8 bg-black/20 p-3 text-xs text-white/35">Aucune réparation sûre détectée.</p>
+                              ) : null}
+                            </div>
+                          </div>
+
+                          <div className="mt-4">
+                            <p className="text-[11px] font-black uppercase tracking-[.15em] text-amber-200/70">Propositions à vérifier — aucune modification automatique</p>
+                            <div className="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1">
+                              {(artistRepairReport.reviewProposals || []).slice(0, 100).map((item: any) => (
+                                <article key={item.videoId} className="rounded-xl border border-amber-300/10 bg-amber-500/[0.04] p-3">
+                                  <p className="truncate text-xs font-black text-white">{item.rawTitle || item.title}</p>
+                                  <p className="mt-1 text-xs">
+                                    <span className="text-red-200/70">{item.currentArtistName}</span>
+                                    <span className="mx-2 text-white/25">→</span>
+                                    <strong className="text-amber-200">{item.proposedArtistName}</strong>
+                                  </p>
+                                  <p className="mt-1 text-[10px] text-white/35">
+                                    {item.sourceLabel} • confiance {Math.round(Number(item.confidence || 0))} %
+                                  </p>
+                                  <p className="mt-1 text-[10px] text-amber-100/55">{item.reason}</p>
+                                </article>
+                              ))}
+                              {!artistRepairReport.reviewProposals?.length ? (
+                                <p className="rounded-xl border border-white/8 bg-black/20 p-3 text-xs text-white/35">Aucune proposition manuelle.</p>
+                              ) : null}
+                            </div>
                           </div>
 
                           <button
                             type="button"
                             onClick={() => void runMusicBrainArtistRepair()}
-                            disabled={artistRepairRunning || artistRepairLoading || Number(artistRepairReport.repairableCount || 0) <= 0}
-                            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-500/15 px-3 py-2.5 text-xs font-black text-emerald-100 disabled:opacity-40"
+                            disabled={artistRepairRunning || artistRepairLoading || Number(artistRepairReport.safeRepairCount || 0) <= 0}
+                            className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-500/15 px-3 py-2.5 text-xs font-black text-emerald-100 disabled:opacity-40"
                           >
                             <RefreshCw className={`h-3.5 w-3.5 ${artistRepairRunning ? "animate-spin" : ""}`} />
                             {artistRepairRunning
                               ? "Réparation en cours…"
-                              : `Réparer ${number.format(artistRepairReport.repairableCount || 0)} artiste(s)`}
+                              : `Appliquer ${number.format(artistRepairReport.safeRepairCount || 0)} réparation(s) sûre(s)`}
                           </button>
                         </div>
                       ) : null}
