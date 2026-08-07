@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, QrCode, Radio, Sparkles, UsersRound, Vote } from "lucide-react";
+import { Bot, QrCode, Radio, RotateCcw, Sparkles, UsersRound, Vote } from "lucide-react";
 import MixPartyBackground from "../components/MixPartyBackground";
 import MixPartyFooter from "../components/MixPartyFooter";
 import MixPartyHeader from "../components/MixPartyHeader";
@@ -25,6 +25,10 @@ export default function Home() {
   const [creatingParty, setCreatingParty] = useState(false);
   const [showLoader, setShowLoader] = useState(true);
   const [loaderVisible, setLoaderVisible] = useState(true);
+  const [lastParty, setLastParty] = useState<{
+    code: string;
+    role: "dj" | "guest";
+  } | null>(null);
 
   useEffect(() => {
     const fadeTimer = window.setTimeout(() => setLoaderVisible(false), 1900);
@@ -32,6 +36,57 @@ export default function Home() {
     return () => {
       window.clearTimeout(fadeTimer);
       window.clearTimeout(removeTimer);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function detectLastParty() {
+      const raw = localStorage.getItem("mixparty.lastParty.v1");
+      if (!raw) return;
+
+      try {
+        const saved = JSON.parse(raw) as {
+          code?: string;
+          role?: "dj" | "guest";
+        };
+
+        const code = String(saved?.code || "").trim().toUpperCase();
+
+        if (!code) {
+          localStorage.removeItem("mixparty.lastParty.v1");
+          return;
+        }
+
+        const response = await fetch(
+          `${getApiBaseUrl()}/party/${encodeURIComponent(code)}`,
+          { cache: "no-store" }
+        );
+
+        if (!response.ok) {
+          localStorage.removeItem("mixparty.lastParty.v1");
+          if (!cancelled) setLastParty(null);
+          return;
+        }
+
+        const creatorToken = localStorage.getItem(`mixparty_creator_${code}`);
+
+        if (!cancelled) {
+          setLastParty({
+            code,
+            role: creatorToken ? "dj" : "guest",
+          });
+        }
+      } catch {
+        localStorage.removeItem("mixparty.lastParty.v1");
+      }
+    }
+
+    void detectLastParty();
+
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -44,6 +99,14 @@ export default function Home() {
       const party = (await response.json()) as { code?: string; creatorToken?: string };
       if (!party.code || !party.creatorToken) throw new Error("La réponse de création est incomplète.");
       localStorage.setItem(`mixparty_creator_${party.code}`, party.creatorToken);
+      localStorage.setItem(
+        "mixparty.lastParty.v1",
+        JSON.stringify({
+          code: party.code,
+          role: "dj",
+          savedAt: Date.now(),
+        })
+      );
       router.push(`/party/${party.code}`);
     } catch (error) {
       console.error(error);
@@ -61,6 +124,11 @@ export default function Home() {
     router.push(`/party/${normalizedCode}`);
   }
 
+  function resumeLastParty() {
+    if (!lastParty?.code) return;
+    router.push(`/party/${lastParty.code}`);
+  }
+
   return (
     <>
       {showLoader && <MixPartyLoader visible={loaderVisible} />}
@@ -76,6 +144,19 @@ export default function Home() {
             <MixPartyHero creatingParty={creatingParty} onCreateParty={createParty} onJoinClick={() => document.getElementById("mixparty-join")?.scrollIntoView({ behavior: "smooth", block: "center" })} />
             <PartyCard />
           </section>
+
+          {lastParty ? (
+            <div className="-mt-2 flex justify-center pb-2 sm:-mt-4 sm:pb-4">
+              <button
+                type="button"
+                onClick={resumeLastParty}
+                className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.055] px-5 py-3 text-sm font-black text-white backdrop-blur-xl transition hover:border-fuchsia-400/35 hover:bg-white/[0.085]"
+              >
+                <RotateCcw className="h-4 w-4 text-fuchsia-300" />
+                Reprendre la soirée
+              </button>
+            </div>
+          ) : null}
 
           <section id="mixparty-join" className="mixparty-join-strip py-10 sm:py-12">
             <div className="mx-auto flex w-full max-w-3xl flex-col items-stretch gap-3 rounded-[28px] border border-white/10 bg-white/[0.045] p-4 backdrop-blur-xl sm:flex-row">
