@@ -10,7 +10,6 @@ import {
   Play,
   QrCode,
   Radio,
-  RotateCcw,
   Sparkles,
   UsersRound,
   Vote,
@@ -45,7 +44,6 @@ export default function Home() {
   const [creatingParty, setCreatingParty] = useState(false);
   const [showLoader, setShowLoader] = useState(true);
   const [loaderVisible, setLoaderVisible] = useState(true);
-  const [resumeParty, setResumeParty] = useState<{ code: string; role: "dj" | "guest"; name?: string } | null>(null);
 
   useEffect(() => {
     const fadeTimer = window.setTimeout(() => setLoaderVisible(false), 1900);
@@ -54,31 +52,6 @@ export default function Home() {
       window.clearTimeout(fadeTimer);
       window.clearTimeout(removeTimer);
     };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function detectLastParty() {
-      const raw = localStorage.getItem("mixparty.lastParty.v1");
-      if (!raw) return;
-      try {
-        const saved = JSON.parse(raw) as { code?: string; role?: "dj" | "guest"; name?: string };
-        const code = String(saved?.code || "").trim().toUpperCase();
-        if (!code) { localStorage.removeItem("mixparty.lastParty.v1"); return; }
-        const response = await fetch(`${getApiBaseUrl()}/party/${encodeURIComponent(code)}`, { cache: "no-store" });
-        if (!response.ok) {
-          localStorage.removeItem("mixparty.lastParty.v1");
-          if (!cancelled) setResumeParty(null);
-          return;
-        }
-        const creatorToken = localStorage.getItem(`mixparty_creator_${code}`);
-        if (!cancelled) setResumeParty({ code, role: creatorToken ? "dj" : "guest", name: saved?.name });
-      } catch {
-        localStorage.removeItem("mixparty.lastParty.v1");
-      }
-    }
-    void detectLastParty();
-    return () => { cancelled = true; };
   }, []);
 
   async function createParty() {
@@ -90,7 +63,6 @@ export default function Home() {
       const party = (await response.json()) as { code?: string; creatorToken?: string };
       if (!party.code || !party.creatorToken) throw new Error("La réponse de création est incomplète.");
       localStorage.setItem(`mixparty_creator_${party.code}`, party.creatorToken);
-      localStorage.setItem("mixparty.lastParty.v1", JSON.stringify({ code: party.code, role: "dj", savedAt: Date.now() }));
       router.push(`/party/${party.code}`);
     } catch (error) {
       console.error(error);
@@ -106,11 +78,6 @@ export default function Home() {
       return;
     }
     router.push(`/party/${normalizedCode}`);
-  }
-
-  function resumeLastParty() {
-    if (!resumeParty?.code) return;
-    router.push(`/party/${resumeParty.code}`);
   }
 
   return (
@@ -140,17 +107,6 @@ export default function Home() {
               <p className="mp521-reveal mp521-reveal-3 mt-7 max-w-xl text-base font-medium leading-7 text-white/52 sm:text-lg sm:leading-8">
                 Crée une salle, partage le QR Code et laisse tes invités proposer puis voter pour les prochains titres. MixParty s’occupe du reste.
               </p>
-
-              {resumeParty ? (
-                <button type="button" onClick={resumeLastParty} className="mp521-reveal mp521-reveal-4 mt-7 flex w-full max-w-xl items-center gap-4 rounded-[22px] border border-cyan-300/20 bg-gradient-to-r from-cyan-400/[0.09] via-purple-500/[0.08] to-orange-400/[0.07] p-3.5 text-left shadow-[0_18px_55px_rgba(34,211,238,.08)] transition hover:border-cyan-300/35 hover:bg-white/[0.07] sm:p-4">
-                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-cyan-300/15 bg-cyan-400/10 text-cyan-200"><RotateCcw className="h-5 w-5" /></span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[10px] font-black uppercase tracking-[.18em] text-cyan-300/70">{resumeParty.role === "dj" ? "Ta soirée est toujours active" : "Tu étais dans cette soirée"}</span>
-                    <span className="mt-1 block truncate text-sm font-black text-white sm:text-base">{resumeParty.role === "dj" ? "Reprendre ma soirée" : "Retourner à la soirée"} · {resumeParty.code}</span>
-                  </span>
-                  <ArrowRight className="h-5 w-5 shrink-0 text-white/45" />
-                </button>
-              ) : null}
 
               <div className="mp521-reveal mp521-reveal-4 mt-8 flex flex-col gap-3 sm:flex-row">
                 <button type="button" onClick={createParty} disabled={creatingParty} className="mp521-primary-button group">
