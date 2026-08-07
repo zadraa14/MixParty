@@ -452,6 +452,32 @@ export default function PartyPage() {
       setIsPlaybackController(controller);
     });
 
+    socket.on(
+      "playback_control_command",
+      ({ code: commandCode, action }: { code?: string; action?: string }) => {
+        if (String(commandCode || "").toUpperCase() !== code) return;
+
+        if (action === "play") {
+          playerRef.current?.playVideo?.();
+          return;
+        }
+
+        if (action === "pause") {
+          playerRef.current?.pauseVideo?.();
+          return;
+        }
+
+        if (action === "next") {
+          void nextSong();
+          return;
+        }
+
+        if (action === "previous") {
+          void previousSong();
+        }
+      }
+    );
+
     socket.on("playback_sync", (payload: { code: string; videoId: string; state: number; time: number }) => {
       if (payload.code !== code || payload.videoId !== party?.currentSong?.videoId) return;
       setRemotePlayback({ state: payload.state, time: payload.time, receivedAt: Date.now() });
@@ -940,6 +966,26 @@ export default function PartyPage() {
       window.alert("Impossible de modifier l’affichage du clip pour le moment.");
     } finally {
       setClipDisplayUpdating(false);
+    }
+  }
+
+  async function previousSong() {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/party/${code}/previous`, {
+        method: "POST",
+      });
+
+      const updated = await response.json();
+
+      if (!response.ok || updated.error) {
+        console.log(updated.error || "Impossible de revenir au morceau précédent");
+        return;
+      }
+
+      const normalized = normalizeParty(updated);
+      if (normalized) setParty(normalized);
+    } catch (error) {
+      console.error("Retour morceau précédent impossible", error);
     }
   }
 

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { io } from "socket.io-client";
-import { Mic2, Music4, Radio, Wifi, WifiOff } from "lucide-react";
+import { Mic2, Music4, Pause, Play, Radio, SkipBack, SkipForward, Wifi, WifiOff } from "lucide-react";
 import { getApiBaseUrl, getSocketPath, getSocketUrl } from "../../../../lib/config";
 
 type Song = {
@@ -15,11 +15,16 @@ type Song = {
   durationSeconds?: number;
   coverStatus?: "pending" | "found" | "not_found" | "error";
   coverUrl?: string;
+  votes?: number;
+  addedAt?: number;
+  played?: boolean;
 };
 
 type Party = {
   code: string;
   currentSong?: Song | null;
+  songs?: Song[];
+  history?: Song[];
   participants?: Array<{ id: string; name: string }>;
 };
 
@@ -77,6 +82,7 @@ export default function KaraokePartyPage() {
     receivedAt: Date.now(),
   });
   const [clock, setClock] = useState(Date.now());
+  const [creatorToken, setCreatorToken] = useState("");
 
   const lyricsRequestRef = useRef("");
   const socketRef = useRef<any>(null);
@@ -97,6 +103,10 @@ export default function KaraokePartyPage() {
   }
 
   useEffect(() => {
+    setCreatorToken(localStorage.getItem(`mixparty_creator_${code}`) || "");
+  }, [code]);
+
+  useEffect(() => {
     void loadParty();
     const timer = window.setInterval(() => void loadParty(), 2500);
     return () => window.clearInterval(timer);
@@ -114,7 +124,9 @@ export default function KaraokePartyPage() {
 
     socket.on("connect", () => {
       setConnected(true);
+      const token = localStorage.getItem(`mixparty_creator_${code}`) || "";
       socket.emit("join_party_room", { code });
+      if (token) setCreatorToken(token);
       socket.emit("request_playback_sync", code);
     });
 
@@ -149,6 +161,26 @@ export default function KaraokePartyPage() {
     const timer = window.setInterval(() => setClock(Date.now()), 100);
     return () => window.clearInterval(timer);
   }, []);
+
+  function sendPlaybackControl(action: "play" | "pause" | "next" | "previous") {
+    if (!creatorToken || !socketRef.current) return;
+
+    socketRef.current.emit("playback_control_request", {
+      code,
+      creatorToken,
+      action,
+    });
+  }
+
+  const queue = useMemo(() => {
+    return [...(party?.songs || [])]
+      .filter((song) => !song.played)
+      .sort((a, b) => {
+        const votesDiff = Number(b.votes || 0) - Number(a.votes || 0);
+        if (votesDiff !== 0) return votesDiff;
+        return Number(a.addedAt || 0) - Number(b.addedAt || 0);
+      });
+  }, [party?.songs]);
 
   const currentSong = party?.currentSong || null;
   const currentVideoId = currentSong?.videoId || "";
@@ -354,7 +386,8 @@ export default function KaraokePartyPage() {
                 </div>
               </div>
 
-              <div className="mx-auto w-full max-w-7xl">
+              <div className="mx-auto grid w-full max-w-[1500px] gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
+                <div>
                 {lyricsLoading ? (
                   <div className="rounded-[40px] border border-fuchsia-300/15 bg-black/25 p-12 text-center shadow-[0_35px_110px_rgba(0,0,0,.35)] backdrop-blur-2xl">
                     <Mic2 className="mx-auto h-11 w-11 animate-pulse text-fuchsia-300" />
@@ -441,6 +474,128 @@ export default function KaraokePartyPage() {
                     ) : null}
                   </div>
                 )}
+                </div>
+
+                <aside className="rounded-[32px] border border-white/10 bg-black/28 p-4 shadow-[0_24px_80px_rgba(0,0,0,.34)] backdrop-blur-2xl">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[.22em] text-fuchsia-300/70">
+                        À suivre
+                      </p>
+                      <h3 className="mt-1 text-lg font-black">
+                        Prochaines musiques
+                      </h3>
+                    </div>
+                    <span className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-black text-white/45">
+                      {queue.length}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 space-y-2">
+                    {queue.slice(0, 6).map((song, index) => (
+                      <div
+                        key={`${song.videoId}-${song.addedAt || index}`}
+                        className={`flex items-center gap-3 rounded-2xl border p-2.5 ${
+                          index === 0
+                            ? "border-fuchsia-300/20 bg-fuchsia-500/[0.08]"
+                            : "border-white/[0.06] bg-white/[0.025]"
+                        }`}
+                      >
+                        <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-xl text-[10px] font-black ${
+                          index === 0
+                            ? "bg-fuchsia-500/20 text-fuchsia-100"
+                            : "bg-white/[0.05] text-white/35"
+                        }`}>
+                          {index + 1}
+                        </span>
+
+                        <img
+                          src={songArtwork(song)}
+                          alt=""
+                          className="h-11 w-11 shrink-0 rounded-xl object-cover ring-1 ring-white/10"
+                        />
+
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-xs font-black text-white/90">
+                            {song.title}
+                          </p>
+                          <p className="mt-0.5 truncate text-[10px] font-bold text-white/35">
+                            {song.artistName || song.addedBy || "MixParty"}
+                          </p>
+                        </div>
+
+                        {Number(song.votes || 0) > 0 ? (
+                          <span className="text-[10px] font-black text-fuchsia-200/60">
+                            +{song.votes}
+                          </span>
+                        ) : null}
+                      </div>
+                    ))}
+
+                    {!queue.length ? (
+                      <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.02] px-4 py-8 text-center">
+                        <Music4 className="mx-auto h-5 w-5 text-white/20" />
+                        <p className="mt-2 text-xs font-bold text-white/30">
+                          Aucun morceau en attente
+                        </p>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="mt-5 border-t border-white/[0.07] pt-4">
+                    <p className="mb-3 text-center text-[10px] font-black uppercase tracking-[.18em] text-white/25">
+                      Contrôles DJ
+                    </p>
+
+                    <div className="flex items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => sendPlaybackControl("previous")}
+                        disabled={!creatorToken || !(party?.history?.length)}
+                        className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/[0.05] text-white/70 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-25"
+                        aria-label="Morceau précédent"
+                      >
+                        <SkipBack className="h-5 w-5 fill-current" />
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          sendPlaybackControl(playback.state === 1 ? "pause" : "play")
+                        }
+                        disabled={!creatorToken || !currentSong}
+                        className="grid h-14 w-14 place-items-center rounded-[20px] border border-fuchsia-300/25 bg-gradient-to-br from-fuchsia-500/35 via-purple-500/25 to-orange-500/20 text-white shadow-[0_0_35px_rgba(217,70,239,.16)] transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-30"
+                        aria-label={playback.state === 1 ? "Pause" : "Lecture"}
+                      >
+                        {playback.state === 1 ? (
+                          <Pause className="h-6 w-6 fill-current" />
+                        ) : (
+                          <Play className="ml-0.5 h-6 w-6 fill-current" />
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => sendPlaybackControl("next")}
+                        disabled={!creatorToken}
+                        className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/[0.05] text-white/70 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-25"
+                        aria-label="Morceau suivant"
+                      >
+                        <SkipForward className="h-5 w-5 fill-current" />
+                      </button>
+                    </div>
+
+                    {!creatorToken ? (
+                      <p className="mt-3 text-center text-[10px] leading-4 text-amber-200/45">
+                        Les contrôles sont disponibles uniquement sur l’appareil du créateur de la soirée.
+                      </p>
+                    ) : (
+                      <p className="mt-3 text-center text-[10px] leading-4 text-white/25">
+                        Contrôle à distance du lecteur principal MixParty.
+                      </p>
+                    )}
+                  </div>
+                </aside>
               </div>
             </>
           )}

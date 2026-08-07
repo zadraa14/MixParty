@@ -3413,6 +3413,40 @@ app.post("/party/:code/next",(req,res)=>{
   });
 
 });
+
+app.post("/party/:code/previous", (req, res) => {
+  const party = findParty(req.params.code);
+
+  if (!party) {
+    return res.status(404).json({ error: "Soirée introuvable" });
+  }
+
+  if (!party.history?.length) {
+    return res.status(400).json({ error: "Aucun morceau précédent" });
+  }
+
+  const currentSong = party.currentSong;
+
+  if (currentSong) {
+    finalizePlayback(party, "dj_previous");
+    currentSong.played = false;
+  }
+
+  const previousSong = party.history.pop();
+
+  if (!previousSong) {
+    return res.status(400).json({ error: "Aucun morceau précédent" });
+  }
+
+  previousSong.played = true;
+  party.currentSong = previousSong;
+
+  startPlaybackTelemetry(party, previousSong);
+  updateParty(party);
+
+  return res.json(toPublicParty(party));
+});
+
 // Socket connexion
 const playbackControllers = new Map<string, string>();
 
@@ -3444,6 +3478,26 @@ io.on("connection",(socket)=>{
     const code = String(rawCode || "").toUpperCase();
     const controllerId = playbackControllers.get(code);
     if (controllerId) io.to(controllerId).emit("provide_playback_sync");
+  });
+
+  socket.on("playback_control_request", (payload: any) => {
+    const code = String(payload?.code || "").toUpperCase();
+    const creatorToken = String(payload?.creatorToken || "");
+    const action = String(payload?.action || "");
+
+    if (!code || !creatorToken) return;
+    if (!["play", "pause", "next", "previous"].includes(action)) return;
+
+    const party = findParty(code);
+    if (!party || creatorToken !== party.creatorToken) return;
+
+    const controllerId = playbackControllers.get(code);
+    if (!controllerId) return;
+
+    io.to(controllerId).emit("playback_control_command", {
+      code,
+      action,
+    });
   });
 
   socket.on("playback_sync", (payload: any) => {
