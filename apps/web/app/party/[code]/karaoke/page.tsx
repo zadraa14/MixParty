@@ -61,6 +61,41 @@ function formatTime(seconds: number) {
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
 }
 
+
+function karaokeWordWeights(text: string) {
+  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
+
+  return words.map((word) => {
+    const cleanLength = word.replace(/[^\p{L}\p{N}]/gu, "").length;
+    const punctuationBonus = /[.!?]$/.test(word)
+      ? 2.2
+      : /[,;:]$/.test(word)
+        ? 1.45
+        : 1;
+
+    return {
+      word,
+      weight: Math.max(1, cleanLength * 0.72) * punctuationBonus,
+    };
+  });
+}
+
+function karaokeActiveWordIndex(text: string, progress: number) {
+  const weighted = karaokeWordWeights(text);
+  if (!weighted.length) return -1;
+
+  const total = weighted.reduce((sum, item) => sum + item.weight, 0);
+  const target = Math.min(1, Math.max(0, progress)) * total;
+
+  let cursor = 0;
+  for (let index = 0; index < weighted.length; index += 1) {
+    cursor += weighted[index].weight;
+    if (target <= cursor) return index;
+  }
+
+  return weighted.length - 1;
+}
+
 export default function KaraokePartyPage() {
   const params = useParams<{ code: string }>();
   const code = String(params?.code || "").toUpperCase();
@@ -250,6 +285,15 @@ export default function KaraokePartyPage() {
   }, [lyrics, playbackTime]);
 
 
+
+  const karaokeWordState = useMemo(() => {
+    const text = lyricState.current?.text || "";
+    const words = karaokeWordWeights(text);
+    const activeIndex = karaokeActiveWordIndex(text, lyricState.progress);
+
+    return { words, activeIndex };
+  }, [lyricState.current?.text, lyricState.progress]);
+
   const countdown = useMemo(() => {
     const lines = lyrics?.available ? lyrics.lines || [] : [];
     if (!lines.length) return null;
@@ -393,25 +437,34 @@ export default function KaraokePartyPage() {
                         style={{ animation: "karaokeLineIn .55s cubic-bezier(.2,.8,.2,1) both" }}
                       >
                         <div className="relative mx-auto max-w-full">
-                          <p
-                            className="mx-auto text-balance text-[clamp(2.7rem,6.5vw,7.7rem)] font-black leading-[1.02] tracking-[-0.045em] text-transparent transition-[background-image] duration-100"
-                            style={
-                              lyricState.current?.text
-                                ? {
-                                    backgroundImage: `linear-gradient(90deg,
-                                      rgb(232 121 249) 0%,
-                                      rgb(249 168 212) ${Math.max(0, Math.round(lyricState.progress * 55))}%,
-                                      rgb(253 186 116) ${Math.max(0, Math.round(lyricState.progress * 100))}%,
-                                      rgba(255,255,255,.16) ${Math.max(0, Math.round(lyricState.progress * 100))}%,
-                                      rgba(255,255,255,.16) 100%)`,
-                                    WebkitBackgroundClip: "text",
-                                    backgroundClip: "text",
-                                  }
-                                : undefined
-                            }
-                          >
-                            {lyricState.current?.text || (lyricState.next ? "♪" : "…")}
-                          </p>
+                          {lyricState.current?.text ? (
+                            <p className="mx-auto text-balance text-[clamp(2.7rem,6.5vw,7.7rem)] font-black leading-[1.02] tracking-[-0.045em]">
+                              {karaokeWordState.words.map((item, index) => {
+                                const completed = index < karaokeWordState.activeIndex;
+                                const active = index === karaokeWordState.activeIndex;
+
+                                return (
+                                  <span
+                                    key={`${lyricState.current?.time ?? 0}-${index}-${item.word}`}
+                                    className={`inline-block whitespace-pre transition-all duration-150 ${
+                                      completed
+                                        ? "bg-gradient-to-r from-fuchsia-300 via-pink-200 to-orange-200 bg-clip-text text-transparent drop-shadow-[0_0_20px_rgba(236,72,153,.14)]"
+                                        : active
+                                          ? "bg-gradient-to-r from-fuchsia-200 via-pink-100 to-orange-200 bg-clip-text text-transparent drop-shadow-[0_0_32px_rgba(249,168,212,.26)] scale-[1.035]"
+                                          : "text-white/16"
+                                    }`}
+                                  >
+                                    {item.word}
+                                    {index < karaokeWordState.words.length - 1 ? "\u00A0" : ""}
+                                  </span>
+                                );
+                              })}
+                            </p>
+                          ) : (
+                            <p className="text-[clamp(2.7rem,6.5vw,7.7rem)] font-black leading-[1.02] text-white/20">
+                              {lyricState.next ? "♪" : "…"}
+                            </p>
+                          )}
                         </div>
 
                         {lyricState.current?.text ? (
