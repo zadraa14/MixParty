@@ -392,21 +392,26 @@ export default function KaraokePartyPage() {
                         className="relative mx-auto mt-4 w-full max-w-6xl"
                         style={{ animation: "karaokeLineIn .55s cubic-bezier(.2,.8,.2,1) both" }}
                       >
-                        <div className="relative inline-block max-w-full">
-                          <p className="text-balance text-[clamp(2.7rem,6.5vw,7.7rem)] font-black leading-[1.02] tracking-[-0.045em] text-white/16">
+                        <div className="relative mx-auto max-w-full">
+                          <p
+                            className="mx-auto text-balance text-[clamp(2.7rem,6.5vw,7.7rem)] font-black leading-[1.02] tracking-[-0.045em] text-transparent transition-[background-image] duration-100"
+                            style={
+                              lyricState.current?.text
+                                ? {
+                                    backgroundImage: `linear-gradient(90deg,
+                                      rgb(232 121 249) 0%,
+                                      rgb(249 168 212) ${Math.max(0, Math.round(lyricState.progress * 55))}%,
+                                      rgb(253 186 116) ${Math.max(0, Math.round(lyricState.progress * 100))}%,
+                                      rgba(255,255,255,.16) ${Math.max(0, Math.round(lyricState.progress * 100))}%,
+                                      rgba(255,255,255,.16) 100%)`,
+                                    WebkitBackgroundClip: "text",
+                                    backgroundClip: "text",
+                                  }
+                                : undefined
+                            }
+                          >
                             {lyricState.current?.text || (lyricState.next ? "♪" : "…")}
                           </p>
-
-                          {lyricState.current?.text ? (
-                            <div
-                              className="pointer-events-none absolute inset-0 overflow-hidden text-left"
-                              style={{ width: `${Math.round(lyricState.progress * 100)}%` }}
-                            >
-                              <p className="w-max max-w-none bg-gradient-to-r from-fuchsia-300 via-pink-200 to-orange-200 bg-clip-text text-[clamp(2.7rem,6.5vw,7.7rem)] font-black leading-[1.02] tracking-[-0.045em] text-transparent drop-shadow-[0_0_28px_rgba(236,72,153,.20)]">
-                                {lyricState.current.text}
-                              </p>
-                            </div>
-                          ) : null}
                         </div>
 
                         {lyricState.current?.text ? (
