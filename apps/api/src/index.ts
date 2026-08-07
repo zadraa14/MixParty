@@ -32,6 +32,7 @@ fs.mkdirSync(persistentDataDir, { recursive: true });
 const dataFilePath = path.resolve(persistentDataDir, "data.json");
 const partyEventsFilePath = path.resolve(persistentDataDir, "party-intelligence-events.jsonl");
 const attendanceHistoryFilePath = path.resolve(persistentDataDir, "party-attendance-history.json");
+const karaokeAuditFilePath = path.resolve(persistentDataDir, "karaoke-audit.json");
 const configuredOrigins = process.env.CORS_ORIGINS
   ?.split(",")
   .map((origin) => origin.trim())
@@ -4188,6 +4189,259 @@ app.get("/partybrain/intelligence/export", (_req, res) => {
   if (!fs.existsSync(partyEventsFilePath)) return res.send("");
   return res.sendFile(partyEventsFilePath);
 });
+
+
+type KaraokeAuditKind = "topic" | "official_audio" | "not_found";
+
+type KaraokeAuditEntry = {
+  sourceVideoId: string;
+  sourceTitle: string;
+  sourceArtistName: string;
+  checkedAt: number;
+  kind: KaraokeAuditKind;
+  candidateVideoId?: string;
+  candidateTitle?: string;
+  candidateChannelTitle?: string;
+  candidateDurationSeconds?: number;
+};
+
+type KaraokeAuditState = {
+  version: 1;
+  updatedAt: number;
+  entries: Record<string, KaraokeAuditEntry>;
+};
+
+function createEmptyKaraokeAudit(): KaraokeAuditState {
+  return { version: 1, updatedAt: Date.now(), entries: {} };
+}
+
+let karaokeAudit: KaraokeAuditState = createEmptyKaraokeAudit();
+
+function saveKaraokeAudit() {
+  karaokeAudit.updatedAt = Date.now();
+  try {
+    fs.writeFileSync(karaokeAuditFilePath, JSON.stringify(karaokeAudit, null, 2), "utf-8");
+  } catch (error) {
+    console.warn("Audit Karaoké non sauvegardé :", error);
+  }
+}
+
+function loadKaraokeAudit() {
+  if (!fs.existsSync(karaokeAuditFilePath)) {
+    saveKaraokeAudit();
+    return;
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(karaokeAuditFilePath, "utf-8"));
+    karaokeAudit = {
+      version: 1,
+      updatedAt: Number(parsed?.updatedAt || Date.now()),
+      entries: parsed?.entries && typeof parsed.entries === "object" ? parsed.entries : {},
+    };
+  } catch (error) {
+    console.warn("Audit Karaoké illisible, nouvelle base créée :", error);
+    karaokeAudit = createEmptyKaraokeAudit();
+    saveKaraokeAudit();
+  }
+}
+
+function karaokeKindForVideo(video: {
+  rawTitle?: string;
+  title?: string;
+  channelTitle?: string;
+  metadataSource?: MusicMetadataSource;
+}): Exclude<KaraokeAuditKind, "not_found"> | null {
+  const channel = String(video.channelTitle || "").trim().toLowerCase();
+  const rawTitle = String(video.rawTitle || video.title || "").trim().toLowerCase();
+
+  if (
+    video.metadataSource === "ART_TRACK_DESCRIPTION" ||
+    /(?:^|\s)-\s*topic$/.test(channel) ||
+    /\btopic$/.test(channel)
+  ) {
+    return "topic";
+  }
+
+  if (
+    /\bofficial\s+audio\b/i.test(rawTitle) ||
+    /\baudio\s+officiel\b/i.test(rawTitle) ||
+    /\bofficial\s+audio\b/i.test(channel)
+  ) {
+    return "official_audio";
+  }
+
+  return null;
+}
+
+function karaokeCandidateScore(source: MusicBrainSong, candidate: YoutubeSearchResult) {
+  const kind = karaokeKindForVideo(candidate);
+  if (!kind) return -1;
+
+  const targetTitle = normalizeMusicQuery(source.title || source.rawTitle || "");
+  const candidateTitle = normalizeMusicQuery(candidate.title || candidate.rawTitle || "");
+  const targetArtist = normalizeMusicQuery(source.artistName || "");
+  const candidateArtist = normalizeMusicQuery(candidate.artistName || candidate.channelTitle || "");
+
+  let score = kind === "topic" ? 200 : 160;
+
+  if (targetTitle && candidateTitle === targetTitle) score += 90;
+  else if (targetTitle && candidateTitle && (candidateTitle.includes(targetTitle) || targetTitle.includes(candidateTitle))) score += 45;
+  else return -1;
+
+  if (targetArtist && candidateArtist === targetArtist) score += 70;
+  else if (targetArtist && candidateArtist && (candidateArtist.includes(targetArtist) || targetArtist.includes(candidateArtist))) score += 35;
+
+  const sourceDuration = Number(source.durationSeconds || 0);
+  const candidateDuration = Number(candidate.durationSeconds || 0);
+  if (sourceDuration > 0 && candidateDuration > 0) {
+    const diff = Math.abs(sourceDuration - candidateDuration);
+    if (diff <= 3) score += 35;
+    else if (diff <= 8) score += 18;
+    else if (diff > 45) score -= 35;
+  }
+
+  return score;
+}
+
+function karaokeAuditSummary() {
+  const songs = Object.values(musicBrain.songs);
+  let alreadyTopic = 0;
+  let alreadyOfficialAudio = 0;
+
+  const baseCompatibleIds = new Set<string>();
+  for (const song of songs) {
+    const kind = karaokeKindForVideo(song);
+    if (kind === "topic") {
+      alreadyTopic += 1;
+      baseCompatibleIds.add(song.videoId);
+    } else if (kind === "official_audio") {
+      alreadyOfficialAudio += 1;
+      baseCompatibleIds.add(song.videoId);
+    }
+  }
+
+  const relevantEntries = Object.values(karaokeAudit.entries).filter(
+    (entry) => Boolean(musicBrain.songs[entry.sourceVideoId]) && !baseCompatibleIds.has(entry.sourceVideoId)
+  );
+
+  const discoveredTopic = relevantEntries.filter((entry) => entry.kind === "topic").length;
+  const discoveredOfficialAudio = relevantEntries.filter((entry) => entry.kind === "official_audio").length;
+  const noOfficialAudio = relevantEntries.filter((entry) => entry.kind === "not_found").length;
+  const auditedMissing = relevantEntries.length;
+  const alreadyCompatible = alreadyTopic + alreadyOfficialAudio;
+  const confirmedCompatible = alreadyCompatible + discoveredTopic + discoveredOfficialAudio;
+  const unchecked = Math.max(0, songs.length - alreadyCompatible - auditedMissing);
+  const checkedSongs = Math.min(songs.length, alreadyCompatible + auditedMissing);
+
+  return {
+    generatedAt: Date.now(),
+    updatedAt: karaokeAudit.updatedAt,
+    knownSongs: songs.length,
+    alreadyTopic,
+    alreadyOfficialAudio,
+    alreadyCompatible,
+    discoveredTopic,
+    discoveredOfficialAudio,
+    noOfficialAudio,
+    auditedMissing,
+    checkedSongs,
+    unchecked,
+    confirmedCompatible,
+    confirmedCoveragePercent: songs.length ? Math.round((confirmedCompatible / songs.length) * 1000) / 10 : 0,
+    checkedPercent: songs.length ? Math.round((checkedSongs / songs.length) * 1000) / 10 : 0,
+    note: "La couverture confirmée est un minimum : les morceaux encore non audités peuvent aussi posséder une version Topic ou Official Audio.",
+    youtubeSearchesPerBatchMax: 10,
+  };
+}
+
+loadKaraokeAudit();
+
+app.get("/partybrain/karaoke-audit", (_req, res) => {
+  return res.json(karaokeAuditSummary());
+});
+
+app.post("/partybrain/karaoke-audit/run", async (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  const requestedLimit = Number(req.body?.limit || 10);
+  const limit = Math.max(1, Math.min(10, Number.isFinite(requestedLimit) ? requestedLimit : 10));
+
+  const candidates = Object.values(musicBrain.songs)
+    .filter((song) => !karaokeKindForVideo(song))
+    .filter((song) => !karaokeAudit.entries[song.videoId])
+    .sort((a, b) => {
+      const score = (song: MusicBrainSong) =>
+        Number(song.playedCount || 0) * 4 +
+        Number(song.addedCount || 0) * 3 +
+        Number(song.voteCount || 0) * 2 +
+        Number(song.searchCount || 0);
+      return score(b) - score(a);
+    })
+    .slice(0, limit);
+
+  let searched = 0;
+  let foundTopic = 0;
+  let foundOfficialAudio = 0;
+  let notFound = 0;
+  let errors = 0;
+
+  for (const song of candidates) {
+    try {
+      const query = `${song.artistName} ${song.title} official audio`;
+      const results = await requestYoutubeMusic(query, "user");
+      searched += 1;
+
+      const ranked = results
+        .map((candidate) => ({
+          candidate,
+          kind: karaokeKindForVideo(candidate),
+          score: karaokeCandidateScore(song, candidate),
+        }))
+        .filter((item) => item.kind && item.score >= 0)
+        .sort((a, b) => b.score - a.score);
+
+      const best = ranked[0];
+      if (best?.kind) {
+        karaokeAudit.entries[song.videoId] = {
+          sourceVideoId: song.videoId,
+          sourceTitle: song.title,
+          sourceArtistName: song.artistName,
+          checkedAt: Date.now(),
+          kind: best.kind,
+          candidateVideoId: best.candidate.id,
+          candidateTitle: best.candidate.rawTitle || best.candidate.title,
+          candidateChannelTitle: best.candidate.channelTitle,
+          candidateDurationSeconds: best.candidate.durationSeconds,
+        };
+        if (best.kind === "topic") foundTopic += 1;
+        if (best.kind === "official_audio") foundOfficialAudio += 1;
+      } else {
+        karaokeAudit.entries[song.videoId] = {
+          sourceVideoId: song.videoId,
+          sourceTitle: song.title,
+          sourceArtistName: song.artistName,
+          checkedAt: Date.now(),
+          kind: "not_found",
+        };
+        notFound += 1;
+      }
+
+      saveKaraokeAudit();
+    } catch (error) {
+      errors += 1;
+      console.warn(`Audit Karaoké impossible pour ${song.artistName} — ${song.title}`, error);
+      // Une erreur YouTube/quota n'est volontairement pas mémorisée afin de pouvoir réessayer plus tard.
+      break;
+    }
+  }
+
+  return res.json({
+    ok: true,
+    batch: { requested: limit, selected: candidates.length, searched, foundTopic, foundOfficialAudio, notFound, errors },
+    summary: karaokeAuditSummary(),
+  });
+});
+
 
 app.get("/musicbrain/stats", (_req, res) => {
   return res.json(musicBrainStats());

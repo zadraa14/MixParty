@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, BarChart3, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Clock3, Database, KeyRound, Music2, Network, RefreshCw, Search, ShieldCheck, Sparkles, ThumbsUp, Timer, Trash2, UsersRound, Wifi, type LucideIcon } from "lucide-react";
+import { Activity, AlertTriangle, BarChart3, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Clock3, Database, KeyRound, Mic2, Music2, Network, RefreshCw, Search, ShieldCheck, Sparkles, ThumbsUp, Timer, Trash2, UsersRound, Wifi, type LucideIcon } from "lucide-react";
 import { getApiBaseUrl } from "../../../lib/config";
 
 type Stats = {
@@ -174,6 +174,26 @@ type AttendanceHistoryData = {
   }>;
 };
 
+type KaraokeAuditData = {
+  generatedAt: number;
+  updatedAt: number;
+  knownSongs: number;
+  alreadyTopic: number;
+  alreadyOfficialAudio: number;
+  alreadyCompatible: number;
+  discoveredTopic: number;
+  discoveredOfficialAudio: number;
+  noOfficialAudio: number;
+  auditedMissing: number;
+  checkedSongs: number;
+  unchecked: number;
+  confirmedCompatible: number;
+  confirmedCoveragePercent: number;
+  checkedPercent: number;
+  note: string;
+  youtubeSearchesPerBatchMax: number;
+};
+
 type CoverFilter =
   | "downloaded"
   | "pending"
@@ -226,6 +246,10 @@ export default function MusicBrainAdminPage() {
   const [liveUsersError, setLiveUsersError] = useState("");
   const [attendanceHistory, setAttendanceHistory] = useState<AttendanceHistoryData | null>(null);
   const [attendanceHistoryError, setAttendanceHistoryError] = useState("");
+  const [karaokeAudit, setKaraokeAudit] = useState<KaraokeAuditData | null>(null);
+  const [karaokeAuditLoading, setKaraokeAuditLoading] = useState(false);
+  const [karaokeAuditError, setKaraokeAuditError] = useState("");
+  const [karaokeAuditMessage, setKaraokeAuditMessage] = useState("");
 
 
   const [maintenanceError, setMaintenanceError] = useState("");
@@ -280,6 +304,53 @@ export default function MusicBrainAdminPage() {
     }
   }
 
+  async function loadKaraokeAudit() {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/karaoke-audit`, { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Audit Karaoké indisponible");
+      setKaraokeAudit(data);
+      setKaraokeAuditError("");
+    } catch (err) {
+      setKaraokeAuditError(err instanceof Error ? err.message : "Audit Karaoké indisponible");
+    }
+  }
+
+  async function runKaraokeAudit() {
+    if (!adminToken.trim()) {
+      setKaraokeAuditError("Entre le code administrateur Railway pour lancer les recherches YouTube.");
+      return;
+    }
+
+    setKaraokeAuditLoading(true);
+    setKaraokeAuditError("");
+    setKaraokeAuditMessage("");
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/karaoke-audit/run`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-partybrain-admin-token": adminToken.trim(),
+        },
+        body: JSON.stringify({ limit: 10 }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Impossible de lancer l’audit Karaoké");
+
+      if (data?.summary) setKaraokeAudit(data.summary);
+      const batch = data?.batch;
+      setKaraokeAuditMessage(
+        batch
+          ? `${batch.searched} morceau(x) vérifié(s) • ${batch.foundTopic} Topic • ${batch.foundOfficialAudio} Official Audio • ${batch.notFound} sans version trouvée${batch.errors ? ` • ${batch.errors} erreur(s)` : ""}.`
+          : "Audit Karaoké terminé."
+      );
+    } catch (err) {
+      setKaraokeAuditError(err instanceof Error ? err.message : "Audit Karaoké indisponible");
+    } finally {
+      setKaraokeAuditLoading(false);
+    }
+  }
+
   async function loadStats() {
     setLoading(true);
     setError("");
@@ -299,6 +370,7 @@ export default function MusicBrainAdminPage() {
     void loadStats();
     void loadLiveUsers();
     void loadAttendanceHistory();
+    void loadKaraokeAudit();
 
     const liveTimer = window.setInterval(() => {
       void loadLiveUsers();
@@ -1021,6 +1093,94 @@ export default function MusicBrainAdminPage() {
                 </article>
               ))}
             </div>
+
+            <section className="mt-7 rounded-[28px] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-violet-500/[0.08] to-cyan-500/[0.06] p-5 backdrop-blur-xl sm:p-7">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex items-start gap-4">
+                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-pink-400/15 text-pink-200">
+                    <Mic2 className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[.22em] text-pink-300">Projet Karaoké</p>
+                    <h2 className="mt-1 text-2xl font-black">Audit Topic / Official Audio</h2>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-white/50">
+                      Cet outil est totalement séparé de la recherche normale MixParty. Il mesure combien de morceaux connus par MusicBrain disposent d’une version audio officielle exploitable pour un futur mode karaoké.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/25 p-4">
+                  <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-3 py-3">
+                    <KeyRound className="h-4 w-4 text-pink-300" />
+                    <input
+                      type="password"
+                      value={adminToken}
+                      onChange={(event) => setAdminToken(event.target.value)}
+                      placeholder="Code administrateur Railway"
+                      autoComplete="off"
+                      className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-white/30"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void runKaraokeAudit()}
+                    disabled={karaokeAuditLoading || (karaokeAudit?.unchecked ?? 0) <= 0}
+                    className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-pink-300/20 bg-pink-500/12 px-4 py-3 text-sm font-black text-pink-100 transition hover:bg-pink-500/18 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    <Search className={`h-4 w-4 ${karaokeAuditLoading ? "animate-pulse" : ""}`} />
+                    {karaokeAuditLoading ? "Recherche en cours…" : "Analyser 10 morceaux supplémentaires"}
+                  </button>
+                  <p className="mt-2 text-xs leading-5 text-white/35">
+                    10 recherches maximum par lot pour protéger le quota YouTube. Les résultats sont sauvegardés et les morceaux déjà contrôlés ne sont pas recherchés une seconde fois.
+                  </p>
+                </div>
+              </div>
+
+              {karaokeAuditError ? (
+                <div className="mt-5 rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm font-bold text-red-100">{karaokeAuditError}</div>
+              ) : null}
+              {karaokeAuditMessage ? (
+                <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm font-bold text-emerald-100">{karaokeAuditMessage}</div>
+              ) : null}
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <article className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs font-black uppercase tracking-[.16em] text-white/40">Morceaux connus</p>
+                  <p className="mt-2 text-3xl font-black">{number.format(karaokeAudit?.knownSongs ?? stats.totals.songs)}</p>
+                </article>
+                <article className="rounded-2xl border border-cyan-300/15 bg-cyan-500/[0.07] p-4">
+                  <p className="text-xs font-black uppercase tracking-[.16em] text-cyan-200/65">Topic / Art Track</p>
+                  <p className="mt-2 text-3xl font-black text-cyan-100">{number.format((karaokeAudit?.alreadyTopic ?? 0) + (karaokeAudit?.discoveredTopic ?? 0))}</p>
+                </article>
+                <article className="rounded-2xl border border-violet-300/15 bg-violet-500/[0.07] p-4">
+                  <p className="text-xs font-black uppercase tracking-[.16em] text-violet-200/65">Official Audio</p>
+                  <p className="mt-2 text-3xl font-black text-violet-100">{number.format((karaokeAudit?.alreadyOfficialAudio ?? 0) + (karaokeAudit?.discoveredOfficialAudio ?? 0))}</p>
+                </article>
+                <article className="rounded-2xl border border-emerald-300/15 bg-emerald-500/[0.07] p-4">
+                  <p className="text-xs font-black uppercase tracking-[.16em] text-emerald-200/65">Compatible confirmé</p>
+                  <p className="mt-2 text-3xl font-black text-emerald-100">{karaokeAudit?.confirmedCoveragePercent ?? 0} %</p>
+                </article>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm font-black">
+                    {number.format(karaokeAudit?.checkedSongs ?? 0)} / {number.format(karaokeAudit?.knownSongs ?? stats.totals.songs)} morceaux classés
+                  </p>
+                  <p className="text-xs font-bold text-white/45">{karaokeAudit?.checkedPercent ?? 0} % de la base contrôlée</p>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
+                  <div className="h-full rounded-full bg-gradient-to-r from-pink-500 via-violet-500 to-cyan-400" style={{ width: `${Math.min(100, karaokeAudit?.checkedPercent ?? 0)}%` }} />
+                </div>
+                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-white/45">
+                  <span>Déjà audio dans MusicBrain : <strong className="text-white/75">{number.format(karaokeAudit?.alreadyCompatible ?? 0)}</strong></span>
+                  <span>Trouvés par l’audit : <strong className="text-white/75">{number.format((karaokeAudit?.discoveredTopic ?? 0) + (karaokeAudit?.discoveredOfficialAudio ?? 0))}</strong></span>
+                  <span>Pas trouvés : <strong className="text-white/75">{number.format(karaokeAudit?.noOfficialAudio ?? 0)}</strong></span>
+                  <span>À contrôler : <strong className="text-white/75">{number.format(karaokeAudit?.unchecked ?? stats.totals.songs)}</strong></span>
+                </div>
+                <p className="mt-3 text-xs leading-5 text-white/35">{karaokeAudit?.note || "Chargement de l’audit Karaoké…"}</p>
+              </div>
+            </section>
 
             <div className="mt-7 grid gap-7 xl:grid-cols-[.85fr_1.15fr]">
               <section className="rounded-[28px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl sm:p-6">
