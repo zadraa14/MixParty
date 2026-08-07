@@ -5261,6 +5261,83 @@ type MusicBrainCleanupReason =
   | "artiste_generique"
   | "contenu_non_musical";
 
+type MusicBrainReviewCategory =
+  | "nom_artiste_tres_court"
+  | "query_fallback"
+  | "confiance_tres_faible"
+  | "confiance_faible"
+  | "chaine_non_coherente"
+  | "identite_non_confirmee";
+
+function classifyMusicBrainReviewSong(song: MusicBrainSong, decisionReason: string): {
+  category: MusicBrainReviewCategory;
+  categoryLabel: string;
+  explanation: string;
+} {
+  const artistName = String(song.artistName || "").trim();
+  const artistKey = normalizeMusicQuery(artistName);
+  const channel = String(song.channelTitle || "").trim();
+  const channelKey = normalizeMusicQuery(channel);
+  const confidence = Number(song.metadataConfidence || 0);
+
+  const artistChannelMatch = Boolean(
+    artistKey &&
+    channelKey &&
+    (channelKey.includes(artistKey) || artistKey.includes(channelKey))
+  );
+
+  const trustedChannel = /\b(topic|vevo|official|officiel)\b/i.test(channel);
+
+  if (artistKey.length > 0 && artistKey.length <= 3) {
+    return {
+      category: "nom_artiste_tres_court",
+      categoryLabel: "Nom artiste très court",
+      explanation: "Le nom détecté fait 3 caractères ou moins. Il peut être réel, mais mérite une vérification manuelle.",
+    };
+  }
+
+  if (song.metadataSource === "QUERY_FALLBACK") {
+    return {
+      category: "query_fallback",
+      categoryLabel: "Artiste déduit de la recherche",
+      explanation: "L’artiste n’a pas été confirmé par les métadonnées YouTube et provient surtout du texte de recherche.",
+    };
+  }
+
+  if (confidence < 35) {
+    return {
+      category: "confiance_tres_faible",
+      categoryLabel: "Confiance très faible",
+      explanation: `Confiance métadonnées ${Math.round(confidence)} %. L’identité du morceau est trop incertaine pour être apprise automatiquement.`,
+    };
+  }
+
+  if (confidence < 65) {
+    return {
+      category: "confiance_faible",
+      categoryLabel: "Confiance faible",
+      explanation: `Confiance métadonnées ${Math.round(confidence)} %. Le morceau peut être correct, mais PartyBrain manque de preuves.`,
+    };
+  }
+
+  if (!artistChannelMatch && !trustedChannel) {
+    return {
+      category: "chaine_non_coherente",
+      categoryLabel: "Chaîne non cohérente",
+      explanation: "Le nom de la chaîne YouTube ne confirme pas clairement l’artiste détecté.",
+    };
+  }
+
+  return {
+    category: "identite_non_confirmee",
+    categoryLabel: "Identité non confirmée",
+    explanation:
+      decisionReason === "metadata_faible"
+        ? "Les métadonnées sont insuffisantes pour apprendre automatiquement ce morceau."
+        : "Plusieurs signaux existent, mais pas assez pour confirmer l’identité avec certitude.",
+  };
+}
+
 function musicBrainCleanupReport() {
   const removable: Array<{
     videoId: string;
@@ -5276,8 +5353,19 @@ function musicBrainCleanupReport() {
   const reviewOnly: Array<{
     videoId: string;
     title: string;
+    rawTitle?: string;
     artistName: string;
+    channelTitle?: string;
+    metadataSource?: MusicMetadataSource;
+    metadataConfidence?: number;
     reason: string;
+    category: MusicBrainReviewCategory;
+    categoryLabel: string;
+    explanation: string;
+    searchCount: number;
+    addedCount: number;
+    playedCount: number;
+    voteCount: number;
   }> = [];
 
   const counts: Record<string, number> = {
@@ -5285,6 +5373,15 @@ function musicBrainCleanupReport() {
     artiste_generique: 0,
     contenu_non_musical: 0,
     metadata_faible: 0,
+    identite_non_confirmee: 0,
+  };
+
+  const reviewCategoryCounts: Record<MusicBrainReviewCategory, number> = {
+    nom_artiste_tres_court: 0,
+    query_fallback: 0,
+    confiance_tres_faible: 0,
+    confiance_faible: 0,
+    chaine_non_coherente: 0,
     identite_non_confirmee: 0,
   };
 
@@ -5323,7 +5420,24 @@ function musicBrainCleanupReport() {
         voteCount: Number(song.voteCount || 0),
       });
     } else {
-      reviewOnly.push({ ...basic, reason: decision.reason });
+      const classification = classifyMusicBrainReviewSong(song, decision.reason);
+      reviewCategoryCounts[classification.category] += 1;
+
+      reviewOnly.push({
+        ...basic,
+        rawTitle: song.rawTitle,
+        channelTitle: song.channelTitle,
+        metadataSource: song.metadataSource,
+        metadataConfidence: song.metadataConfidence,
+        reason: decision.reason,
+        category: classification.category,
+        categoryLabel: classification.categoryLabel,
+        explanation: classification.explanation,
+        searchCount: Number(song.searchCount || 0),
+        addedCount: Number(song.addedCount || 0),
+        playedCount: Number(song.playedCount || 0),
+        voteCount: Number(song.voteCount || 0),
+      });
     }
   }
 
@@ -5339,10 +5453,22 @@ function musicBrainCleanupReport() {
     removableCount: removable.length,
     reviewOnlyCount: reviewOnly.length,
     counts,
+    reviewCategoryCounts,
     examples: removable.slice(0, 30),
     reviewExamples: reviewOnly.slice(0, 20),
+    reviewItems: reviewOnly
+      .sort((a, b) => {
+        const confidenceA = Number(a.metadataConfidence || 0);
+        const confidenceB = Number(b.metadataConfidence || 0);
+        if (confidenceA !== confidenceB) return confidenceA - confidenceB;
+
+        const activityA = a.playedCount * 5 + a.addedCount * 4 + a.voteCount * 3 + a.searchCount;
+        const activityB = b.playedCount * 5 + b.addedCount * 4 + b.voteCount * 3 + b.searchCount;
+        return activityB - activityA;
+      })
+      .slice(0, 1000),
     policy:
-      "Suppression automatique uniquement des artistes inconnus/génériques non fiables et des contenus clairement non musicaux. Les métadonnées faibles restent en base pour vérification.",
+      "Suppression automatique uniquement des erreurs évidentes. Les entrées incertaines sont désormais classées et visibles pour vérification manuelle avant toute décision.",
   };
 }
 

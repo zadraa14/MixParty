@@ -283,6 +283,8 @@ export default function MusicBrainAdminPage() {
   const [cleanupReport, setCleanupReport] = useState<any | null>(null);
   const [cleanupMessage, setCleanupMessage] = useState("");
   const [cleanupError, setCleanupError] = useState("");
+  const [cleanupReviewFilter, setCleanupReviewFilter] = useState("all");
+  const [cleanupReviewSearch, setCleanupReviewSearch] = useState("");
 
   const [activeCoverFilter, setActiveCoverFilter] = useState<CoverFilter | null>(null);
   const [coverLibrary, setCoverLibrary] = useState<CoverLibrarySong[]>([]);
@@ -755,6 +757,16 @@ export default function MusicBrainAdminPage() {
     { calls: 0, songs: 0, artists: 0, completed: 0, errors: 0 },
   );
   const chartMax = Math.max(1, ...academyHistory.map((session) => session.songsAdded));
+
+  const cleanupReviewItems = Array.isArray(cleanupReport?.reviewItems) ? cleanupReport.reviewItems : [];
+  const visibleCleanupReviewItems = cleanupReviewItems.filter((item: any) => {
+    if (cleanupReviewFilter !== "all" && item.category !== cleanupReviewFilter) return false;
+    const query = cleanupReviewSearch.trim().toLowerCase();
+    if (!query) return true;
+    return `${item.artistName || ""} ${item.title || ""} ${item.rawTitle || ""} ${item.channelTitle || ""}`
+      .toLowerCase()
+      .includes(query);
+  });
 
   return (
     <main className="min-h-screen bg-[#07040f] px-4 py-6 text-white sm:px-8 lg:px-12">
@@ -1556,15 +1568,117 @@ export default function MusicBrainAdminPage() {
                     </button>
 
                     {cleanupReport ? (
-                      <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/55">
-                        <p><strong className="text-white">{number.format(cleanupReport.removableCount || 0)}</strong> morceau(x) supprimable(s) automatiquement</p>
-                        <p className="mt-1"><strong className="text-white">{number.format(cleanupReport.reviewOnlyCount || 0)}</strong> entrée(s) incertaine(s) conservée(s)</p>
-                        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-white/35">
-                          <span>Inconnus : {number.format(cleanupReport.counts?.artiste_inconnu || 0)}</span>
-                          <span>Génériques : {number.format(cleanupReport.counts?.artiste_generique || 0)}</span>
-                          <span>Non musicaux : {number.format(cleanupReport.counts?.contenu_non_musical || 0)}</span>
+                      <>
+                        <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/55">
+                          <p><strong className="text-white">{number.format(cleanupReport.removableCount || 0)}</strong> morceau(x) supprimable(s) automatiquement</p>
+                          <p className="mt-1"><strong className="text-white">{number.format(cleanupReport.reviewOnlyCount || 0)}</strong> entrée(s) incertaine(s) conservée(s)</p>
+                          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-white/35">
+                            <span>Inconnus : {number.format(cleanupReport.counts?.artiste_inconnu || 0)}</span>
+                            <span>Génériques : {number.format(cleanupReport.counts?.artiste_generique || 0)}</span>
+                            <span>Non musicaux : {number.format(cleanupReport.counts?.contenu_non_musical || 0)}</span>
+                          </div>
                         </div>
-                      </div>
+
+                        <div className="mt-3 rounded-xl border border-violet-300/15 bg-violet-500/[0.05] p-3">
+                          <p className="text-[11px] font-black uppercase tracking-[.16em] text-violet-200/70">
+                            Classement des entrées incertaines
+                          </p>
+
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            {[
+                              ["nom_artiste_tres_court", "Nom artiste très court"],
+                              ["query_fallback", "Artiste déduit de la recherche"],
+                              ["confiance_tres_faible", "Confiance très faible"],
+                              ["confiance_faible", "Confiance faible"],
+                              ["chaine_non_coherente", "Chaîne non cohérente"],
+                              ["identite_non_confirmee", "Identité non confirmée"],
+                            ].map(([key, label]) => (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => setCleanupReviewFilter(cleanupReviewFilter === key ? "all" : key)}
+                                className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs transition ${
+                                  cleanupReviewFilter === key
+                                    ? "border-violet-300/35 bg-violet-400/15 text-violet-100"
+                                    : "border-white/8 bg-black/20 text-white/55 hover:bg-white/[0.05]"
+                                }`}
+                              >
+                                <span>{label}</span>
+                                <strong className="text-white">
+                                  {number.format(cleanupReport.reviewCategoryCounts?.[key] || 0)}
+                                </strong>
+                              </button>
+                            ))}
+                          </div>
+
+                          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                            <label className="flex flex-1 items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-3 py-2">
+                              <Search className="h-3.5 w-3.5 text-cyan-300" />
+                              <input
+                                value={cleanupReviewSearch}
+                                onChange={(event) => setCleanupReviewSearch(event.target.value)}
+                                placeholder="Rechercher artiste, morceau ou chaîne…"
+                                className="min-w-0 flex-1 bg-transparent text-xs text-white outline-none placeholder:text-white/25"
+                              />
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCleanupReviewFilter("all");
+                                setCleanupReviewSearch("");
+                              }}
+                              className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-bold text-white/55"
+                            >
+                              Tout afficher
+                            </button>
+                          </div>
+
+                          <div className="mt-3 flex items-center justify-between text-[11px] text-white/35">
+                            <span>{number.format(visibleCleanupReviewItems.length)} entrée(s) affichée(s)</span>
+                            <span>Aucune suppression depuis cette liste</span>
+                          </div>
+
+                          <div className="mt-2 max-h-[520px] space-y-2 overflow-y-auto pr-1">
+                            {visibleCleanupReviewItems.map((item: any) => (
+                              <article key={item.videoId} className="rounded-xl border border-white/8 bg-black/25 p-3">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-black text-white">{item.title || "Titre inconnu"}</p>
+                                    <p className="mt-0.5 truncate text-xs font-bold text-cyan-200/80">
+                                      Artiste détecté : {item.artistName || "—"}
+                                    </p>
+                                  </div>
+                                  <span className="shrink-0 rounded-full border border-violet-300/15 bg-violet-500/10 px-2.5 py-1 text-[10px] font-black text-violet-100">
+                                    {item.categoryLabel}
+                                  </span>
+                                </div>
+
+                                <div className="mt-2 grid gap-1 text-[11px] text-white/40">
+                                  <p><span className="text-white/60">Chaîne YouTube :</span> {item.channelTitle || "non enregistrée"}</p>
+                                  <p>
+                                    <span className="text-white/60">Source :</span> {item.metadataSource || "—"}
+                                    {" • "}
+                                    <span className="text-white/60">Confiance :</span> {Math.round(Number(item.metadataConfidence || 0))} %
+                                  </p>
+                                  {item.rawTitle && item.rawTitle !== item.title ? (
+                                    <p className="truncate"><span className="text-white/60">Titre YouTube :</span> {item.rawTitle}</p>
+                                  ) : null}
+                                  <p className="text-amber-100/60">{item.explanation}</p>
+                                  <p className="text-white/25">
+                                    Recherches {number.format(item.searchCount || 0)} • Ajouts {number.format(item.addedCount || 0)} • Lectures {number.format(item.playedCount || 0)} • Votes {number.format(item.voteCount || 0)}
+                                  </p>
+                                </div>
+                              </article>
+                            ))}
+
+                            {!visibleCleanupReviewItems.length ? (
+                              <p className="rounded-xl border border-white/8 bg-black/20 p-3 text-xs text-white/35">
+                                Aucune entrée dans ce filtre.
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      </>
                     ) : null}
 
                     <button
