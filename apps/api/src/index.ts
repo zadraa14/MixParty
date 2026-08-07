@@ -259,7 +259,7 @@ type PartyIntelligenceEvent = {
   playback?: {
     elapsedSeconds: number;
     completionRatio?: number;
-    reason?: "ended" | "dj_skip" | "song_change";
+    reason?: "ended" | "dj_skip" | "dj_previous" | "song_change";
   };
   context?: Record<string, string | number | boolean | null>;
 };
@@ -325,7 +325,7 @@ function songEventSnapshot(party: Party, song: Song) {
   };
 }
 
-function finalizePlayback(party: Party, reason: "ended" | "dj_skip" | "song_change") {
+function finalizePlayback(party: Party, reason: "ended" | "dj_skip" | "dj_previous" | "song_change") {
   const telemetry = playbackTelemetry.get(party.code);
   const song = party.currentSong;
   if (!telemetry || !song || telemetry.finalized || telemetry.videoId !== song.videoId) return;
