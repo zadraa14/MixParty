@@ -216,6 +216,29 @@ type KaraokeAuditData = {
 };
 
 
+
+type KaraokeReadySong = {
+  videoId: string;
+  title: string;
+  rawTitle: string;
+  artistName: string;
+  thumbnail: string;
+  durationSeconds: number;
+  lrclibId: number | null;
+  checkedAt: number;
+  matchedTrackName: string;
+  matchedArtistName: string;
+  matchedAlbumName: string;
+};
+
+type KaraokeReadySongsResponse = {
+  totalReady: number;
+  matched: number;
+  returned: number;
+  query: string;
+  items: KaraokeReadySong[];
+};
+
 type KaraokeLyricsAuditData = {
   generatedAt: number;
   updatedAt: number;
@@ -311,6 +334,9 @@ export default function MusicBrainAdminPage() {
   const [karaokeLyricsLoading, setKaraokeLyricsLoading] = useState(false);
   const [karaokeLyricsMessage, setKaraokeLyricsMessage] = useState("");
   const [karaokeLyricsError, setKaraokeLyricsError] = useState("");
+  const [karaokeReadySongs, setKaraokeReadySongs] = useState<KaraokeReadySongsResponse | null>(null);
+  const [karaokeReadySearch, setKaraokeReadySearch] = useState("");
+  const [karaokeReadyLoading, setKaraokeReadyLoading] = useState(false);
   const [academyTestLoading, setAcademyTestLoading] = useState(false);
   const [academyTestMessage, setAcademyTestMessage] = useState("");
   const [academyTestError, setAcademyTestError] = useState("");
@@ -382,6 +408,34 @@ export default function MusicBrainAdminPage() {
     }
   }
 
+  async function loadKaraokeReadySongs(search = karaokeReadySearch) {
+    setKaraokeReadyLoading(true);
+
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", "500");
+      if (search.trim()) params.set("q", search.trim());
+
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/karaoke-lyrics-audit/ready?${params.toString()}`,
+        { cache: "no-store" }
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Liste Karaoké indisponible");
+      }
+
+      setKaraokeReadySongs(data);
+    } catch (err) {
+      setKaraokeLyricsError(
+        err instanceof Error ? err.message : "Liste Karaoké indisponible"
+      );
+    } finally {
+      setKaraokeReadyLoading(false);
+    }
+  }
+
   async function loadKaraokeLyricsAudit() {
     try {
       const response = await fetch(`${getApiBaseUrl()}/partybrain/karaoke-lyrics-audit`, {
@@ -448,6 +502,15 @@ export default function MusicBrainAdminPage() {
       setKaraokeLyricsLoading(false);
     }
   }
+
+
+  useEffect(() => {
+    if (!karaokeLyricsAudit?.job?.running) {
+      void loadKaraokeReadySongs(karaokeReadySearch);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [karaokeLyricsAudit?.synced, karaokeLyricsAudit?.job?.running]);
+
 
   async function loadKaraokeAudit() {
     try {
@@ -575,6 +638,7 @@ export default function MusicBrainAdminPage() {
     void loadAttendanceHistory();
     void loadKaraokeAudit();
     void loadKaraokeLyricsAudit();
+    void loadKaraokeReadySongs("");
 
     const liveTimer = window.setInterval(() => {
       void loadLiveUsers();
@@ -1851,6 +1915,123 @@ export default function MusicBrainAdminPage() {
               <p className="mt-4 text-xs leading-5 text-white/35">
                 {karaokeLyricsAudit?.note || "Chargement de l’audit LRCLIB…"}
               </p>
+            </section>
+
+
+            <section className="mt-7 rounded-[28px] border border-emerald-400/20 bg-gradient-to-br from-emerald-500/[0.08] via-cyan-500/[0.05] to-transparent p-5 backdrop-blur-xl sm:p-7">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[.22em] text-emerald-300">
+                    Morceaux prêts pour le karaoké
+                  </p>
+                  <h2 className="mt-1 text-2xl font-black">
+                    {number.format(karaokeReadySongs?.totalReady ?? karaokeLyricsAudit?.synced ?? 0)} morceaux synchronisés
+                  </h2>
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-white/50">
+                    Recherche un artiste ou un titre ici avant de tester le mode Karaoké. Cette liste contient uniquement les morceaux déjà confirmés avec des paroles synchronisées LRCLIB.
+                  </p>
+                </div>
+
+                <form
+                  className="flex w-full max-w-xl gap-2"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void loadKaraokeReadySongs(karaokeReadySearch);
+                  }}
+                >
+                  <input
+                    value={karaokeReadySearch}
+                    onChange={(event) => setKaraokeReadySearch(event.target.value)}
+                    placeholder="Ex : Soprano, GIMS, Vianney…"
+                    className="min-w-0 flex-1 rounded-2xl border border-white/10 bg-black/30 px-4 py-3 text-sm font-bold text-white outline-none placeholder:text-white/25 focus:border-emerald-300/30"
+                  />
+                  <button
+                    type="submit"
+                    disabled={karaokeReadyLoading}
+                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl border border-emerald-300/20 bg-emerald-500/12 px-4 py-3 text-sm font-black text-emerald-100 disabled:opacity-45"
+                  >
+                    <Search className="h-4 w-4" />
+                    {karaokeReadyLoading ? "Recherche…" : "Rechercher"}
+                  </button>
+                </form>
+              </div>
+
+              <div className="mt-5 flex items-center justify-between gap-4 text-xs font-bold text-white/35">
+                <span>
+                  {karaokeReadySearch.trim()
+                    ? `${number.format(karaokeReadySongs?.matched ?? 0)} résultat(s) correspondant(s)`
+                    : `${number.format(karaokeReadySongs?.returned ?? 0)} affiché(s)`}
+                </span>
+                {karaokeReadySearch.trim() ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setKaraokeReadySearch("");
+                      void loadKaraokeReadySongs("");
+                    }}
+                    className="text-emerald-200/70 hover:text-emerald-100"
+                  >
+                    Effacer la recherche
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="mt-3 max-h-[560px] space-y-2 overflow-y-auto pr-1">
+                {(karaokeReadySongs?.items || []).map((song) => (
+                  <article
+                    key={song.videoId}
+                    className="flex items-center gap-3 rounded-2xl border border-white/8 bg-black/20 p-3"
+                  >
+                    <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/8 bg-white/[0.03]">
+                      {song.thumbnail ? (
+                        <img
+                          src={song.thumbnail}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="grid h-full w-full place-items-center">
+                          <Mic2 className="h-5 w-5 text-white/25" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-black text-white">
+                        {song.title}
+                      </p>
+                      <p className="mt-1 truncate text-xs font-bold text-white/45">
+                        {song.artistName}
+                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-bold text-white/30">
+                        <span className="rounded-full border border-emerald-300/15 bg-emerald-500/10 px-2 py-0.5 text-emerald-200/80">
+                          ✓ Synchronisé
+                        </span>
+                        {song.durationSeconds > 0 ? (
+                          <span>
+                            {Math.floor(song.durationSeconds / 60)}:{String(Math.floor(song.durationSeconds % 60)).padStart(2, "0")}
+                          </span>
+                        ) : null}
+                        {song.lrclibId ? <span>LRCLIB #{song.lrclibId}</span> : null}
+                      </div>
+                    </div>
+                  </article>
+                ))}
+
+                {!karaokeReadyLoading && !(karaokeReadySongs?.items || []).length ? (
+                  <div className="rounded-2xl border border-white/8 bg-black/20 p-6 text-center text-sm text-white/40">
+                    {karaokeReadySearch.trim()
+                      ? "Aucun morceau synchronisé ne correspond à cette recherche."
+                      : "Aucun morceau synchronisé enregistré pour le moment."}
+                  </div>
+                ) : null}
+              </div>
+
+              {(karaokeReadySongs?.matched ?? 0) > (karaokeReadySongs?.returned ?? 0) ? (
+                <p className="mt-3 text-xs text-white/30">
+                  La liste est limitée à {number.format(karaokeReadySongs?.returned ?? 0)} résultats affichés. Utilise la recherche pour retrouver un titre précis.
+                </p>
+              ) : null}
             </section>
 
             <div className="mt-7 grid gap-7 xl:grid-cols-[.85fr_1.15fr]">

@@ -5219,6 +5219,269 @@ async function runKaraokeLyricsAuditBatch(limit: number) {
   }
 }
 
+
+type KaraokeTimedLine = {
+  time: number;
+  text: string;
+};
+
+type KaraokeLyricsRuntimeResponse = {
+  videoId: string;
+  available: boolean;
+  kind: KaraokeLyricsAuditKind | "unchecked" | "error";
+  lrclibId?: number;
+  trackName?: string;
+  artistName?: string;
+  albumName?: string;
+  duration?: number;
+  lines?: KaraokeTimedLine[];
+  plainLyrics?: string;
+  message?: string;
+};
+
+const karaokeLyricsRuntimeCache = new Map<
+  string,
+  { expiresAt: number; payload: KaraokeLyricsRuntimeResponse }
+>();
+
+function parseLrclibSyncedLyrics(raw: unknown): KaraokeTimedLine[] {
+  const input = String(raw || "").replace(/\r/g, "");
+  if (!input.trim()) return [];
+
+  const lines: KaraokeTimedLine[] = [];
+
+  for (const row of input.split("\n")) {
+    const match = row.match(/^\[(\d{1,3}):(\d{2}(?:\.\d{1,3})?)\]\s?(.*)$/);
+    if (!match) continue;
+
+    const minutes = Number(match[1]);
+    const seconds = Number(match[2]);
+    if (!Number.isFinite(minutes) || !Number.isFinite(seconds)) continue;
+
+    const text = String(match[3] || "").trim();
+    const time = minutes * 60 + seconds;
+
+    lines.push({ time, text });
+  }
+
+  return lines
+    .filter((line) => Number.isFinite(line.time))
+    .sort((a, b) => a.time - b.time);
+}
+
+async function fetchLrclibLyricsById(id: number) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 12_000);
+
+  try {
+    const response = await fetch(`https://lrclib.net/api/get/${encodeURIComponent(String(id))}`, {
+      headers: {
+        "User-Agent": "MixParty/1.0 (https://mixpartyapp.fr)",
+        "Lrclib-Client": "MixParty/1.0 (https://mixpartyapp.fr)",
+      },
+      signal: controller.signal,
+    });
+
+    if (response.status === 429) {
+      const retryAfter = Math.max(1, Number(response.headers.get("retry-after") || 5));
+      const error: any = new Error("LRCLIB_RATE_LIMIT");
+      error.status = 429;
+      error.retryAfter = retryAfter;
+      throw error;
+    }
+
+    if (!response.ok) {
+      const error: any = new Error(`LRCLIB HTTP ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+app.get("/partybrain/karaoke/lyrics/:videoId", async (req, res) => {
+  const videoId = String(req.params.videoId || "").trim();
+
+  if (!videoId) {
+    return res.status(400).json({
+      available: false,
+      kind: "error",
+      message: "videoId manquant.",
+    });
+  }
+
+  const cached = karaokeLyricsRuntimeCache.get(videoId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return res.json(cached.payload);
+  }
+
+  const audit = karaokeLyricsAudit.entries[videoId];
+
+  if (!audit) {
+    const payload: KaraokeLyricsRuntimeResponse = {
+      videoId,
+      available: false,
+      kind: "unchecked",
+      message: "Ce morceau n'a pas encore été vérifié par l'audit LRCLIB.",
+    };
+
+    karaokeLyricsRuntimeCache.set(videoId, {
+      expiresAt: Date.now() + 60_000,
+      payload,
+    });
+
+    return res.json(payload);
+  }
+
+  if (audit.kind !== "synced" || !audit.lrclibId) {
+    const payload: KaraokeLyricsRuntimeResponse = {
+      videoId,
+      available: false,
+      kind: audit.kind,
+      lrclibId: audit.lrclibId,
+      trackName: audit.matchedTrackName,
+      artistName: audit.matchedArtistName,
+      albumName: audit.matchedAlbumName,
+      duration: audit.matchedDuration,
+      message:
+        audit.kind === "plain"
+          ? "Paroles disponibles, mais pas synchronisées."
+          : audit.kind === "instrumental"
+            ? "Morceau indiqué comme instrumental."
+            : "Aucune parole synchronisée trouvée.",
+    };
+
+    karaokeLyricsRuntimeCache.set(videoId, {
+      expiresAt: Date.now() + 10 * 60_000,
+      payload,
+    });
+
+    return res.json(payload);
+  }
+
+  try {
+    const record = await fetchLrclibLyricsById(audit.lrclibId);
+    const lines = parseLrclibSyncedLyrics(record?.syncedLyrics);
+
+    if (!lines.length) {
+      const payload: KaraokeLyricsRuntimeResponse = {
+        videoId,
+        available: false,
+        kind: String(record?.plainLyrics || "").trim() ? "plain" : "not_found",
+        lrclibId: audit.lrclibId,
+        trackName: record?.trackName || audit.matchedTrackName,
+        artistName: record?.artistName || audit.matchedArtistName,
+        albumName: record?.albumName || audit.matchedAlbumName,
+        duration: Number(record?.duration || audit.matchedDuration || 0) || undefined,
+        plainLyrics: String(record?.plainLyrics || "").trim() || undefined,
+        message: "LRCLIB ne renvoie plus de paroles synchronisées pour ce morceau.",
+      };
+
+      karaokeLyricsRuntimeCache.set(videoId, {
+        expiresAt: Date.now() + 5 * 60_000,
+        payload,
+      });
+
+      return res.json(payload);
+    }
+
+    const payload: KaraokeLyricsRuntimeResponse = {
+      videoId,
+      available: true,
+      kind: "synced",
+      lrclibId: audit.lrclibId,
+      trackName: record?.trackName || audit.matchedTrackName,
+      artistName: record?.artistName || audit.matchedArtistName,
+      albumName: record?.albumName || audit.matchedAlbumName,
+      duration: Number(record?.duration || audit.matchedDuration || 0) || undefined,
+      lines,
+    };
+
+    // Un morceau déjà résolu peut rester en cache 6 h sur l'API.
+    karaokeLyricsRuntimeCache.set(videoId, {
+      expiresAt: Date.now() + 6 * 60 * 60_000,
+      payload,
+    });
+
+    return res.json(payload);
+  } catch (error: any) {
+    const retryAfter = Math.max(0, Number(error?.retryAfter || 0));
+
+    return res.status(Number(error?.status || 0) === 429 ? 429 : 502).json({
+      videoId,
+      available: false,
+      kind: "error",
+      message:
+        retryAfter > 0
+          ? `LRCLIB demande une pause de ${retryAfter}s.`
+          : "Impossible de charger les paroles LRCLIB pour le moment.",
+      retryAfter,
+    });
+  }
+});
+
+
+
+app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
+  const q = normalizeMusicQuery(String(req.query?.q || ""));
+  const rawLimit = Number(req.query?.limit || 300);
+  const limit = Math.max(1, Math.min(1000, Number.isFinite(rawLimit) ? rawLimit : 300));
+
+  const items = Object.values(karaokeLyricsAudit.entries)
+    .filter((entry) => entry.kind === "synced")
+    .map((entry) => {
+      const song = musicBrain.songs[entry.videoId];
+      if (!song) return null;
+
+      return {
+        videoId: entry.videoId,
+        title: song.title || song.rawTitle || entry.matchedTrackName || "Titre inconnu",
+        rawTitle: song.rawTitle || song.title || "",
+        artistName: song.artistName || entry.matchedArtistName || "Artiste inconnu",
+        thumbnail: song.thumbnail || "",
+        durationSeconds: Number(song.durationSeconds || entry.matchedDuration || 0),
+        lrclibId: entry.lrclibId || null,
+        checkedAt: entry.checkedAt,
+        matchedTrackName: entry.matchedTrackName || "",
+        matchedArtistName: entry.matchedArtistName || "",
+        matchedAlbumName: entry.matchedAlbumName || "",
+      };
+    })
+    .filter(Boolean)
+    .filter((item: any) => {
+      if (!q) return true;
+      const haystack = normalizeMusicQuery(
+        `${item.title} ${item.rawTitle} ${item.artistName} ${item.matchedTrackName} ${item.matchedArtistName}`
+      );
+      return haystack.includes(q);
+    })
+    .sort((a: any, b: any) => {
+      const artistCompare = String(a.artistName || "").localeCompare(
+        String(b.artistName || ""),
+        "fr",
+        { sensitivity: "base" }
+      );
+      if (artistCompare !== 0) return artistCompare;
+
+      return String(a.title || "").localeCompare(String(b.title || ""), "fr", {
+        sensitivity: "base",
+      });
+    });
+
+  return res.json({
+    totalReady: Object.values(karaokeLyricsAudit.entries).filter(
+      (entry) => entry.kind === "synced" && Boolean(musicBrain.songs[entry.videoId])
+    ).length,
+    matched: items.length,
+    returned: Math.min(items.length, limit),
+    query: String(req.query?.q || ""),
+    items: items.slice(0, limit),
+  });
+});
+
 app.get("/partybrain/karaoke-lyrics-audit", (_req, res) => {
   return res.json({
     ...karaokeLyricsAuditSummary(),
