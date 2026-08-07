@@ -21,6 +21,7 @@ import {
   Gauge,
   ListMusic,
   MessageCircle,
+  Mic2,
   Music4,
   Pause,
   Play,
@@ -148,6 +149,28 @@ function defaultAvatarForParticipant(participantId: string) {
   return DEFAULT_AVATARS[hash % DEFAULT_AVATARS.length];
 }
 
+
+type KaraokeCatalogSong = {
+  videoId: string;
+  title: string;
+  rawTitle?: string;
+  artistName: string;
+  thumbnail?: string;
+  durationSeconds?: number;
+  lrclibId?: number | null;
+  matchedTrackName?: string;
+  matchedArtistName?: string;
+  matchedAlbumName?: string;
+};
+
+type KaraokeCatalogResponse = {
+  totalReady: number;
+  matched: number;
+  returned: number;
+  query: string;
+  items: KaraokeCatalogSong[];
+};
+
 type Party = {
   code: string;
   currentSong: Song | null;
@@ -234,6 +257,11 @@ export default function PartyPage() {
   const [shareUrl, setShareUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [karaokeMode, setKaraokeMode] = useState(false);
+  const [karaokeCatalog, setKaraokeCatalog] = useState<KaraokeCatalogResponse | null>(null);
+  const [karaokeCatalogSearch, setKaraokeCatalogSearch] = useState("");
+  const [karaokeCatalogLoading, setKaraokeCatalogLoading] = useState(false);
+  const [karaokeCatalogError, setKaraokeCatalogError] = useState("");
   const [searchInsight, setSearchInsight] = useState<null | {
     sampleSize: number;
     message: string;
@@ -645,6 +673,64 @@ export default function PartyPage() {
     const file = event.target.files?.[0] || null;
     void handleProfilePhotoUpload(file);
     event.target.value = "";
+  }
+
+  async function loadKaraokeCatalog(query = karaokeCatalogSearch) {
+    setKaraokeCatalogLoading(true);
+    setKaraokeCatalogError("");
+
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", "500");
+      if (query.trim()) params.set("q", query.trim());
+
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/karaoke-lyrics-audit/ready?${params.toString()}`,
+        { cache: "no-store" }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Catalogue Karaoké indisponible");
+      }
+
+      setKaraokeCatalog(data);
+    } catch (error) {
+      setKaraokeCatalogError(
+        error instanceof Error ? error.message : "Catalogue Karaoké indisponible"
+      );
+    } finally {
+      setKaraokeCatalogLoading(false);
+    }
+  }
+
+  function activateKaraokeMode() {
+    setKaraokeMode(true);
+    setResults([]);
+    setSearchInsight(null);
+
+    if (!karaokeCatalog) {
+      void loadKaraokeCatalog("");
+    }
+  }
+
+  function deactivateKaraokeMode() {
+    setKaraokeMode(false);
+    setKaraokeCatalogSearch("");
+  }
+
+  function addKaraokeCatalogSong(song: KaraokeCatalogSong) {
+    void addYoutubeSong({
+      id: song.videoId,
+      title: song.title,
+      thumbnail: song.thumbnail || MIXPARTY_DEFAULT_COVER,
+      durationSeconds: song.durationSeconds,
+      artistName: song.artistName,
+      albumName: song.matchedAlbumName || undefined,
+      sourceQuery: "catalogue karaoké",
+      suggestionPool: [],
+    });
   }
 
   async function searchYoutube() {
@@ -1782,8 +1868,8 @@ export default function PartyPage() {
                 <div className="v53-player-empty"><div><Music4 className="h-7 w-7" /></div><h2>Aucun morceau en lecture</h2><p>Ajoute des musiques à la file puis lance le DJ.</p><button onClick={nextSong} className="party-action party-action--purple group mt-5 rounded-2xl px-6 py-3"><span className="party-action__shine" aria-hidden="true" /><span className="party-action__content flex items-center justify-center gap-2"><Play className="h-4 w-4 fill-current" />Lancer le DJ</span></button></div>
               )}
 
-              <div className="relative z-20 mt-6 clear-both border-t border-white/[0.07] pt-5 md:hidden">
-                <div className="mb-4 flex flex-col items-stretch gap-3 min-[380px]:flex-row min-[380px]:items-end min-[380px]:justify-between">
+              <div className="mt-4 border-t border-white/[0.07] pt-4 md:hidden">
+                <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <p className="text-[10px] font-black uppercase tracking-[0.18em] text-purple-300">
                       À suivre
@@ -1793,20 +1879,20 @@ export default function PartyPage() {
                   <button
                     type="button"
                     onClick={() => switchMobileTab("queue")}
-                    className="relative z-10 self-end rounded-full border border-purple-400/15 bg-purple-500/10 px-3 py-2 text-[11px] font-black text-purple-200 min-[380px]:self-auto"
+                    className="rounded-full border border-purple-400/15 bg-purple-500/10 px-3 py-1.5 text-[11px] font-black text-purple-200"
                   >
                     Voir la file
                   </button>
                 </div>
 
                 {queue.length > 0 ? (
-                  <div className="relative z-10 grid gap-3">
+                  <div className="space-y-2">
                     {queue.slice(0, 4).map((song, index) => (
                       <button
                         key={`playback-next-${song.videoId}-${song.addedAt}`}
                         type="button"
                         onClick={() => switchMobileTab("queue")}
-                        className="relative flex min-h-[72px] w-full items-center gap-3 overflow-hidden rounded-2xl border border-white/[0.07] bg-black/20 p-2.5 text-left"
+                        className="flex w-full items-center gap-3 rounded-2xl border border-white/[0.07] bg-black/20 p-2.5 text-left"
                       >
                         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-purple-400/15 bg-purple-500/10 text-xs font-black text-purple-200">
                           {index + 1}
@@ -2056,104 +2142,274 @@ export default function PartyPage() {
 
             <section className={`${activeMobileTab === "add" ? "block" : "hidden"} premium-glass-card rounded-[24px] border border-white/10 bg-white/[0.045] p-3 backdrop-blur-xl sm:p-6 md:block md:rounded-[30px]`}>
 
-              <div className="mb-5">
+              <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <p className={`text-xs font-bold uppercase tracking-[0.2em] ${karaokeMode ? "text-fuchsia-300" : "text-pink-400"}`}>
+                    {karaokeMode ? "Mode Karaoké" : "Ajouter un morceau"}
+                  </p>
 
-                <p className="text-xs font-bold uppercase tracking-[0.2em] text-pink-400">
-                  Ajouter un morceau
-                </p>
+                  <h2 className="mt-1 text-2xl font-black">
+                    {karaokeMode ? "Catalogue Karaoké" : "Recherche YouTube"}
+                  </h2>
 
-                <h2 className="mt-1 text-2xl font-black">
-                  Recherche YouTube
-                </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-white/40">
+                    {karaokeMode
+                      ? "Seuls les morceaux déjà validés avec des paroles synchronisées LRCLIB sont proposés."
+                      : "Recherche libre dans le catalogue musical MixParty."}
+                  </p>
+                </div>
 
-              </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={karaokeMode ? deactivateKaraokeMode : activateKaraokeMode}
+                    className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-xs font-black transition ${
+                      karaokeMode
+                        ? "border-white/10 bg-white/[0.06] text-white/70 hover:bg-white/[0.10]"
+                        : "border-fuchsia-300/25 bg-gradient-to-r from-fuchsia-500/15 to-purple-500/15 text-fuchsia-100 shadow-[0_0_32px_rgba(217,70,239,.10)] hover:border-fuchsia-300/40"
+                    }`}
+                  >
+                    <Mic2 className="h-4 w-4" />
+                    {karaokeMode ? "Revenir au mode normal" : "Karaoké"}
+                  </button>
 
-              <div className="flex flex-col gap-3 sm:flex-row">
-
-                <div className="relative flex-1">
-
-                  <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
-
-                  <input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        searchYoutube();
+                  {karaokeMode ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        window.open(
+                          `${getAppBaseUrl()}/party/${encodeURIComponent(code)}/karaoke`,
+                          "_blank",
+                          "noopener,noreferrer"
+                        )
                       }
-                    }}
-                    placeholder="Titre, artiste..."
-                    className="w-full rounded-2xl border border-white/10 bg-black/25 py-4 pl-12 pr-4 outline-none transition placeholder:text-white/25 focus:border-purple-400/50 focus:bg-black/35"
-                  />
-
+                      className="inline-flex items-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-500/10 px-4 py-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-500/15"
+                    >
+                      <Expand className="h-4 w-4" />
+                      Ouvrir l’écran Karaoké
+                    </button>
+                  ) : null}
                 </div>
-
-                <button
-                  onClick={searchYoutube}
-                  className="party-action party-action--purple group rounded-2xl px-7 py-4"
-                >
-                  <span className="party-action__shine" aria-hidden="true" />
-                  <span className="party-action__content flex items-center justify-center gap-2">
-                    <span className={`party-action__icon ${searching ? "party-action__icon--spin" : ""}`}><Search className="h-4 w-4" /></span>
-                    {searching ? "Recherche…" : "Rechercher"}
-                  </span>
-                </button>
-
               </div>
 
-              {searchInsight && (
-                <div className="mt-5 rounded-[22px] border border-cyan-300/15 bg-gradient-to-br from-cyan-400/[0.08] via-purple-500/[0.06] to-transparent p-4 shadow-[0_18px_55px_rgba(34,211,238,0.08)]">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200">
-                      <Bot className="h-5 w-5" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">PartyBrain Intelligence</p>
-                      <p className="mt-1 text-sm font-bold leading-6 text-white/85">💡 {searchInsight.message}</p>
-                      {searchInsight.hourMessage && <p className="mt-1 text-xs leading-5 text-white/45">🕒 {searchInsight.hourMessage}</p>}
-                      <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-white/25">Basé sur {searchInsight.sampleSize} ajout{searchInsight.sampleSize > 1 ? "s" : ""} observé{searchInsight.sampleSize > 1 ? "s" : ""}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {results.length > 0 && (
-                <div className="mt-6 grid gap-3 md:grid-cols-2">
-
-                  {results.map((video) => (
-                    <div
-                      key={video.id}
-                      className="group flex gap-3 rounded-[22px] border border-white/[0.07] bg-black/20 p-3 transition hover:border-purple-400/25 hover:bg-white/[0.045]"
-                    >
-
-                      <img
-                        src={video.thumbnail}
-                        alt={video.title}
-                        className="h-24 w-32 shrink-0 rounded-2xl object-cover"
-                      />
-
-                      <div className="flex min-w-0 flex-1 flex-col justify-between py-1">
-
-                        <p className="line-clamp-2 text-sm font-black leading-snug">
-                          {video.title}
-                        </p>
-
-                        <button
-                          onClick={() => addYoutubeSong(video)}
-                          className="mt-3 w-fit rounded-xl bg-white/[0.08] px-4 py-2 text-xs font-black transition group-hover:bg-gradient-to-r group-hover:from-purple-600 group-hover:to-pink-500"
-                        >
-                          <span className="flex items-center gap-1.5">
-                            <Plus className="h-3.5 w-3.5" />
-                            {addingVideoId === video.id ? "Ajout…" : "Ajouter"}
-                          </span>
-                        </button>
-
+              {karaokeMode ? (
+                <>
+                  <div className="rounded-[22px] border border-fuchsia-300/15 bg-gradient-to-br from-fuchsia-500/[0.08] via-purple-500/[0.05] to-cyan-500/[0.04] p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                      <div className="relative flex-1">
+                        <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
+                        <input
+                          value={karaokeCatalogSearch}
+                          onChange={(e) => setKaraokeCatalogSearch(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              void loadKaraokeCatalog(karaokeCatalogSearch);
+                            }
+                          }}
+                          placeholder="Filtrer le catalogue : artiste, titre..."
+                          className="w-full rounded-2xl border border-white/10 bg-black/25 py-4 pl-12 pr-4 outline-none transition placeholder:text-white/25 focus:border-fuchsia-400/50 focus:bg-black/35"
+                        />
                       </div>
 
+                      <button
+                        type="button"
+                        onClick={() => void loadKaraokeCatalog(karaokeCatalogSearch)}
+                        disabled={karaokeCatalogLoading}
+                        className="party-action party-action--purple group rounded-2xl px-7 py-4 disabled:opacity-50"
+                      >
+                        <span className="party-action__shine" aria-hidden="true" />
+                        <span className="party-action__content flex items-center justify-center gap-2">
+                          <Search className={`h-4 w-4 ${karaokeCatalogLoading ? "animate-spin" : ""}`} />
+                          {karaokeCatalogLoading ? "Chargement…" : "Filtrer"}
+                        </span>
+                      </button>
                     </div>
-                  ))}
 
-                </div>
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
+                      <span className="text-fuchsia-100/70">
+                        {karaokeCatalog
+                          ? `${karaokeCatalog.totalReady} morceau${karaokeCatalog.totalReady > 1 ? "x" : ""} prêts pour le karaoké`
+                          : "Chargement du catalogue validé…"}
+                      </span>
+
+                      {karaokeCatalogSearch.trim() ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setKaraokeCatalogSearch("");
+                            void loadKaraokeCatalog("");
+                          }}
+                          className="text-white/40 transition hover:text-white/75"
+                        >
+                          Afficher tout le catalogue
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {karaokeCatalogError ? (
+                    <div className="mt-4 rounded-2xl border border-red-300/15 bg-red-500/[0.07] p-4 text-sm font-bold text-red-100">
+                      {karaokeCatalogError}
+                    </div>
+                  ) : null}
+
+                  {karaokeCatalogLoading && !karaokeCatalog ? (
+                    <div className="mt-5 grid gap-3 md:grid-cols-2">
+                      {[0, 1, 2, 3, 4, 5].map((item) => (
+                        <div
+                          key={item}
+                          className="h-28 animate-pulse rounded-[22px] border border-white/[0.06] bg-white/[0.035]"
+                        />
+                      ))}
+                    </div>
+                  ) : (karaokeCatalog?.items || []).length > 0 ? (
+                    <div className="mt-6 grid max-h-[720px] gap-3 overflow-y-auto pr-1 md:grid-cols-2">
+                      {(karaokeCatalog?.items || []).map((song) => (
+                        <article
+                          key={song.videoId}
+                          className="group flex gap-3 rounded-[22px] border border-fuchsia-300/[0.10] bg-black/20 p-3 transition hover:border-fuchsia-300/30 hover:bg-fuchsia-500/[0.05]"
+                        >
+                          <div className="relative h-24 w-32 shrink-0 overflow-hidden rounded-2xl bg-white/[0.04]">
+                            <img
+                              src={song.thumbnail || MIXPARTY_DEFAULT_COVER}
+                              alt={song.title}
+                              className="h-full w-full object-cover"
+                            />
+                            <div className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full border border-emerald-300/20 bg-emerald-950/85 px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] text-emerald-200">
+                              <Mic2 className="h-3 w-3" />
+                              Synchro
+                            </div>
+                          </div>
+
+                          <div className="flex min-w-0 flex-1 flex-col justify-between py-1">
+                            <div>
+                              <p className="line-clamp-2 text-sm font-black leading-snug">
+                                {song.title}
+                              </p>
+                              <p className="mt-1 truncate text-xs font-bold text-fuchsia-200/60">
+                                {song.artistName}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => addKaraokeCatalogSong(song)}
+                              disabled={addingVideoId === song.videoId}
+                              className="mt-3 w-fit rounded-xl bg-gradient-to-r from-fuchsia-600/80 to-purple-600/80 px-4 py-2 text-xs font-black text-white transition hover:from-fuchsia-500 hover:to-purple-500 disabled:opacity-50"
+                            >
+                              <span className="flex items-center gap-1.5">
+                                <Plus className="h-3.5 w-3.5" />
+                                {addingVideoId === song.videoId ? "Ajout…" : "Ajouter au karaoké"}
+                              </span>
+                            </button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-5 rounded-[22px] border border-dashed border-fuchsia-300/15 bg-black/20 px-5 py-10 text-center">
+                      <Mic2 className="mx-auto h-7 w-7 text-fuchsia-300/60" />
+                      <p className="mt-3 font-black">
+                        {karaokeCatalogSearch.trim()
+                          ? "Aucun morceau Karaoké ne correspond à ce filtre."
+                          : "Aucun morceau Karaoké validé pour le moment."}
+                      </p>
+                      <p className="mt-1 text-sm text-white/35">
+                        Le catalogue se remplit automatiquement grâce aux audits LRCLIB.
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+
+                    <div className="relative flex-1">
+
+                      <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
+
+                      <input
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            searchYoutube();
+                          }
+                        }}
+                        placeholder="Titre, artiste..."
+                        className="w-full rounded-2xl border border-white/10 bg-black/25 py-4 pl-12 pr-4 outline-none transition placeholder:text-white/25 focus:border-purple-400/50 focus:bg-black/35"
+                      />
+
+                    </div>
+
+                    <button
+                      onClick={searchYoutube}
+                      className="party-action party-action--purple group rounded-2xl px-7 py-4"
+                    >
+                      <span className="party-action__shine" aria-hidden="true" />
+                      <span className="party-action__content flex items-center justify-center gap-2">
+                        <span className={`party-action__icon ${searching ? "party-action__icon--spin" : ""}`}><Search className="h-4 w-4" /></span>
+                        {searching ? "Recherche…" : "Rechercher"}
+                      </span>
+                    </button>
+
+                  </div>
+
+                  {searchInsight && (
+                    <div className="mt-5 rounded-[22px] border border-cyan-300/15 bg-gradient-to-br from-cyan-400/[0.08] via-purple-500/[0.06] to-transparent p-4 shadow-[0_18px_55px_rgba(34,211,238,0.08)]">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10 text-cyan-200">
+                          <Bot className="h-5 w-5" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-300">PartyBrain Intelligence</p>
+                          <p className="mt-1 text-sm font-bold leading-6 text-white/85">💡 {searchInsight.message}</p>
+                          {searchInsight.hourMessage && <p className="mt-1 text-xs leading-5 text-white/45">🕒 {searchInsight.hourMessage}</p>}
+                          <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-white/25">Basé sur {searchInsight.sampleSize} ajout{searchInsight.sampleSize > 1 ? "s" : ""} observé{searchInsight.sampleSize > 1 ? "s" : ""}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {results.length > 0 && (
+                    <div className="mt-6 grid gap-3 md:grid-cols-2">
+
+                      {results.map((video) => (
+                        <div
+                          key={video.id}
+                          className="group flex gap-3 rounded-[22px] border border-white/[0.07] bg-black/20 p-3 transition hover:border-purple-400/25 hover:bg-white/[0.045]"
+                        >
+
+                          <img
+                            src={video.thumbnail}
+                            alt={video.title}
+                            className="h-24 w-32 shrink-0 rounded-2xl object-cover"
+                          />
+
+                          <div className="flex min-w-0 flex-1 flex-col justify-between py-1">
+
+                            <p className="line-clamp-2 text-sm font-black leading-snug">
+                              {video.title}
+                            </p>
+
+                            <button
+                              onClick={() => addYoutubeSong(video)}
+                              className="mt-3 w-fit rounded-xl bg-white/[0.08] px-4 py-2 text-xs font-black transition group-hover:bg-gradient-to-r group-hover:from-purple-600 group-hover:to-pink-500"
+                            >
+                              <span className="flex items-center gap-1.5">
+                                <Plus className="h-3.5 w-3.5" />
+                                {addingVideoId === video.id ? "Ajout…" : "Ajouter"}
+                              </span>
+                            </button>
+
+                          </div>
+
+                        </div>
+                      ))}
+
+                    </div>
+                  )}
+                </>
               )}
 
             </section>
