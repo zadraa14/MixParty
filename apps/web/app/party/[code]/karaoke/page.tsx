@@ -249,33 +249,58 @@ export default function KaraokePartyPage() {
     return { previous, current, next, afterNext, progress };
   }, [lyrics, playbackTime]);
 
+
+  const countdown = useMemo(() => {
+    const lines = lyrics?.available ? lyrics.lines || [] : [];
+    if (!lines.length) return null;
+
+    const firstMeaningful = lines.find((line) => String(line.text || "").trim());
+    if (!firstMeaningful) return null;
+
+    const remaining = firstMeaningful.time - playbackTime;
+    if (remaining <= 0 || remaining > 6) return null;
+
+    return Math.max(1, Math.ceil(remaining));
+  }, [lyrics, playbackTime]);
+
+  const hasStartedLyrics = Boolean(
+    lyrics?.available &&
+      (lyrics.lines || []).some(
+        (line) => String(line.text || "").trim() && line.time <= playbackTime + 0.08
+      )
+  );
+
   const backdrop = songArtwork(currentSong);
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#070711] text-white">
+    <main className="relative min-h-screen overflow-hidden bg-[#05050d] text-white">
       <div
-        className="absolute inset-0 scale-110 bg-cover bg-center opacity-25 blur-[70px]"
+        className="absolute inset-[-8%] scale-110 bg-cover bg-center opacity-30 blur-[95px] transition-all duration-1000"
         style={{ backgroundImage: `url(${backdrop})` }}
       />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(168,85,247,.18),transparent_42%),linear-gradient(180deg,rgba(7,7,17,.55),rgba(7,7,17,.96))]" />
-      <div className="absolute inset-0 opacity-[0.12] [background-image:linear-gradient(rgba(255,255,255,.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.05)_1px,transparent_1px)] [background-size:42px_42px]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(168,85,247,.22),transparent_34%),radial-gradient(circle_at_78%_72%,rgba(249,115,22,.13),transparent_28%),radial-gradient(circle_at_18%_78%,rgba(236,72,153,.14),transparent_30%),linear-gradient(180deg,rgba(5,5,13,.42),rgba(5,5,13,.94))]" />
+      <div className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(255,255,255,.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.05)_1px,transparent_1px)] [background-size:48px_48px]" />
+      <div className="pointer-events-none absolute left-[-12vw] top-[15vh] h-[38vw] w-[38vw] rounded-full bg-fuchsia-500/10 blur-[100px]" />
+      <div className="pointer-events-none absolute bottom-[-16vw] right-[-10vw] h-[42vw] w-[42vw] rounded-full bg-orange-500/10 blur-[110px]" />
 
-      <div className="relative z-10 flex min-h-screen flex-col px-6 py-5 sm:px-10 lg:px-14">
+      <div className="relative z-10 flex min-h-screen flex-col px-5 py-5 sm:px-8 lg:px-12">
         <header className="flex items-center justify-between gap-5">
           <div className="flex items-center gap-3">
-            <div className="grid h-12 w-12 place-items-center rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/15 shadow-[0_0_35px_rgba(217,70,239,.18)]">
-              <Mic2 className="h-6 w-6 text-fuchsia-200" />
+            <div className="grid h-12 w-12 place-items-center rounded-2xl border border-fuchsia-300/20 bg-gradient-to-br from-fuchsia-500/20 via-purple-500/15 to-orange-500/15 shadow-[0_0_45px_rgba(217,70,239,.18)]">
+              <Mic2 className="h-6 w-6 text-fuchsia-100" />
             </div>
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[.28em] text-fuchsia-300">
+              <p className="text-[10px] font-black uppercase tracking-[.30em] text-fuchsia-300">
                 MIXPARTY
               </p>
-              <h1 className="text-lg font-black sm:text-xl">Karaoké Beta</h1>
+              <h1 className="bg-gradient-to-r from-white via-fuchsia-100 to-orange-100 bg-clip-text text-lg font-black text-transparent sm:text-xl">
+                Karaoké
+              </h1>
             </div>
           </div>
 
           <div
-            className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-black ${
+            className={`inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-black backdrop-blur-xl ${
               connected
                 ? "border-emerald-300/15 bg-emerald-500/10 text-emerald-200"
                 : "border-red-300/15 bg-red-500/10 text-red-200"
@@ -286,90 +311,140 @@ export default function KaraokePartyPage() {
           </div>
         </header>
 
-        <section className="mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center py-8">
+        <section className="mx-auto flex w-full max-w-[1500px] flex-1 flex-col justify-center py-5 sm:py-8">
           {!currentSong ? (
-            <div className="mx-auto max-w-2xl text-center">
-              <div className="mx-auto grid h-24 w-24 place-items-center rounded-[30px] border border-white/10 bg-white/[0.05]">
-                <Music4 className="h-10 w-10 text-white/35" />
+            <div className="mx-auto max-w-3xl text-center">
+              <div className="mx-auto grid h-24 w-24 place-items-center rounded-[30px] border border-white/10 bg-white/[0.05] shadow-[0_0_70px_rgba(168,85,247,.12)] backdrop-blur-xl">
+                <Music4 className="h-10 w-10 text-fuchsia-200/50" />
               </div>
-              <h2 className="mt-7 text-4xl font-black sm:text-6xl">En attente d’un morceau</h2>
-              <p className="mt-4 text-base text-white/45 sm:text-lg">
-                Lance une musique depuis la soirée MixParty. Les paroles synchronisées apparaîtront ici automatiquement.
+              <p className="mt-7 text-xs font-black uppercase tracking-[.28em] text-fuchsia-300/70">
+                MixParty Karaoké
+              </p>
+              <h2 className="mt-3 text-4xl font-black sm:text-6xl lg:text-7xl">
+                Prêt pour la prochaine chanson
+              </h2>
+              <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/40 sm:text-lg">
+                Choisis un morceau dans le catalogue Karaoké de la soirée. L’écran se mettra à jour automatiquement.
               </p>
             </div>
           ) : (
             <>
-              <div className="mb-8 flex items-center justify-center gap-5 text-center sm:mb-12">
+              <div className="mb-5 flex items-center justify-center gap-4 text-center sm:mb-8">
                 <img
                   src={backdrop}
                   alt=""
-                  className="h-20 w-20 rounded-2xl object-cover shadow-[0_20px_60px_rgba(0,0,0,.45)] sm:h-24 sm:w-24"
+                  className="h-16 w-16 rounded-2xl object-cover shadow-[0_18px_55px_rgba(0,0,0,.50)] ring-1 ring-white/10 sm:h-20 sm:w-20"
                 />
                 <div className="min-w-0 text-left">
-                  <p className="truncate text-xl font-black sm:text-3xl">
+                  <p className="max-w-[70vw] truncate text-xl font-black sm:text-2xl lg:text-3xl">
                     {currentSong.title}
                   </p>
                   <p className="mt-1 truncate text-sm font-bold text-white/45 sm:text-base">
                     {currentSong.artistName || currentSong.addedBy || "MixParty"}
                   </p>
-                  <div className="mt-2 inline-flex items-center gap-2 text-xs font-bold text-fuchsia-200/70">
+                  <div className="mt-2 inline-flex items-center gap-2 text-[11px] font-black uppercase tracking-[.12em] text-fuchsia-200/70">
                     <Radio className="h-3.5 w-3.5" />
-                    {playback.state === 1 ? "EN DIRECT" : playback.state === 2 ? "PAUSE" : "SYNCHRONISATION"}
-                    <span className="text-white/25">•</span>
+                    {playback.state === 1 ? "En direct" : playback.state === 2 ? "Pause" : "Synchronisation"}
+                    <span className="text-white/20">•</span>
                     <span>{formatTime(playbackTime)}</span>
                   </div>
                 </div>
               </div>
 
-              <div className="mx-auto w-full max-w-6xl">
+              <div className="mx-auto w-full max-w-7xl">
                 {lyricsLoading ? (
-                  <div className="rounded-[36px] border border-fuchsia-300/15 bg-black/25 p-10 text-center backdrop-blur-xl">
-                    <Mic2 className="mx-auto h-10 w-10 animate-pulse text-fuchsia-300" />
+                  <div className="rounded-[40px] border border-fuchsia-300/15 bg-black/25 p-12 text-center shadow-[0_35px_110px_rgba(0,0,0,.35)] backdrop-blur-2xl">
+                    <Mic2 className="mx-auto h-11 w-11 animate-pulse text-fuchsia-300" />
                     <p className="mt-4 text-lg font-black">Chargement des paroles…</p>
                   </div>
                 ) : lyrics?.available ? (
-                  <div className="relative overflow-hidden rounded-[40px] border border-white/10 bg-black/30 px-6 py-10 text-center shadow-[0_35px_100px_rgba(0,0,0,.45)] backdrop-blur-2xl sm:px-12 sm:py-14">
-                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-fuchsia-300/70 to-transparent" />
+                  <div className="relative min-h-[56vh] overflow-hidden rounded-[42px] border border-white/10 bg-black/28 px-5 py-8 text-center shadow-[0_35px_120px_rgba(0,0,0,.48)] backdrop-blur-2xl sm:px-10 sm:py-10 lg:px-14">
+                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-fuchsia-300/80 to-orange-300/70" />
+                    <div className="absolute left-1/2 top-0 h-40 w-3/4 -translate-x-1/2 bg-fuchsia-500/[0.05] blur-[70px]" />
 
-                    <p className="min-h-8 text-base font-bold text-white/25 sm:text-xl">
-                      {lyricState.previous?.text || "\u00A0"}
-                    </p>
+                    {countdown !== null && !hasStartedLyrics ? (
+                      <div className="absolute inset-0 z-20 grid place-items-center bg-black/35 backdrop-blur-md">
+                        <div className="text-center">
+                          <p className="text-xs font-black uppercase tracking-[.35em] text-fuchsia-200/60">
+                            Prépare-toi
+                          </p>
+                          <div
+                            key={countdown}
+                            className="mt-3 bg-gradient-to-br from-white via-fuchsia-100 to-orange-200 bg-clip-text text-[9rem] font-black leading-none text-transparent drop-shadow-[0_0_45px_rgba(217,70,239,.28)] sm:text-[13rem]"
+                            style={{ animation: "karaokeCountdown .7s ease-out both" }}
+                          >
+                            {countdown}
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
 
-                    <div className="relative mx-auto mt-5 max-w-5xl">
-                      <p className="text-balance text-4xl font-black leading-tight text-white sm:text-6xl lg:text-7xl">
-                        {lyricState.current?.text ||
-                          (lyricState.next ? "♪" : "…")}
+                    <div className="relative z-10 flex min-h-[48vh] flex-col justify-center">
+                      <p
+                        key={`prev-${lyricState.previous?.time ?? -1}`}
+                        className="mx-auto min-h-8 max-w-5xl text-balance text-base font-black leading-snug text-white/20 blur-[0.15px] transition-all duration-500 sm:text-xl lg:text-2xl"
+                      >
+                        {lyricState.previous?.text || "\u00A0"}
                       </p>
 
-                      {lyricState.current?.text ? (
-                        <div className="mx-auto mt-6 h-1.5 max-w-3xl overflow-hidden rounded-full bg-white/10">
-                          <div
-                            className="h-full rounded-full bg-gradient-to-r from-fuchsia-400 via-purple-400 to-cyan-300 transition-[width] duration-100"
-                            style={{ width: `${Math.round(lyricState.progress * 100)}%` }}
-                          />
+                      <div
+                        key={`current-${lyricState.current?.time ?? -1}`}
+                        className="relative mx-auto mt-4 w-full max-w-6xl"
+                        style={{ animation: "karaokeLineIn .55s cubic-bezier(.2,.8,.2,1) both" }}
+                      >
+                        <div className="relative inline-block max-w-full">
+                          <p className="text-balance text-[clamp(2.7rem,6.5vw,7.7rem)] font-black leading-[1.02] tracking-[-0.045em] text-white/16">
+                            {lyricState.current?.text || (lyricState.next ? "♪" : "…")}
+                          </p>
+
+                          {lyricState.current?.text ? (
+                            <div
+                              className="pointer-events-none absolute inset-0 overflow-hidden text-left"
+                              style={{ width: `${Math.round(lyricState.progress * 100)}%` }}
+                            >
+                              <p className="w-max max-w-none bg-gradient-to-r from-fuchsia-300 via-pink-200 to-orange-200 bg-clip-text text-[clamp(2.7rem,6.5vw,7.7rem)] font-black leading-[1.02] tracking-[-0.045em] text-transparent drop-shadow-[0_0_28px_rgba(236,72,153,.20)]">
+                                {lyricState.current.text}
+                              </p>
+                            </div>
+                          ) : null}
                         </div>
-                      ) : null}
+
+                        {lyricState.current?.text ? (
+                          <div className="mx-auto mt-7 h-1.5 max-w-4xl overflow-hidden rounded-full bg-white/[0.07]">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-violet-400 via-fuchsia-400 to-orange-300 shadow-[0_0_20px_rgba(217,70,239,.45)] transition-[width] duration-100"
+                              style={{ width: `${Math.round(lyricState.progress * 100)}%` }}
+                            />
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <p
+                        key={`next-${lyricState.next?.time ?? -1}`}
+                        className="mx-auto mt-8 min-h-14 max-w-5xl text-balance text-2xl font-black leading-tight text-fuchsia-100/45 blur-[0.35px] transition-all duration-500 sm:text-3xl lg:text-5xl"
+                        style={{ animation: "karaokeNextIn .6s ease both" }}
+                      >
+                        {lyricState.next?.text || "\u00A0"}
+                      </p>
+
+                      <p className="mx-auto mt-4 min-h-8 max-w-4xl text-balance text-sm font-bold text-white/14 blur-[0.45px] sm:text-base lg:text-lg">
+                        {lyricState.afterNext?.text || "\u00A0"}
+                      </p>
                     </div>
-
-                    <p className="mt-8 min-h-12 text-balance text-2xl font-black text-fuchsia-200/65 sm:text-3xl lg:text-4xl">
-                      {lyricState.next?.text || "\u00A0"}
-                    </p>
-
-                    <p className="mt-4 min-h-8 text-base font-bold text-white/20 sm:text-lg">
-                      {lyricState.afterNext?.text || "\u00A0"}
-                    </p>
                   </div>
                 ) : (
-                  <div className="rounded-[36px] border border-amber-300/15 bg-amber-500/[0.06] p-10 text-center backdrop-blur-xl">
-                    <Mic2 className="mx-auto h-10 w-10 text-amber-200/70" />
-                    <h2 className="mt-4 text-2xl font-black">Karaoké indisponible pour ce morceau</h2>
+                  <div className="rounded-[40px] border border-amber-300/15 bg-black/30 p-10 text-center shadow-[0_35px_110px_rgba(0,0,0,.40)] backdrop-blur-2xl">
+                    <Mic2 className="mx-auto h-11 w-11 text-amber-200/70" />
+                    <h2 className="mt-4 text-2xl font-black">
+                      Karaoké indisponible pour ce morceau
+                    </h2>
                     <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-white/45 sm:text-base">
                       {lyrics?.message ||
                         "Aucune parole synchronisée n’est encore disponible dans MusicBrain pour ce titre."}
                     </p>
                     {lyrics?.kind === "unchecked" ? (
                       <p className="mt-3 text-xs font-bold text-fuchsia-200/55">
-                        Le morceau pourra devenir compatible après un prochain audit LRCLIB.
+                        PartyBrain vérifiera automatiquement LRCLIB lorsque ce morceau sera appris.
                       </p>
                     ) : null}
                   </div>
@@ -379,11 +454,58 @@ export default function KaraokePartyPage() {
           )}
         </section>
 
-        <footer className="flex items-center justify-between gap-4 border-t border-white/[0.06] pt-4 text-[11px] font-bold text-white/30">
+        <footer className="flex items-center justify-between gap-4 border-t border-white/[0.06] pt-4 text-[10px] font-black uppercase tracking-[.12em] text-white/22">
           <span>Soirée {code || "—"}</span>
-          <span>Paroles synchronisées par LRCLIB • Karaoké Beta</span>
+          <span>MixParty Karaoké • LRCLIB Sync</span>
         </footer>
       </div>
+
+      <style jsx global>{`
+        @keyframes karaokeLineIn {
+          0% {
+            opacity: 0;
+            transform: translateY(18px) scale(.985);
+            filter: blur(6px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+            filter: blur(0);
+          }
+        }
+
+        @keyframes karaokeNextIn {
+          0% {
+            opacity: 0;
+            transform: translateY(10px);
+            filter: blur(5px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+            filter: blur(.35px);
+          }
+        }
+
+        @keyframes karaokeCountdown {
+          0% {
+            opacity: 0;
+            transform: scale(.72);
+            filter: blur(8px);
+          }
+          55% {
+            opacity: 1;
+            transform: scale(1.08);
+            filter: blur(0);
+          }
+          100% {
+            opacity: 1;
+            transform: scale(1);
+            filter: blur(0);
+          }
+        }
+      `}</style>
     </main>
   );
+
 }
