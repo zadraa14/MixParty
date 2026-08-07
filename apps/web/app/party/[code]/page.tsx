@@ -361,6 +361,12 @@ export default function PartyPage() {
   useEffect(() => {
     if (!code || !playerName || !participantId) return;
 
+    const isCreator = Boolean(localStorage.getItem(`mixparty_creator_${code}`));
+    localStorage.setItem(
+      "mixparty.lastParty.v1",
+      JSON.stringify({ code, role: isCreator ? "dj" : "guest", name: playerName, savedAt: Date.now() })
+    );
+
     let cancelled = false;
 
     async function sendPresence() {
@@ -640,6 +646,12 @@ export default function PartyPage() {
     localStorage.setItem(
       "playerName",
       name.trim()
+    );
+
+    const isCreator = Boolean(localStorage.getItem(`mixparty_creator_${code}`));
+    localStorage.setItem(
+      "mixparty.lastParty.v1",
+      JSON.stringify({ code, role: isCreator ? "dj" : "guest", name: name.trim(), savedAt: Date.now() })
     );
 
     setPlayerName(name.trim());

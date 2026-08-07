@@ -618,6 +618,7 @@ type Party = {
   participants: Participant[];
   currentSong: Song | null;
   createdAt: number;
+  lastActivityAt: number;
   creatorToken: string;
   partyBrainAutoRelayEnabled: boolean;
 };
@@ -638,6 +639,7 @@ if(fs.existsSync(dataFilePath)){
         ? { id: `legacy-${index}-${participant}`, name: participant, lastSeen: 0 }
         : { ...participant, lastSeen: Number(participant.lastSeen || 0) }
     );
+    party.lastActivityAt = Number(party.lastActivityAt || party.createdAt || Date.now());
     party.creatorToken = typeof party.creatorToken === "string" && party.creatorToken ? party.creatorToken : randomUUID();
     party.partyBrainAutoRelayEnabled = Boolean(party.partyBrainAutoRelayEnabled);
   });
@@ -659,11 +661,26 @@ function generateCode() {
 
 
 
+function partyLastActivityAt(party: Party) {
+  return Number(party.lastActivityAt || party.createdAt || 0);
+}
+
+function partyIsExpired(party: Party) {
+  return Date.now() - partyLastActivityAt(party) >= 6 * 60 * 60 * 1000;
+}
+
 function findParty(code:string) {
 
-  return parties.find(
+  const party = parties.find(
     (party) => party.code === code
   );
+
+  if (party && partyIsExpired(party)) {
+    cleanOldParties();
+    return undefined;
+  }
+
+  return party;
 
 }
 
@@ -2512,7 +2529,11 @@ function cleanOldParties(){
       party.createdAt = now;
     }
 
-    const expired = now - party.createdAt >= 24 * 60 * 60 * 1000;
+    if (!party.lastActivityAt) {
+      party.lastActivityAt = party.createdAt;
+    }
+
+    const expired = now - party.lastActivityAt >= 6 * 60 * 60 * 1000;
     if (!expired) {
       keptParties.push(party);
       continue;
@@ -2524,7 +2545,7 @@ function cleanOldParties(){
 
     recordPartyEvent(party, "PARTY_ENDED", {
       context: {
-        reason: "expired_24h",
+        reason: "expired_6h_inactivity",
         songsPlayed: party.history?.length || 0,
         songsQueued: party.songs?.filter((song) => !song.played).length || 0,
       },
@@ -2537,6 +2558,8 @@ function cleanOldParties(){
   saveParties();
 
 }
+
+setInterval(cleanOldParties, 10 * 60 * 1000);
 
 function pruneOfflineParticipants(party: Party) {
   const cutoff = Date.now() - 30_000;
@@ -2563,6 +2586,7 @@ function toPublicParty(party: Party) {
 }
 
 function updateParty(party:Party) {
+  party.lastActivityAt = Date.now();
   pruneOfflineParticipants(party);
   saveParties();
   io.emit("party_updated", toPublicParty(party));
