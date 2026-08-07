@@ -62,40 +62,6 @@ function formatTime(seconds: number) {
 }
 
 
-function karaokeWordWeights(text: string) {
-  const words = String(text || "").trim().split(/\s+/).filter(Boolean);
-
-  return words.map((word) => {
-    const cleanLength = word.replace(/[^\p{L}\p{N}]/gu, "").length;
-    const punctuationBonus = /[.!?]$/.test(word)
-      ? 2.2
-      : /[,;:]$/.test(word)
-        ? 1.45
-        : 1;
-
-    return {
-      word,
-      weight: Math.max(1, cleanLength * 0.72) * punctuationBonus,
-    };
-  });
-}
-
-function karaokeActiveWordIndex(text: string, progress: number) {
-  const weighted = karaokeWordWeights(text);
-  if (!weighted.length) return -1;
-
-  const total = weighted.reduce((sum, item) => sum + item.weight, 0);
-  const target = Math.min(1, Math.max(0, progress)) * total;
-
-  let cursor = 0;
-  for (let index = 0; index < weighted.length; index += 1) {
-    cursor += weighted[index].weight;
-    if (target <= cursor) return index;
-  }
-
-  return weighted.length - 1;
-}
-
 export default function KaraokePartyPage() {
   const params = useParams<{ code: string }>();
   const code = String(params?.code || "").toUpperCase();
@@ -286,13 +252,6 @@ export default function KaraokePartyPage() {
 
 
 
-  const karaokeWordState = useMemo(() => {
-    const text = lyricState.current?.text || "";
-    const words = karaokeWordWeights(text);
-    const activeIndex = karaokeActiveWordIndex(text, lyricState.progress);
-
-    return { words, activeIndex };
-  }, [lyricState.current?.text, lyricState.progress]);
 
   const countdown = useMemo(() => {
     const lines = lyrics?.available ? lyrics.lines || [] : [];
@@ -437,40 +396,15 @@ export default function KaraokePartyPage() {
                         style={{ animation: "karaokeLineIn .55s cubic-bezier(.2,.8,.2,1) both" }}
                       >
                         <div className="relative mx-auto max-w-full">
-                          {lyricState.current?.text ? (
-                            <p className="mx-auto text-balance text-[clamp(2.7rem,6.5vw,7.7rem)] font-black leading-[1.02] tracking-[-0.045em]">
-                              {karaokeWordState.words.map((item, index) => {
-                                const completed = index < karaokeWordState.activeIndex;
-                                const active = index === karaokeWordState.activeIndex;
-
-                                return (
-                                  <span
-                                    key={`${lyricState.current?.time ?? 0}-${index}-${item.word}`}
-                                    className={`inline-block whitespace-pre transition-all duration-150 ${
-                                      completed
-                                        ? "bg-gradient-to-r from-fuchsia-300 via-pink-200 to-orange-200 bg-clip-text text-transparent drop-shadow-[0_0_20px_rgba(236,72,153,.14)]"
-                                        : active
-                                          ? "bg-gradient-to-r from-fuchsia-200 via-pink-100 to-orange-200 bg-clip-text text-transparent drop-shadow-[0_0_32px_rgba(249,168,212,.26)] scale-[1.035]"
-                                          : "text-white/16"
-                                    }`}
-                                  >
-                                    {item.word}
-                                    {index < karaokeWordState.words.length - 1 ? "\u00A0" : ""}
-                                  </span>
-                                );
-                              })}
-                            </p>
-                          ) : (
-                            <p className="text-[clamp(2.7rem,6.5vw,7.7rem)] font-black leading-[1.02] text-white/20">
-                              {lyricState.next ? "♪" : "…"}
-                            </p>
-                          )}
+                          <p className="mx-auto text-balance bg-gradient-to-r from-fuchsia-300 via-pink-200 to-orange-200 bg-clip-text text-[clamp(2.7rem,6.5vw,7.7rem)] font-black leading-[1.02] tracking-[-0.045em] text-transparent drop-shadow-[0_0_28px_rgba(236,72,153,.18)]">
+                            {lyricState.current?.text || (lyricState.next ? "♪" : "…")}
+                          </p>
                         </div>
 
                         {lyricState.current?.text ? (
                           <div className="mx-auto mt-7 h-1.5 max-w-4xl overflow-hidden rounded-full bg-white/[0.07]">
                             <div
-                              className="h-full rounded-full bg-gradient-to-r from-violet-400 via-fuchsia-400 to-orange-300 shadow-[0_0_20px_rgba(217,70,239,.45)] transition-[width] duration-100"
+                              className="h-full rounded-full bg-gradient-to-r from-violet-400 via-fuchsia-400 to-orange-300 shadow-[0_0_24px_rgba(217,70,239,.45)] transition-[width] duration-100 ease-linear"
                               style={{ width: `${Math.round(lyricState.progress * 100)}%` }}
                             />
                           </div>
