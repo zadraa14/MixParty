@@ -5289,23 +5289,30 @@ function classifyMusicBrainReviewSong(song: MusicBrainSong, decisionReason: stri
 
   const trustedChannel = /\b(topic|vevo|official|officiel)\b/i.test(channel);
 
+  const titleKey = normalizeMusicQuery(`${song.rawTitle || ""} ${song.title || ""}`);
+  const artistTitleMatch = Boolean(
+    artistKey &&
+    titleKey &&
+    titleKey.includes(artistKey)
+  );
+
   if (artistKey.length > 0 && artistKey.length <= 3) {
     return {
       category: "nom_artiste_tres_court",
       categoryLabel: "Nom artiste très court",
-      explanation: "Le nom détecté fait 3 caractères ou moins. Il peut être réel, mais mérite une vérification manuelle.",
+      explanation: "Le nom détecté fait 3 caractères ou moins et aucun signal assez fort ne confirme encore qu’il s’agit bien de l’artiste.",
     };
   }
 
-  if (song.metadataSource === "QUERY_FALLBACK") {
+  if (song.metadataSource === "QUERY_FALLBACK" && !artistTitleMatch && !artistChannelMatch) {
     return {
       category: "query_fallback",
       categoryLabel: "Artiste déduit de la recherche",
-      explanation: "L’artiste n’a pas été confirmé par les métadonnées YouTube et provient surtout du texte de recherche.",
+      explanation: "L’artiste provient surtout du texte de recherche et n’est confirmé ni par le titre YouTube ni par la chaîne.",
     };
   }
 
-  if (confidence < 35) {
+  if (confidence < 35 && !artistTitleMatch && !artistChannelMatch) {
     return {
       category: "confiance_tres_faible",
       categoryLabel: "Confiance très faible",
@@ -5400,18 +5407,45 @@ function musicBrainCleanupReport() {
     const channel = String(song.channelTitle || "");
     const artistKey = normalizeMusicQuery(song.artistName || "");
     const channelKey = normalizeMusicQuery(channel);
+    const titleKey = normalizeMusicQuery(`${song.rawTitle || ""} ${song.title || ""}`);
+
     const artistChannelMatch = Boolean(
       artistKey &&
       channelKey &&
       (channelKey.includes(artistKey) || artistKey.includes(channelKey))
     );
+
+    const artistTitleMatch = Boolean(
+      artistKey &&
+      titleKey &&
+      titleKey.includes(artistKey)
+    );
+
     const trustedChannel = /\b(topic|vevo|official|officiel)\b/i.test(channel);
+    const strongMetadata =
+      song.metadataSource === "ART_TRACK_DESCRIPTION" ||
+      confidence >= 72;
+
+    // Une faible confiance ou QUERY_FALLBACK ne suffit plus du tout à mettre
+    // un vrai artiste en "à vérifier".
+    // Exemple : "Charles Aznavour - Hier encore" confirme déjà Aznavour dans le titre,
+    // même si la chaîne YouTube est un festival et que la confiance vaut 1 %.
+    const positivelyConfirmed =
+      artistTitleMatch ||
+      artistChannelMatch ||
+      trustedChannel ||
+      strongMetadata;
+
+    // Les noms très courts restent à vérifier sauf signal fort,
+    // car "ART", "TV", "DJ"... sont particulièrement ambigus.
+    const veryShortArtist = artistKey.length > 0 && artistKey.length <= 3;
+    const shortNameConfirmed =
+      veryShortArtist &&
+      (artistChannelMatch || trustedChannel || strongMetadata);
 
     const shouldReview =
-      decision.reason === "fiable_a_verifier" ||
-      song.metadataSource === "QUERY_FALLBACK" ||
-      confidence < 65 ||
-      (!artistChannelMatch && !trustedChannel);
+      !decision.learn ||
+      (veryShortArtist ? !shortNameConfirmed : !positivelyConfirmed);
 
     if (decision.learn && !shouldReview) continue;
 
@@ -5495,7 +5529,7 @@ function musicBrainCleanupReport() {
       })
       .slice(0, 1000),
     policy:
-      "Suppression automatique uniquement des erreurs évidentes. Les entrées incertaines sont désormais classées et visibles pour vérification manuelle avant toute décision.",
+      "Suppression automatique uniquement des erreurs évidentes. Une entrée n’est classée à vérifier que si aucun signal fiable (titre, chaîne, Topic/Official ou métadonnées fortes) ne confirme l’artiste.",
   };
 }
 

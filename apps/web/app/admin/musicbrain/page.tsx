@@ -1554,7 +1554,7 @@ export default function MusicBrainAdminPage() {
                   <div className="rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/[0.06] p-4">
                     <p className="text-xs font-black uppercase tracking-[.18em] text-fuchsia-200/70">Nettoyage MusicBrain</p>
                     <p className="mt-2 text-xs leading-5 text-white/40">
-                      Le nettoyage automatique ne supprime que les erreurs évidentes. Une faible confiance, QUERY_FALLBACK ou une chaîne différente ne suffit jamais à supprimer ni bloquer un vrai artiste.
+                      Le nettoyage automatique ne supprime que les erreurs évidentes. Une faible confiance, QUERY_FALLBACK ou une chaîne différente ne suffit jamais à classer un artiste comme douteux si le titre YouTube confirme déjà son nom.
                     </p>
 
                     <button
@@ -1581,7 +1581,7 @@ export default function MusicBrainAdminPage() {
 
                         <div className="mt-3 rounded-xl border border-violet-300/15 bg-violet-500/[0.05] p-3">
                           <p className="text-[11px] font-black uppercase tracking-[.16em] text-violet-200/70">
-                            Entrées à vérifier — aucune suppression
+                            Entrées réellement ambiguës — aucune suppression
                           </p>
 
                           <div className="mt-3 grid gap-2 sm:grid-cols-2">
