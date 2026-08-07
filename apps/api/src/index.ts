@@ -5119,6 +5119,144 @@ app.post("/partybrain/maintenance/youtube-cache/clear", (req, res) => {
   });
 });
 app.get("/partybrain/academy", (_req, res) => res.json(academyDashboard()));
+
+app.post("/partybrain/academy/test-one", async (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+  if (academyState.running) {
+    return res.status(409).json({ error: "Academy est déjà en cours." });
+  }
+
+  const snapshot = academyQuotaSnapshot();
+  if (snapshot.remaining <= 0) {
+    return res.status(429).json({ error: "Aucun appel Academy restant pour ce cycle." });
+  }
+
+  const mission = nextAcademyKaraokeMission() || nextAcademyDiscoveryMission();
+  if (!mission) {
+    return res.status(404).json({ error: "Aucune mission Academy utile disponible." });
+  }
+
+  const beforeSongs = Object.keys(musicBrain.songs).length;
+  addAcademyLog(
+    "info",
+    `TEST 1 RECHERCHE — ${mission.mode === "karaoke" ? "Audio prioritaire" : "Découverte"} : ${mission.query}`,
+    { artist: mission.name, query: mission.query }
+  );
+
+  try {
+    const results = await requestYoutubeMusic(mission.query, "academy");
+    let acceptedCount = 0;
+    let rejectedCount = 0;
+    let foundKind: string | null = null;
+
+    if (mission.mode === "karaoke") {
+      const ranked = results
+        .map((candidate) => ({
+          candidate,
+          kind: karaokeKindForVideo(candidate),
+          score: karaokeCandidateScore(mission.sourceSong, candidate),
+        }))
+        .filter(
+          (item) =>
+            item.kind &&
+            item.score >= 160 &&
+            academyResultIsTrusted(item.candidate, mission.sourceSong.artistName)
+        )
+        .sort((a, b) => b.score - a.score);
+
+      const best = ranked[0];
+      if (best?.kind) {
+        recordMusicBrainSearch(mission.query, [best.candidate]);
+        acceptedCount = 1;
+        foundKind = best.kind;
+        karaokeAudit.entries[mission.sourceSong.videoId] = {
+          sourceVideoId: mission.sourceSong.videoId,
+          sourceTitle: mission.sourceSong.title,
+          sourceArtistName: mission.sourceSong.artistName,
+          checkedAt: Date.now(),
+          kind: best.kind,
+          candidateVideoId: best.candidate.id,
+          candidateTitle: best.candidate.title,
+          candidateChannelTitle: best.candidate.channelTitle,
+          candidateDurationSeconds: best.candidate.durationSeconds,
+        };
+      } else {
+        rejectedCount = results.length;
+        karaokeAudit.entries[mission.sourceSong.videoId] = {
+          sourceVideoId: mission.sourceSong.videoId,
+          sourceTitle: mission.sourceSong.title,
+          sourceArtistName: mission.sourceSong.artistName,
+          checkedAt: Date.now(),
+          kind: "not_found",
+        };
+      }
+      saveKaraokeAudit();
+    } else {
+      const progress = academyState.artistProgress[mission.key] || { attempts: 0 };
+      progress.attempts += 1;
+      progress.lastAttemptAt = Date.now();
+      progress.lastQueryVariant = mission.variantIndex;
+      academyState.artistProgress[mission.key] = progress;
+
+      const recorded = recordMusicBrainAcademySearch(
+        mission.query,
+        mission.name,
+        results
+      );
+      acceptedCount = recorded.accepted.length;
+      rejectedCount = recorded.rejectedCount;
+    }
+
+    const normalizedQuery = normalizeMusicQuery(mission.query);
+    youtubeSearchCache.set(normalizedQuery, {
+      query: mission.query,
+      normalizedQuery,
+      createdAt: Date.now(),
+      results,
+    });
+    saveYoutubeCache();
+
+    const added = Math.max(0, Object.keys(musicBrain.songs).length - beforeSongs);
+    const message =
+      mission.mode === "karaoke"
+        ? acceptedCount
+          ? `TEST OK — ${mission.name} — ${mission.sourceSong.title} : version ${foundKind === "topic" ? "Topic / Art Track" : "Official Audio"} trouvée.`
+          : `TEST OK — ${mission.name} — ${mission.sourceSong.title} : aucune version audio fiable trouvée.`
+        : `TEST OK — ${mission.name} : ${acceptedCount} résultat(s) accepté(s), ${rejectedCount} écarté(s), +${added} nouveau(x) morceau(x).`;
+
+    addAcademyLog(acceptedCount > 0 ? "success" : "info", message, {
+      artist: mission.name,
+      query: mission.query,
+      songsAdded: added,
+    });
+    saveAcademyState();
+
+    return res.json({
+      ok: true,
+      mode: mission.mode,
+      query: mission.query,
+      artist: mission.name,
+      sourceTitle: mission.mode === "karaoke" ? mission.sourceSong.title : undefined,
+      acceptedCount,
+      rejectedCount,
+      added,
+      foundKind,
+      remaining: academyQuotaSnapshot().remaining,
+      message,
+    });
+  } catch (error: any) {
+    addAcademyLog("error", `TEST 1 RECHERCHE échoué : ${error?.message || "erreur inconnue"}.`, {
+      artist: mission.name,
+      query: mission.query,
+    });
+    saveAcademyState();
+    const status = Number(error?.status || 500);
+    return res.status(status >= 400 && status < 600 ? status : 500).json({
+      error: error?.message || "Test Academy impossible.",
+    });
+  }
+});
+
 app.post("/partybrain/academy/run", async (_req, res) => {
   if (String(process.env.PARTYBRAIN_ACADEMY_ALLOW_MANUAL || "false").toLowerCase() !== "true") {
     return res.status(403).json({ error: "Lancement manuel désactivé" });

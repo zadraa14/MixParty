@@ -272,6 +272,9 @@ export default function MusicBrainAdminPage() {
   const [karaokeLocalScanLoading, setKaraokeLocalScanLoading] = useState(false);
   const [karaokeAuditError, setKaraokeAuditError] = useState("");
   const [karaokeAuditMessage, setKaraokeAuditMessage] = useState("");
+  const [academyTestLoading, setAcademyTestLoading] = useState(false);
+  const [academyTestMessage, setAcademyTestMessage] = useState("");
+  const [academyTestError, setAcademyTestError] = useState("");
 
 
   const [maintenanceError, setMaintenanceError] = useState("");
@@ -395,6 +398,39 @@ export default function MusicBrainAdminPage() {
       setKaraokeAuditError(err instanceof Error ? err.message : "Audit Karaoké indisponible");
     } finally {
       setKaraokeAuditLoading(false);
+    }
+  }
+
+  async function runAcademyTestOne() {
+    if (!adminToken.trim()) {
+      setAcademyTestError("Entre le code administrateur Railway dans la zone Karaoké / Maintenance avant de lancer le test.");
+      return;
+    }
+
+    setAcademyTestLoading(true);
+    setAcademyTestMessage("");
+    setAcademyTestError("");
+
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/academy/test-one`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-partybrain-admin-token": adminToken.trim(),
+        },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Test Academy impossible");
+
+      setAcademyTestMessage(
+        `${data?.message || "Test Academy terminé."} • Quota Academy restant : ${number.format(Number(data?.remaining ?? 0))}`
+      );
+      await loadStats();
+      await loadKaraokeAudit();
+    } catch (err) {
+      setAcademyTestError(err instanceof Error ? err.message : "Test Academy impossible");
+    } finally {
+      setAcademyTestLoading(false);
     }
   }
 
@@ -940,6 +976,31 @@ export default function MusicBrainAdminPage() {
                   <p className="mt-4 text-sm leading-6 text-white/55">
                     Academy utilise automatiquement tout le quota YouTube restant juste avant sa réinitialisation, puis conserve un journal complet de chaque recherche et de chaque morceau appris.
                   </p>
+
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      onClick={() => void runAcademyTestOne()}
+                      disabled={academyTestLoading || stats.academy.running || stats.academy.remaining <= 0}
+                      className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-500/10 px-4 py-3 text-sm font-black text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Search className={`h-4 w-4 ${academyTestLoading ? "animate-pulse" : ""}`} />
+                      {academyTestLoading ? "Test Academy en cours…" : "Tester Academy — 1 recherche"}
+                    </button>
+                    <p className="mt-2 text-xs text-white/35">
+                      Lance exactement une seule recherche avec la nouvelle logique. Le test consomme au maximum 1 recherche Academy.
+                    </p>
+                    {academyTestMessage ? (
+                      <div className="mt-3 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-3 text-xs font-bold text-emerald-100">
+                        {academyTestMessage}
+                      </div>
+                    ) : null}
+                    {academyTestError ? (
+                      <div className="mt-3 rounded-2xl border border-red-400/20 bg-red-500/10 p-3 text-xs font-bold text-red-100">
+                        {academyTestError}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="grid min-w-0 gap-3 sm:grid-cols-3 xl:min-w-[520px]">
