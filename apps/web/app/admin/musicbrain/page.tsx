@@ -192,6 +192,15 @@ type KaraokeAuditData = {
   checkedPercent: number;
   note: string;
   youtubeSearchesPerBatchMax: number;
+  localScan?: {
+    scannedAt: number;
+    scannedSongs: number;
+    topic: number;
+    officialAudio: number;
+    compatible: number;
+    unclassified: number;
+    coveragePercent: number;
+  };
 };
 
 type CoverFilter =
@@ -248,6 +257,7 @@ export default function MusicBrainAdminPage() {
   const [attendanceHistoryError, setAttendanceHistoryError] = useState("");
   const [karaokeAudit, setKaraokeAudit] = useState<KaraokeAuditData | null>(null);
   const [karaokeAuditLoading, setKaraokeAuditLoading] = useState(false);
+  const [karaokeLocalScanLoading, setKaraokeLocalScanLoading] = useState(false);
   const [karaokeAuditError, setKaraokeAuditError] = useState("");
   const [karaokeAuditMessage, setKaraokeAuditMessage] = useState("");
 
@@ -313,6 +323,31 @@ export default function MusicBrainAdminPage() {
       setKaraokeAuditError("");
     } catch (err) {
       setKaraokeAuditError(err instanceof Error ? err.message : "Audit Karaoké indisponible");
+    }
+  }
+
+  async function scanMusicBrainForKaraoke() {
+    setKaraokeLocalScanLoading(true);
+    setKaraokeAuditError("");
+    setKaraokeAuditMessage("");
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/karaoke-audit/scan-musicbrain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Impossible de scanner MusicBrain");
+      if (data?.summary) setKaraokeAudit(data.summary);
+      const scan = data?.localScan;
+      setKaraokeAuditMessage(
+        scan
+          ? `Scan MusicBrain terminé : ${number.format(scan.scannedSongs)} morceaux analysés • ${number.format(scan.topic)} Topic / Art Track • ${number.format(scan.officialAudio)} Official Audio • ${number.format(scan.unclassified)} à rechercher plus tard. Aucun quota YouTube utilisé.`
+          : (data?.message || "Scan MusicBrain terminé.")
+      );
+    } catch (err) {
+      setKaraokeAuditError(err instanceof Error ? err.message : "Scan MusicBrain indisponible");
+    } finally {
+      setKaraokeLocalScanLoading(false);
     }
   }
 
@@ -1110,6 +1145,20 @@ export default function MusicBrainAdminPage() {
                 </div>
 
                 <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/25 p-4">
+                  <button
+                    type="button"
+                    onClick={() => void scanMusicBrainForKaraoke()}
+                    disabled={karaokeLocalScanLoading}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-500/10 px-4 py-3 text-sm font-black text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-wait disabled:opacity-45"
+                  >
+                    <Database className={`h-4 w-4 ${karaokeLocalScanLoading ? "animate-pulse" : ""}`} />
+                    {karaokeLocalScanLoading ? "Scan MusicBrain…" : "Scanner toute la base MusicBrain"}
+                  </button>
+                  <p className="mt-2 text-xs leading-5 text-cyan-100/45">
+                    Étape 1 : analyse locale de toute la base. Aucun appel YouTube et aucun quota consommé.
+                  </p>
+
+                  <div className="my-4 h-px bg-white/10" />
                   <label className="flex items-center gap-2 rounded-2xl border border-white/10 bg-black/30 px-3 py-3">
                     <KeyRound className="h-4 w-4 text-pink-300" />
                     <input
@@ -1128,10 +1177,10 @@ export default function MusicBrainAdminPage() {
                     className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-pink-300/20 bg-pink-500/12 px-4 py-3 text-sm font-black text-pink-100 transition hover:bg-pink-500/18 disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     <Search className={`h-4 w-4 ${karaokeAuditLoading ? "animate-pulse" : ""}`} />
-                    {karaokeAuditLoading ? "Recherche en cours…" : "Analyser 10 morceaux supplémentaires"}
+                    {karaokeAuditLoading ? "Recherche en cours…" : "Étape 2 — chercher 10 morceaux sur YouTube"}
                   </button>
                   <p className="mt-2 text-xs leading-5 text-white/35">
-                    10 recherches maximum par lot pour protéger le quota YouTube. Les résultats sont sauvegardés et les morceaux déjà contrôlés ne sont pas recherchés une seconde fois.
+                    Cette seconde étape ne sert que pour les morceaux que MusicBrain ne sait pas identifier comme Topic / Art Track / Official Audio.
                   </p>
                 </div>
               </div>
@@ -1165,18 +1214,18 @@ export default function MusicBrainAdminPage() {
               <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <p className="text-sm font-black">
-                    {number.format(karaokeAudit?.checkedSongs ?? 0)} / {number.format(karaokeAudit?.knownSongs ?? stats.totals.songs)} morceaux classés
+                    {number.format(karaokeAudit?.localScan?.scannedSongs ?? karaokeAudit?.knownSongs ?? stats.totals.songs)} / {number.format(karaokeAudit?.knownSongs ?? stats.totals.songs)} morceaux scannés dans MusicBrain
                   </p>
-                  <p className="text-xs font-bold text-white/45">{karaokeAudit?.checkedPercent ?? 0} % de la base contrôlée</p>
+                  <p className="text-xs font-bold text-cyan-200/60">Scan local : 100 % • quota YouTube : 0</p>
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                  <div className="h-full rounded-full bg-gradient-to-r from-pink-500 via-violet-500 to-cyan-400" style={{ width: `${Math.min(100, karaokeAudit?.checkedPercent ?? 0)}%` }} />
+                  <div className="h-full rounded-full bg-gradient-to-r from-pink-500 via-violet-500 to-cyan-400" style={{ width: "100%" }} />
                 </div>
                 <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-xs text-white/45">
                   <span>Déjà audio dans MusicBrain : <strong className="text-white/75">{number.format(karaokeAudit?.alreadyCompatible ?? 0)}</strong></span>
                   <span>Trouvés par l’audit : <strong className="text-white/75">{number.format((karaokeAudit?.discoveredTopic ?? 0) + (karaokeAudit?.discoveredOfficialAudio ?? 0))}</strong></span>
                   <span>Pas trouvés : <strong className="text-white/75">{number.format(karaokeAudit?.noOfficialAudio ?? 0)}</strong></span>
-                  <span>À contrôler : <strong className="text-white/75">{number.format(karaokeAudit?.unchecked ?? stats.totals.songs)}</strong></span>
+                  <span>Non classés localement : <strong className="text-white/75">{number.format(karaokeAudit?.localScan?.unclassified ?? karaokeAudit?.unchecked ?? stats.totals.songs)}</strong></span>
                 </div>
                 <p className="mt-3 text-xs leading-5 text-white/35">{karaokeAudit?.note || "Chargement de l’audit Karaoké…"}</p>
               </div>

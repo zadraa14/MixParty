@@ -4303,8 +4303,33 @@ function karaokeCandidateScore(source: MusicBrainSong, candidate: YoutubeSearchR
   return score;
 }
 
+function karaokeLocalMusicBrainScan() {
+  const songs = Object.values(musicBrain.songs);
+  let topic = 0;
+  let officialAudio = 0;
+  let unclassified = 0;
+
+  for (const song of songs) {
+    const kind = karaokeKindForVideo(song);
+    if (kind === "topic") topic += 1;
+    else if (kind === "official_audio") officialAudio += 1;
+    else unclassified += 1;
+  }
+
+  return {
+    scannedAt: Date.now(),
+    scannedSongs: songs.length,
+    topic,
+    officialAudio,
+    compatible: topic + officialAudio,
+    unclassified,
+    coveragePercent: songs.length ? Math.round(((topic + officialAudio) / songs.length) * 1000) / 10 : 0,
+  };
+}
+
 function karaokeAuditSummary() {
   const songs = Object.values(musicBrain.songs);
+  const localScan = karaokeLocalMusicBrainScan();
   let alreadyTopic = 0;
   let alreadyOfficialAudio = 0;
 
@@ -4349,7 +4374,8 @@ function karaokeAuditSummary() {
     confirmedCompatible,
     confirmedCoveragePercent: songs.length ? Math.round((confirmedCompatible / songs.length) * 1000) / 10 : 0,
     checkedPercent: songs.length ? Math.round((checkedSongs / songs.length) * 1000) / 10 : 0,
-    note: "La couverture confirmée est un minimum : les morceaux encore non audités peuvent aussi posséder une version Topic ou Official Audio.",
+    localScan,
+    note: "Le scan MusicBrain analyse 100 % de la base sans appeler YouTube. Les morceaux non classés localement pourront ensuite être recherchés séparément sur YouTube.",
     youtubeSearchesPerBatchMax: 10,
   };
 }
@@ -4358,6 +4384,16 @@ loadKaraokeAudit();
 
 app.get("/partybrain/karaoke-audit", (_req, res) => {
   return res.json(karaokeAuditSummary());
+});
+
+app.post("/partybrain/karaoke-audit/scan-musicbrain", (_req, res) => {
+  const localScan = karaokeLocalMusicBrainScan();
+  return res.json({
+    ok: true,
+    message: `Scan MusicBrain terminé : ${localScan.scannedSongs} morceaux analysés sans quota YouTube.`,
+    localScan,
+    summary: karaokeAuditSummary(),
+  });
 });
 
 app.post("/partybrain/karaoke-audit/run", async (req, res) => {
