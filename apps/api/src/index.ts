@@ -1367,10 +1367,122 @@ function upsertMusicBrainSong(params: {
   return song;
 }
 
+function musicBrainLearningDecision(params: {
+  artistName?: string;
+  channelTitle?: string;
+  title?: string;
+  rawTitle?: string;
+  metadataSource?: MusicMetadataSource;
+  metadataConfidence?: number;
+  sourceQuery?: string;
+}) {
+  const artistName = cleanArtistName(params.artistName || "");
+  const artistKey = normalizeMusicQuery(artistName);
+  const channelKey = normalizeMusicQuery(params.channelTitle || "");
+  const titleText = `${params.rawTitle || ""} ${params.title || ""}`.toLowerCase();
+  const confidence = Number(params.metadataConfidence || 0);
+
+  const clearlyUnknown =
+    !artistKey ||
+    /^(unknown|inconnu|artiste inconnu|unknown artist|various artists?|divers)$/i.test(artistName);
+
+  const genericArtist =
+    /^(art|music|musique|official|officiel|topic|audio|video|records?|recordings?|channel|youtube)$/i.test(artistName);
+
+  const junkContent =
+    /(reaction|reacts?|podcast|interview|documentary|documentaire|making of|behind the scenes|#shorts|\bshorts?\b|audition|the voice|incroyable talent|concours|talent show)/i.test(
+      `${titleText} ${params.channelTitle || ""}`
+    );
+
+  const strongMetadata =
+    params.metadataSource === "ART_TRACK_DESCRIPTION" ||
+    confidence >= 72;
+
+  const officialChannel =
+    /\b(topic|vevo|official|officiel)\b/i.test(String(params.channelTitle || ""));
+
+  const artistChannelMatch =
+    Boolean(
+      artistKey &&
+      channelKey &&
+      (channelKey.includes(artistKey) || artistKey.includes(channelKey))
+    );
+
+  // Un nom générique peut exceptionnellement être un vrai artiste.
+  // On ne l'accepte que si YouTube fournit un signal très fort.
+  const genericButStrong =
+    genericArtist &&
+    (
+      params.metadataSource === "ART_TRACK_DESCRIPTION" ||
+      (confidence >= 85 && officialChannel && artistChannelMatch)
+    );
+
+  if (junkContent) return { learn: false, reason: "contenu_non_musical" };
+  if (clearlyUnknown) return { learn: false, reason: "artiste_inconnu" };
+  if (genericArtist && !genericButStrong) return { learn: false, reason: "artiste_generique" };
+
+  // QUERY_FALLBACK seul est trop fragile pour apprendre automatiquement.
+  if (
+    params.metadataSource === "QUERY_FALLBACK" &&
+    confidence < 72 &&
+    !officialChannel &&
+    !artistChannelMatch
+  ) {
+    return { learn: false, reason: "metadata_faible" };
+  }
+
+  if (!strongMetadata && !officialChannel && !artistChannelMatch) {
+    return { learn: false, reason: "identite_non_confirmee" };
+  }
+
+  return { learn: true, reason: "fiable" };
+}
+
+function shouldLearnSearchResult(result: YoutubeSearchResult, query: string) {
+  return musicBrainLearningDecision({
+    artistName: result.artistName,
+    channelTitle: result.channelTitle,
+    title: result.title,
+    rawTitle: result.rawTitle,
+    metadataSource: result.metadataSource,
+    metadataConfidence: result.metadataConfidence,
+    sourceQuery: query,
+  });
+}
+
+function shouldLearnPartySong(song: Song) {
+  const existing = song.videoId ? musicBrain.songs[song.videoId] : undefined;
+  if (existing) {
+    const existingDecision = musicBrainLearningDecision({
+      artistName: existing.artistName,
+      channelTitle: existing.channelTitle,
+      title: existing.title,
+      rawTitle: existing.rawTitle,
+      metadataSource: existing.metadataSource,
+      metadataConfidence: existing.metadataConfidence,
+    });
+    if (existingDecision.learn) return existingDecision;
+  }
+
+  return musicBrainLearningDecision({
+    artistName: song.artistName,
+    title: song.title,
+    metadataSource: song.metadataSource,
+    metadataConfidence: song.metadataConfidence,
+    sourceQuery: song.sourceQuery,
+  });
+}
+
 function recordMusicBrainSearch(query: string, results: YoutubeSearchResult[]) {
+  // Important : les résultats restent affichés à l'utilisateur.
+  // Ce filtre agit uniquement sur ce que PartyBrain apprend.
   musicBrain.totals.searches += 1;
   const touchedArtists = new Set<string>();
+
   for (const result of results) {
+    const decision = shouldLearnSearchResult(result, query);
+    if (!decision.learn) continue;
+
     const song = upsertMusicBrainSong({
       videoId: result.id,
       title: result.title,
@@ -1388,6 +1500,7 @@ function recordMusicBrainSearch(query: string, results: YoutubeSearchResult[]) {
     song.searchCount += 1;
     touchedArtists.add(song.artistKey);
   }
+
   for (const artistKey of touchedArtists) {
     const artist = musicBrain.artists[artistKey];
     if (artist) artist.searchCount += 1;
@@ -1397,6 +1510,14 @@ function recordMusicBrainSearch(query: string, results: YoutubeSearchResult[]) {
 
 function recordMusicBrainAddition(song: Song) {
   if (!song.videoId) return;
+  musicBrain.totals.additions += 1;
+
+  const decision = shouldLearnPartySong(song);
+  if (!decision.learn) {
+    saveMusicBrain();
+    return;
+  }
+
   const item = upsertMusicBrainSong({
     videoId: song.videoId,
     title: song.title,
@@ -1409,12 +1530,19 @@ function recordMusicBrainAddition(song: Song) {
     sourceQuery: song.sourceQuery,
   });
   item.addedCount += 1;
-  musicBrain.totals.additions += 1;
   saveMusicBrain();
 }
 
 function recordMusicBrainVote(song: Song) {
   if (!song.videoId) return;
+  musicBrain.totals.votes += 1;
+
+  const decision = shouldLearnPartySong(song);
+  if (!decision.learn) {
+    saveMusicBrain();
+    return;
+  }
+
   const item = upsertMusicBrainSong({
     videoId: song.videoId,
     title: song.title,
@@ -1427,12 +1555,19 @@ function recordMusicBrainVote(song: Song) {
     sourceQuery: song.sourceQuery,
   });
   item.voteCount += 1;
-  musicBrain.totals.votes += 1;
   saveMusicBrain();
 }
 
 function recordMusicBrainPlay(song: Song, previous?: Song | null) {
   if (!song.videoId) return;
+  musicBrain.totals.plays += 1;
+
+  const decision = shouldLearnPartySong(song);
+  if (!decision.learn) {
+    saveMusicBrain();
+    return;
+  }
+
   const item = upsertMusicBrainSong({
     videoId: song.videoId,
     title: song.title,
@@ -1445,7 +1580,6 @@ function recordMusicBrainPlay(song: Song, previous?: Song | null) {
     sourceQuery: song.sourceQuery,
   });
   item.playedCount += 1;
-  musicBrain.totals.plays += 1;
 
   // First playback stays on the MixParty logo. The HD cover is fetched asynchronously
   // and will be attached the next time this videoId is added to a party.
