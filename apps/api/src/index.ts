@@ -1421,21 +1421,22 @@ function musicBrainLearningDecision(params: {
   if (clearlyUnknown) return { learn: false, reason: "artiste_inconnu" };
   if (genericArtist && !genericButStrong) return { learn: false, reason: "artiste_generique" };
 
-  // QUERY_FALLBACK seul est trop fragile pour apprendre automatiquement.
-  if (
-    params.metadataSource === "QUERY_FALLBACK" &&
-    confidence < 72 &&
-    !officialChannel &&
-    !artistChannelMatch
-  ) {
-    return { learn: false, reason: "metadata_faible" };
-  }
+  // IMPORTANT :
+  // QUERY_FALLBACK ou une confiance faible ne suffisent PAS à rejeter un morceau.
+  // De vrais artistes peuvent être mal décrits par YouTube (ex. Aznavour, Big Ali).
+  // On ne bloque automatiquement que les erreurs évidentes : inconnu, artiste
+  // générique non confirmé ou contenu clairement non musical.
+  //
+  // Les métadonnées faibles restent apprises, mais elles apparaissent dans
+  // l'outil "Entrées incertaines" pour contrôle manuel.
 
-  if (!strongMetadata && !officialChannel && !artistChannelMatch) {
-    return { learn: false, reason: "identite_non_confirmee" };
-  }
-
-  return { learn: true, reason: "fiable" };
+  return {
+    learn: true,
+    reason:
+      params.metadataSource === "QUERY_FALLBACK" || (!strongMetadata && !officialChannel && !artistChannelMatch)
+        ? "fiable_a_verifier"
+        : "fiable",
+  };
 }
 
 function shouldLearnSearchResult(result: YoutubeSearchResult, query: string) {
@@ -5395,8 +5396,28 @@ function musicBrainCleanupReport() {
       metadataConfidence: song.metadataConfidence,
     });
 
-    if (decision.learn) continue;
-    counts[decision.reason] = (counts[decision.reason] || 0) + 1;
+    const confidence = Number(song.metadataConfidence || 0);
+    const channel = String(song.channelTitle || "");
+    const artistKey = normalizeMusicQuery(song.artistName || "");
+    const channelKey = normalizeMusicQuery(channel);
+    const artistChannelMatch = Boolean(
+      artistKey &&
+      channelKey &&
+      (channelKey.includes(artistKey) || artistKey.includes(channelKey))
+    );
+    const trustedChannel = /\b(topic|vevo|official|officiel)\b/i.test(channel);
+
+    const shouldReview =
+      decision.reason === "fiable_a_verifier" ||
+      song.metadataSource === "QUERY_FALLBACK" ||
+      confidence < 65 ||
+      (!artistChannelMatch && !trustedChannel);
+
+    if (decision.learn && !shouldReview) continue;
+
+    if (!decision.learn) {
+      counts[decision.reason] = (counts[decision.reason] || 0) + 1;
+    }
 
     const basic = {
       videoId: song.videoId,
@@ -5407,9 +5428,12 @@ function musicBrainCleanupReport() {
     // Nettoyage automatique volontairement conservateur :
     // on supprime seulement les erreurs évidentes.
     if (
-      decision.reason === "artiste_inconnu" ||
-      decision.reason === "artiste_generique" ||
-      decision.reason === "contenu_non_musical"
+      !decision.learn &&
+      (
+        decision.reason === "artiste_inconnu" ||
+        decision.reason === "artiste_generique" ||
+        decision.reason === "contenu_non_musical"
+      )
     ) {
       removable.push({
         ...basic,
@@ -5420,7 +5444,10 @@ function musicBrainCleanupReport() {
         voteCount: Number(song.voteCount || 0),
       });
     } else {
-      const classification = classifyMusicBrainReviewSong(song, decision.reason);
+      const classification = classifyMusicBrainReviewSong(
+        song,
+        decision.reason === "fiable_a_verifier" ? "metadata_faible" : decision.reason
+      );
       reviewCategoryCounts[classification.category] += 1;
 
       reviewOnly.push({

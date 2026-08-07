@@ -1554,7 +1554,7 @@ export default function MusicBrainAdminPage() {
                   <div className="rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/[0.06] p-4">
                     <p className="text-xs font-black uppercase tracking-[.18em] text-fuchsia-200/70">Nettoyage MusicBrain</p>
                     <p className="mt-2 text-xs leading-5 text-white/40">
-                      Le nettoyage supprime uniquement les artistes clairement inconnus/génériques non fiables et les contenus non musicaux. Les entrées simplement incertaines restent conservées.
+                      Le nettoyage automatique ne supprime que les erreurs évidentes. Une faible confiance, QUERY_FALLBACK ou une chaîne différente ne suffit jamais à supprimer ni bloquer un vrai artiste.
                     </p>
 
                     <button
@@ -1581,7 +1581,7 @@ export default function MusicBrainAdminPage() {
 
                         <div className="mt-3 rounded-xl border border-violet-300/15 bg-violet-500/[0.05] p-3">
                           <p className="text-[11px] font-black uppercase tracking-[.16em] text-violet-200/70">
-                            Classement des entrées incertaines
+                            Entrées à vérifier — aucune suppression
                           </p>
 
                           <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -1635,7 +1635,7 @@ export default function MusicBrainAdminPage() {
 
                           <div className="mt-3 flex items-center justify-between text-[11px] text-white/35">
                             <span>{number.format(visibleCleanupReviewItems.length)} entrée(s) affichée(s)</span>
-                            <span>Aucune suppression depuis cette liste</span>
+                            <span>Ces morceaux restent dans MusicBrain</span>
                           </div>
 
                           <div className="mt-2 max-h-[520px] space-y-2 overflow-y-auto pr-1">
