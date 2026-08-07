@@ -3993,7 +3993,11 @@ function academyResultIsTrusted(result: YoutubeSearchResult, expectedArtist: str
     expectedKey.includes(artistKey) ||
     channelKey.includes(expectedKey);
 
-  if (!artistMatches) return false;
+  const topicChannelMatches =
+    /(?:^|\s)-\s*topic$/i.test(String(result.channelTitle || "").trim()) &&
+    channelKey.includes(expectedKey);
+
+  if (!artistMatches && !topicChannelMatches) return false;
 
   const trustedAudio =
     result.metadataSource === "ART_TRACK_DESCRIPTION" ||
@@ -4026,6 +4030,19 @@ function recordMusicBrainAcademySearch(
     accepted,
     rejectedCount: Math.max(0, results.length - accepted.length),
   };
+}
+
+function karaokeComparableTitle(value: unknown) {
+  return normalizeMusicQuery(String(value || ""))
+    .replace(/\b(?:feat|featuring|ft|avec)\b.*$/i, " ")
+    .replace(/\b(?:official|officiel|official audio|audio officiel|official video|clip officiel|lyrics?|paroles|topic|art track|remaster(?:ed)?)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function karaokeSearchTitle(song: MusicBrainSong) {
+  const cleaned = karaokeComparableTitle(song.title || song.rawTitle || "");
+  return cleaned || String(song.title || song.rawTitle || "").trim();
 }
 
 function nextAcademyKaraokeMission() {
@@ -4072,7 +4089,7 @@ function nextAcademyKaraokeMission() {
     key: `karaoke:${song.videoId}`,
     name: song.artistName,
     sourceSong: song,
-    query: `${song.artistName} ${song.title} official audio topic`,
+    query: `${song.artistName} ${karaokeSearchTitle(song)}`,
   };
 }
 
@@ -4463,19 +4480,39 @@ function karaokeCandidateScore(source: MusicBrainSong, candidate: YoutubeSearchR
   const kind = karaokeKindForVideo(candidate);
   if (!kind) return -1;
 
-  const targetTitle = normalizeMusicQuery(source.title || source.rawTitle || "");
-  const candidateTitle = normalizeMusicQuery(candidate.title || candidate.rawTitle || "");
+  const targetTitle = karaokeComparableTitle(source.title || source.rawTitle || "");
+  const candidateTitle = karaokeComparableTitle(candidate.title || candidate.rawTitle || "");
   const targetArtist = normalizeMusicQuery(source.artistName || "");
   const candidateArtist = normalizeMusicQuery(candidate.artistName || candidate.channelTitle || "");
+  const candidateChannel = normalizeMusicQuery(candidate.channelTitle || "");
 
-  let score = kind === "topic" ? 200 : 160;
+  let score = kind === "topic" ? 200 : 170;
 
-  if (targetTitle && candidateTitle === targetTitle) score += 90;
-  else if (targetTitle && candidateTitle && (candidateTitle.includes(targetTitle) || targetTitle.includes(candidateTitle))) score += 45;
-  else return -1;
+  if (!targetTitle || !candidateTitle) return -1;
+
+  if (candidateTitle === targetTitle) {
+    score += 100;
+  } else if (candidateTitle.includes(targetTitle) || targetTitle.includes(candidateTitle)) {
+    score += 60;
+  } else {
+    const targetTokens = new Set(targetTitle.split(" ").filter((token) => token.length > 1));
+    const candidateTokens = new Set(candidateTitle.split(" ").filter((token) => token.length > 1));
+    const common = [...targetTokens].filter((token) => candidateTokens.has(token)).length;
+    const similarity = targetTokens.size ? common / targetTokens.size : 0;
+    if (similarity >= 0.75) score += 45;
+    else return -1;
+  }
 
   if (targetArtist && candidateArtist === targetArtist) score += 70;
-  else if (targetArtist && candidateArtist && (candidateArtist.includes(targetArtist) || targetArtist.includes(candidateArtist))) score += 35;
+  else if (
+    targetArtist &&
+    (
+      (candidateArtist && (candidateArtist.includes(targetArtist) || targetArtist.includes(candidateArtist))) ||
+      (candidateChannel && candidateChannel.includes(targetArtist))
+    )
+  ) {
+    score += 40;
+  }
 
   const sourceDuration = Number(source.durationSeconds || 0);
   const candidateDuration = Number(candidate.durationSeconds || 0);
