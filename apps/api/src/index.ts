@@ -5255,6 +5255,214 @@ app.get("/partybrain/attendance-history", (_req, res) => {
 });
 
 
+
+type MusicBrainCleanupReason =
+  | "artiste_inconnu"
+  | "artiste_generique"
+  | "contenu_non_musical";
+
+function musicBrainCleanupReport() {
+  const removable: Array<{
+    videoId: string;
+    title: string;
+    artistName: string;
+    reason: MusicBrainCleanupReason;
+    searchCount: number;
+    addedCount: number;
+    playedCount: number;
+    voteCount: number;
+  }> = [];
+
+  const reviewOnly: Array<{
+    videoId: string;
+    title: string;
+    artistName: string;
+    reason: string;
+  }> = [];
+
+  const counts: Record<string, number> = {
+    artiste_inconnu: 0,
+    artiste_generique: 0,
+    contenu_non_musical: 0,
+    metadata_faible: 0,
+    identite_non_confirmee: 0,
+  };
+
+  for (const song of Object.values(musicBrain.songs)) {
+    const decision = musicBrainLearningDecision({
+      artistName: song.artistName,
+      channelTitle: song.channelTitle,
+      title: song.title,
+      rawTitle: song.rawTitle,
+      metadataSource: song.metadataSource,
+      metadataConfidence: song.metadataConfidence,
+    });
+
+    if (decision.learn) continue;
+    counts[decision.reason] = (counts[decision.reason] || 0) + 1;
+
+    const basic = {
+      videoId: song.videoId,
+      title: song.title,
+      artistName: song.artistName,
+    };
+
+    // Nettoyage automatique volontairement conservateur :
+    // on supprime seulement les erreurs évidentes.
+    if (
+      decision.reason === "artiste_inconnu" ||
+      decision.reason === "artiste_generique" ||
+      decision.reason === "contenu_non_musical"
+    ) {
+      removable.push({
+        ...basic,
+        reason: decision.reason as MusicBrainCleanupReason,
+        searchCount: Number(song.searchCount || 0),
+        addedCount: Number(song.addedCount || 0),
+        playedCount: Number(song.playedCount || 0),
+        voteCount: Number(song.voteCount || 0),
+      });
+    } else {
+      reviewOnly.push({ ...basic, reason: decision.reason });
+    }
+  }
+
+  removable.sort((a, b) => {
+    const activityA = a.playedCount * 5 + a.addedCount * 4 + a.voteCount * 3 + a.searchCount;
+    const activityB = b.playedCount * 5 + b.addedCount * 4 + b.voteCount * 3 + b.searchCount;
+    return activityB - activityA;
+  });
+
+  return {
+    generatedAt: Date.now(),
+    totalSongs: Object.keys(musicBrain.songs).length,
+    removableCount: removable.length,
+    reviewOnlyCount: reviewOnly.length,
+    counts,
+    examples: removable.slice(0, 30),
+    reviewExamples: reviewOnly.slice(0, 20),
+    policy:
+      "Suppression automatique uniquement des artistes inconnus/génériques non fiables et des contenus clairement non musicaux. Les métadonnées faibles restent en base pour vérification.",
+  };
+}
+
+function cleanMusicBrainDatabase() {
+  const report = musicBrainCleanupReport();
+  const removedVideoIds = new Set(report.examples.map(() => "")); // remplacé juste après
+  removedVideoIds.clear();
+
+  // Recalcule la liste complète, pas seulement les exemples.
+  for (const song of Object.values(musicBrain.songs)) {
+    const decision = musicBrainLearningDecision({
+      artistName: song.artistName,
+      channelTitle: song.channelTitle,
+      title: song.title,
+      rawTitle: song.rawTitle,
+      metadataSource: song.metadataSource,
+      metadataConfidence: song.metadataConfidence,
+    });
+
+    if (
+      !decision.learn &&
+      (
+        decision.reason === "artiste_inconnu" ||
+        decision.reason === "artiste_generique" ||
+        decision.reason === "contenu_non_musical"
+      )
+    ) {
+      removedVideoIds.add(song.videoId);
+    }
+  }
+
+  const removedArtistKeys = new Set<string>();
+
+  for (const videoId of removedVideoIds) {
+    const song = musicBrain.songs[videoId];
+    if (!song) continue;
+
+    delete musicBrain.songs[videoId];
+
+    const artist = musicBrain.artists[song.artistKey];
+    if (artist?.songs) {
+      delete artist.songs[videoId];
+      if (!Object.keys(artist.songs).length) {
+        delete musicBrain.artists[song.artistKey];
+        removedArtistKeys.add(song.artistKey);
+      }
+    }
+
+    if (karaokeAudit.entries[videoId]) {
+      delete karaokeAudit.entries[videoId];
+    }
+  }
+
+  for (const [key, transition] of Object.entries(musicBrain.transitions)) {
+    if (
+      removedVideoIds.has(transition.fromVideoId) ||
+      removedVideoIds.has(transition.toVideoId)
+    ) {
+      delete musicBrain.transitions[key];
+    }
+  }
+
+  for (const [key, relation] of Object.entries(musicBrain.artistRelations)) {
+    if (
+      removedArtistKeys.has(relation.fromKey) ||
+      removedArtistKeys.has(relation.toKey)
+    ) {
+      delete musicBrain.artistRelations[key];
+    }
+  }
+
+  // Supprime aussi les références de collaborateurs vers des artistes disparus.
+  for (const artist of Object.values(musicBrain.artists)) {
+    for (const collaboratorKey of Object.keys(artist.collaborators || {})) {
+      if (removedArtistKeys.has(collaboratorKey)) {
+        delete artist.collaborators[collaboratorKey];
+      }
+    }
+  }
+
+  musicBrain.updatedAt = Date.now();
+  saveMusicBrain();
+  saveKaraokeAudit();
+
+  return {
+    deletedSongs: removedVideoIds.size,
+    deletedArtists: removedArtistKeys.size,
+    remainingSongs: Object.keys(musicBrain.songs).length,
+    remainingArtists: Object.keys(musicBrain.artists).length,
+  };
+}
+
+app.post("/partybrain/maintenance/musicbrain-cleanup/preview", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+  return res.json({
+    ok: true,
+    report: musicBrainCleanupReport(),
+  });
+});
+
+app.post("/partybrain/maintenance/musicbrain-cleanup/run", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  const before = musicBrainCleanupReport();
+  const result = cleanMusicBrainDatabase();
+  const after = musicBrainCleanupReport();
+
+  console.log(
+    `🧹 MusicBrain nettoyé : ${result.deletedSongs} morceau(x), ${result.deletedArtists} artiste(s) supprimé(s).`
+  );
+
+  return res.json({
+    ok: true,
+    before,
+    result,
+    after,
+    message: `MusicBrain nettoyé : ${result.deletedSongs} morceau(x) douteux supprimé(s), ${result.deletedArtists} artiste(s) vide(s) supprimé(s).`,
+  });
+});
+
 app.get("/partybrain/maintenance/youtube-cache", (_req, res) => {
   return res.json({
     entries: youtubeSearchCache.size,

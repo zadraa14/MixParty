@@ -278,6 +278,11 @@ export default function MusicBrainAdminPage() {
 
 
   const [maintenanceError, setMaintenanceError] = useState("");
+  const [cleanupPreviewLoading, setCleanupPreviewLoading] = useState(false);
+  const [cleanupRunLoading, setCleanupRunLoading] = useState(false);
+  const [cleanupReport, setCleanupReport] = useState<any | null>(null);
+  const [cleanupMessage, setCleanupMessage] = useState("");
+  const [cleanupError, setCleanupError] = useState("");
 
   const [activeCoverFilter, setActiveCoverFilter] = useState<CoverFilter | null>(null);
   const [coverLibrary, setCoverLibrary] = useState<CoverLibrarySong[]>([]);
@@ -468,6 +473,77 @@ export default function MusicBrainAdminPage() {
       window.clearInterval(historyTimer);
     };
   }, []);
+
+  async function previewMusicBrainCleanup() {
+    if (!adminToken.trim()) {
+      setCleanupError("Entre le code administrateur Railway avant d’analyser MusicBrain.");
+      return;
+    }
+
+    setCleanupPreviewLoading(true);
+    setCleanupError("");
+    setCleanupMessage("");
+
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/maintenance/musicbrain-cleanup/preview`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-partybrain-admin-token": adminToken.trim(),
+        },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Analyse MusicBrain impossible.");
+      setCleanupReport(data?.report || null);
+    } catch (err) {
+      setCleanupError(err instanceof Error ? err.message : "Analyse MusicBrain impossible.");
+    } finally {
+      setCleanupPreviewLoading(false);
+    }
+  }
+
+  async function runMusicBrainCleanup() {
+    if (!adminToken.trim()) {
+      setCleanupError("Entre le code administrateur Railway avant de nettoyer MusicBrain.");
+      return;
+    }
+
+    const removable = Number(cleanupReport?.removableCount || 0);
+    if (removable <= 0) {
+      setCleanupError("Aucune entrée clairement douteuse à supprimer.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Supprimer ${removable} morceau(x) clairement douteux de MusicBrain ? Les morceaux simplement incertains ne seront pas supprimés.`
+    );
+    if (!confirmed) return;
+
+    setCleanupRunLoading(true);
+    setCleanupError("");
+    setCleanupMessage("");
+
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/maintenance/musicbrain-cleanup/run`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-partybrain-admin-token": adminToken.trim(),
+        },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Nettoyage MusicBrain impossible.");
+
+      setCleanupMessage(data?.message || "MusicBrain nettoyé.");
+      setCleanupReport(data?.after || null);
+      await loadStats();
+      await loadKaraokeAudit();
+    } catch (err) {
+      setCleanupError(err instanceof Error ? err.message : "Nettoyage MusicBrain impossible.");
+    } finally {
+      setCleanupRunLoading(false);
+    }
+  }
 
   async function clearYoutubeCache() {
     setMaintenanceMessage("");
@@ -1460,6 +1536,53 @@ export default function MusicBrainAdminPage() {
                   </button>
                   {maintenanceMessage ? <p className="mt-3 text-sm font-bold text-emerald-300">{maintenanceMessage}</p> : null}
                   {maintenanceError ? <p className="mt-3 text-sm font-bold text-red-300">{maintenanceError}</p> : null}
+
+                  <div className="my-4 h-px bg-white/10" />
+
+                  <div className="rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/[0.06] p-4">
+                    <p className="text-xs font-black uppercase tracking-[.18em] text-fuchsia-200/70">Nettoyage MusicBrain</p>
+                    <p className="mt-2 text-xs leading-5 text-white/40">
+                      Le nettoyage supprime uniquement les artistes clairement inconnus/génériques non fiables et les contenus non musicaux. Les entrées simplement incertaines restent conservées.
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => void previewMusicBrainCleanup()}
+                      disabled={cleanupPreviewLoading || cleanupRunLoading}
+                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-3 py-2.5 text-xs font-black text-cyan-100 disabled:opacity-40"
+                    >
+                      <Search className={`h-3.5 w-3.5 ${cleanupPreviewLoading ? "animate-pulse" : ""}`} />
+                      {cleanupPreviewLoading ? "Analyse en cours…" : "Analyser avant nettoyage"}
+                    </button>
+
+                    {cleanupReport ? (
+                      <div className="mt-3 rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/55">
+                        <p><strong className="text-white">{number.format(cleanupReport.removableCount || 0)}</strong> morceau(x) supprimable(s) automatiquement</p>
+                        <p className="mt-1"><strong className="text-white">{number.format(cleanupReport.reviewOnlyCount || 0)}</strong> entrée(s) incertaine(s) conservée(s)</p>
+                        <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-white/35">
+                          <span>Inconnus : {number.format(cleanupReport.counts?.artiste_inconnu || 0)}</span>
+                          <span>Génériques : {number.format(cleanupReport.counts?.artiste_generique || 0)}</span>
+                          <span>Non musicaux : {number.format(cleanupReport.counts?.contenu_non_musical || 0)}</span>
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <button
+                      type="button"
+                      onClick={() => void runMusicBrainCleanup()}
+                      disabled={cleanupRunLoading || cleanupPreviewLoading || Number(cleanupReport?.removableCount || 0) <= 0}
+                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2.5 text-xs font-black text-red-100 disabled:opacity-40"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      {cleanupRunLoading
+                        ? "Nettoyage MusicBrain…"
+                        : `Nettoyer ${number.format(cleanupReport?.removableCount || 0)} entrée(s)`}
+                    </button>
+
+                    {cleanupMessage ? <p className="mt-3 text-xs font-bold text-emerald-300">{cleanupMessage}</p> : null}
+                    {cleanupError ? <p className="mt-3 text-xs font-bold text-red-300">{cleanupError}</p> : null}
+                  </div>
+
                   <p className="mt-3 text-xs text-white/35">Protection : variable Railway <code className="text-amber-200">PARTYBRAIN_ADMIN_TOKEN</code>.</p>
                 </div>
               </div>
