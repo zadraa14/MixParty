@@ -290,6 +290,8 @@ export default function MusicBrainAdminPage() {
   const [artistRepairReport, setArtistRepairReport] = useState<any | null>(null);
   const [artistRepairMessage, setArtistRepairMessage] = useState("");
   const [artistRepairError, setArtistRepairError] = useState("");
+  const [selectedReviewRepairs, setSelectedReviewRepairs] = useState<Record<string, boolean>>({});
+  const [selectedReviewApplyLoading, setSelectedReviewApplyLoading] = useState(false);
 
   const [activeCoverFilter, setActiveCoverFilter] = useState<CoverFilter | null>(null);
   const [coverLibrary, setCoverLibrary] = useState<CoverLibrarySong[]>([]);
@@ -480,6 +482,93 @@ export default function MusicBrainAdminPage() {
       window.clearInterval(historyTimer);
     };
   }, []);
+
+  function toggleReviewRepair(videoId: string) {
+    setSelectedReviewRepairs((current) => ({
+      ...current,
+      [videoId]: !current[videoId],
+    }));
+  }
+
+  function selectAllReviewRepairs() {
+    const items = Array.isArray(artistRepairReport?.reviewProposals)
+      ? artistRepairReport.reviewProposals
+      : [];
+
+    const allSelected =
+      items.length > 0 &&
+      items.every((item: any) => selectedReviewRepairs[item.videoId]);
+
+    if (allSelected) {
+      setSelectedReviewRepairs({});
+      return;
+    }
+
+    const next: Record<string, boolean> = {};
+    for (const item of items) {
+      next[item.videoId] = true;
+    }
+    setSelectedReviewRepairs(next);
+  }
+
+  async function applySelectedReviewRepairs() {
+    if (!adminToken.trim()) {
+      setArtistRepairError("Entre le code administrateur Railway avant de valider les corrections.");
+      return;
+    }
+
+    const proposals = Array.isArray(artistRepairReport?.reviewProposals)
+      ? artistRepairReport.reviewProposals
+      : [];
+
+    const selections = proposals
+      .filter((item: any) => selectedReviewRepairs[item.videoId])
+      .map((item: any) => ({
+        videoId: item.videoId,
+        proposedArtistName: item.proposedArtistName,
+      }));
+
+    if (!selections.length) {
+      setArtistRepairError("Sélectionne au moins une proposition à valider.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Valider ${selections.length} correction(s) sélectionnée(s) ? Aucun morceau ne sera supprimé.`
+    );
+    if (!confirmed) return;
+
+    setSelectedReviewApplyLoading(true);
+    setArtistRepairError("");
+    setArtistRepairMessage("");
+
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/maintenance/musicbrain-artist-repair/apply-selected`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-partybrain-admin-token": adminToken.trim(),
+        },
+        body: JSON.stringify({ selections }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Validation des corrections impossible.");
+
+      setArtistRepairMessage(data?.message || "Corrections sélectionnées validées.");
+      setArtistRepairReport(data?.report || null);
+      setSelectedReviewRepairs({});
+      await loadStats();
+      await loadKaraokeAudit();
+      await previewMusicBrainCleanup();
+    } catch (err) {
+      setArtistRepairError(
+        err instanceof Error ? err.message : "Validation des corrections impossible."
+      );
+    } finally {
+      setSelectedReviewApplyLoading(false);
+    }
+  }
 
   async function previewMusicBrainArtistRepair() {
     if (!adminToken.trim()) {
@@ -1697,25 +1786,100 @@ export default function MusicBrainAdminPage() {
                           </div>
 
                           <div className="mt-4">
-                            <p className="text-[11px] font-black uppercase tracking-[.15em] text-amber-200/70">Propositions à vérifier — aucune modification automatique</p>
-                            <div className="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1">
-                              {(artistRepairReport.reviewProposals || []).slice(0, 100).map((item: any) => (
-                                <article key={item.videoId} className="rounded-xl border border-amber-300/10 bg-amber-500/[0.04] p-3">
-                                  <p className="truncate text-xs font-black text-white">{item.rawTitle || item.title}</p>
-                                  <p className="mt-1 text-xs">
-                                    <span className="text-red-200/70">{item.currentArtistName}</span>
-                                    <span className="mx-2 text-white/25">→</span>
-                                    <strong className="text-amber-200">{item.proposedArtistName}</strong>
-                                  </p>
-                                  <p className="mt-1 text-[10px] text-white/35">
-                                    {item.sourceLabel} • confiance {Math.round(Number(item.confidence || 0))} %
-                                  </p>
-                                  <p className="mt-1 text-[10px] text-amber-100/55">{item.reason}</p>
-                                </article>
-                              ))}
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <div>
+                                <p className="text-[11px] font-black uppercase tracking-[.15em] text-amber-200/70">
+                                  Propositions à vérifier — validation manuelle
+                                </p>
+                                <p className="mt-1 text-[10px] text-white/35">
+                                  Coche uniquement les corrections que tu confirmes toi-même.
+                                </p>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => selectAllReviewRepairs()}
+                                disabled={!artistRepairReport.reviewProposals?.length}
+                                className="rounded-xl border border-amber-300/15 bg-amber-500/[0.06] px-3 py-2 text-[10px] font-black text-amber-100 disabled:opacity-40"
+                              >
+                                {(artistRepairReport.reviewProposals || []).length > 0 &&
+                                (artistRepairReport.reviewProposals || []).every(
+                                  (item: any) => selectedReviewRepairs[item.videoId]
+                                )
+                                  ? "Tout désélectionner"
+                                  : "Tout sélectionner"}
+                              </button>
+                            </div>
+
+                            <div className="mt-2 max-h-96 space-y-2 overflow-y-auto pr-1">
+                              {(artistRepairReport.reviewProposals || []).map((item: any) => {
+                                const selected = Boolean(selectedReviewRepairs[item.videoId]);
+                                return (
+                                  <article
+                                    key={item.videoId}
+                                    className={`rounded-xl border p-3 transition ${
+                                      selected
+                                        ? "border-amber-300/35 bg-amber-500/[0.10]"
+                                        : "border-amber-300/10 bg-amber-500/[0.04]"
+                                    }`}
+                                  >
+                                    <label className="flex cursor-pointer items-start gap-3">
+                                      <input
+                                        type="checkbox"
+                                        checked={selected}
+                                        onChange={() => toggleReviewRepair(item.videoId)}
+                                        className="mt-1 h-4 w-4 shrink-0 accent-amber-400"
+                                      />
+
+                                      <div className="min-w-0 flex-1">
+                                        <p className="truncate text-xs font-black text-white">
+                                          {item.rawTitle || item.title}
+                                        </p>
+                                        <p className="mt-1 text-xs">
+                                          <span className="text-red-200/70">{item.currentArtistName}</span>
+                                          <span className="mx-2 text-white/25">→</span>
+                                          <strong className="text-amber-200">{item.proposedArtistName}</strong>
+                                        </p>
+                                        <p className="mt-1 text-[10px] text-white/35">
+                                          {item.sourceLabel} • confiance {Math.round(Number(item.confidence || 0))} %
+                                        </p>
+                                        <p className="mt-1 text-[10px] text-amber-100/55">{item.reason}</p>
+                                      </div>
+                                    </label>
+                                  </article>
+                                );
+                              })}
+
                               {!artistRepairReport.reviewProposals?.length ? (
-                                <p className="rounded-xl border border-white/8 bg-black/20 p-3 text-xs text-white/35">Aucune proposition manuelle.</p>
+                                <p className="rounded-xl border border-white/8 bg-black/20 p-3 text-xs text-white/35">
+                                  Aucune proposition manuelle.
+                                </p>
                               ) : null}
+                            </div>
+
+                            <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                              <p className="text-[11px] text-white/40">
+                                {number.format(
+                                  Object.values(selectedReviewRepairs).filter(Boolean).length
+                                )} sélectionnée(s)
+                              </p>
+
+                              <button
+                                type="button"
+                                onClick={() => void applySelectedReviewRepairs()}
+                                disabled={
+                                  selectedReviewApplyLoading ||
+                                  Object.values(selectedReviewRepairs).filter(Boolean).length <= 0
+                                }
+                                className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-300/25 bg-amber-500/15 px-4 py-2.5 text-xs font-black text-amber-100 disabled:opacity-40"
+                              >
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                {selectedReviewApplyLoading
+                                  ? "Validation en cours…"
+                                  : `Valider ${number.format(
+                                      Object.values(selectedReviewRepairs).filter(Boolean).length
+                                    )} sélectionnée(s)`}
+                              </button>
                             </div>
                           </div>
 

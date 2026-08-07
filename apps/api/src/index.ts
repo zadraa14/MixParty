@@ -5596,6 +5596,72 @@ function applyMusicBrainArtistRepair(proposal: MusicBrainArtistRepairProposal) {
   return true;
 }
 
+
+function applySelectedMusicBrainArtistRepair(videoId: string, proposedArtistName: string) {
+  const song = musicBrain.songs[videoId];
+  if (!song) return { ok: false, reason: "morceau_introuvable" };
+
+  const freshProposal = proposeMusicBrainArtistRepair(song);
+  if (!freshProposal || freshProposal.level !== "review") {
+    return { ok: false, reason: "proposition_non_valide" };
+  }
+
+  const expectedKey = normalizeMusicQuery(freshProposal.proposedArtistName);
+  const requestedKey = normalizeMusicQuery(proposedArtistName);
+  if (!expectedKey || expectedKey !== requestedKey) {
+    return { ok: false, reason: "proposition_modifiee" };
+  }
+
+  const oldArtistKey = song.artistKey;
+  const newArtistName = cleanArtistName(freshProposal.proposedArtistName);
+  const newArtistKey = normalizeMusicQuery(newArtistName);
+  if (!newArtistKey || newArtistKey === oldArtistKey) {
+    return { ok: false, reason: "aucun_changement" };
+  }
+
+  const oldArtist = musicBrain.artists[oldArtistKey];
+  if (oldArtist?.songs?.[song.videoId]) {
+    delete oldArtist.songs[song.videoId];
+  }
+
+  song.artistName = newArtistName;
+  song.artistKey = newArtistKey;
+  song.title = cleanTrackTitle(song.rawTitle || song.title, newArtistName);
+  song.metadataConfidence = Math.max(Number(song.metadataConfidence || 0), 95);
+  song.lastSeenAt = Date.now();
+
+  const now = Date.now();
+  const targetArtist = musicBrain.artists[newArtistKey] || {
+    key: newArtistKey,
+    name: newArtistName,
+    aliases: [],
+    collaborators: {},
+    firstSeenAt: song.firstSeenAt || now,
+    lastSeenAt: now,
+    searchCount: 0,
+    songs: {},
+  };
+
+  targetArtist.name = newArtistName;
+  targetArtist.lastSeenAt = now;
+  targetArtist.songs[song.videoId] = song;
+  musicBrain.artists[newArtistKey] = targetArtist;
+
+  removeEmptyMusicBrainArtist(oldArtistKey);
+
+  const auditEntry = karaokeAudit.entries[song.videoId];
+  if (auditEntry) {
+    auditEntry.sourceArtistName = newArtistName;
+  }
+
+  return {
+    ok: true,
+    videoId: song.videoId,
+    oldArtistName: freshProposal.currentArtistName,
+    newArtistName,
+  };
+}
+
 function repairMusicBrainArtists() {
   const before = musicBrainArtistRepairReport();
   let repaired = 0;
@@ -6011,6 +6077,64 @@ function cleanMusicBrainDatabase() {
     remainingArtists: Object.keys(musicBrain.artists).length,
   };
 }
+
+
+app.post("/partybrain/maintenance/musicbrain-artist-repair/apply-selected", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  const selections = Array.isArray(req.body?.selections) ? req.body.selections : [];
+  if (!selections.length) {
+    return res.status(400).json({ error: "Aucune proposition sélectionnée." });
+  }
+
+  // Sécurité : on limite une validation manuelle à 200 propositions à la fois.
+  const safeSelections = selections.slice(0, 200);
+
+  const applied: Array<{
+    videoId: string;
+    oldArtistName: string;
+    newArtistName: string;
+  }> = [];
+  const skipped: Array<{
+    videoId: string;
+    reason: string;
+  }> = [];
+
+  for (const selection of safeSelections) {
+    const videoId = String(selection?.videoId || "").trim();
+    const proposedArtistName = String(selection?.proposedArtistName || "").trim();
+
+    if (!videoId || !proposedArtistName) {
+      skipped.push({ videoId, reason: "selection_invalide" });
+      continue;
+    }
+
+    const result = applySelectedMusicBrainArtistRepair(videoId, proposedArtistName);
+    if (result.ok) {
+      applied.push({
+        videoId: result.videoId!,
+        oldArtistName: result.oldArtistName!,
+        newArtistName: result.newArtistName!,
+      });
+    } else {
+      skipped.push({ videoId, reason: result.reason || "non_appliquee" });
+    }
+  }
+
+  musicBrain.updatedAt = Date.now();
+  saveMusicBrain();
+  saveKaraokeAudit();
+
+  return res.json({
+    ok: true,
+    appliedCount: applied.length,
+    skippedCount: skipped.length,
+    applied,
+    skipped,
+    report: musicBrainArtistRepairReport(),
+    message: `${applied.length} proposition(s) sélectionnée(s) validée(s). ${skipped.length} ignorée(s).`,
+  });
+});
 
 app.post("/partybrain/maintenance/musicbrain-cleanup/preview", (req, res) => {
   if (!requirePartyBrainAdmin(req, res)) return;
