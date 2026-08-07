@@ -5257,12 +5257,311 @@ app.get("/partybrain/attendance-history", (_req, res) => {
 
 
 
+
+type MusicBrainArtistRepairSource = "TOPIC_CHANNEL" | "TITLE_PREFIX" | "METADATA_REPARSE";
+
+type MusicBrainArtistRepairProposal = {
+  videoId: string;
+  title: string;
+  rawTitle?: string;
+  currentArtistName: string;
+  proposedArtistName: string;
+  channelTitle?: string;
+  source: MusicBrainArtistRepairSource;
+  sourceLabel: string;
+  confidence: number;
+};
+
+function isSuspiciousArtistName(value: unknown) {
+  const artist = cleanArtistName(String(value || ""));
+  const key = normalizeMusicQuery(artist);
+
+  if (!key) return true;
+  if (/^(unknown|inconnu|artiste inconnu|unknown artist)$/i.test(artist)) return true;
+
+  // Noms déjà observés comme faux positifs / valeurs de parsing.
+  if (/^(da|art)$/i.test(key)) return true;
+
+  // Les noms très courts sont seulement suspects, jamais supprimés automatiquement.
+  if (key.length <= 2) return true;
+
+  return /^(music|musique|official|officiel|topic|audio|video|records?|recordings?|channel|youtube)$/i.test(artist);
+}
+
+function validRepairArtist(value: unknown) {
+  const artist = cleanArtistName(String(value || ""));
+  const key = normalizeMusicQuery(artist);
+  if (!key || key.length < 2) return false;
+  if (isSuspiciousArtistName(artist)) return false;
+  if (/^(feat|featuring|ft|avec|official|officiel|music|topic)$/i.test(artist)) return false;
+  return true;
+}
+
+function artistFromTopicChannel(channelTitle: unknown) {
+  const channel = String(channelTitle || "").trim();
+  const match = channel.match(/^(.+?)\s*-\s*Topic$/i);
+  if (!match) return "";
+  return cleanArtistName(match[1]);
+}
+
+function artistFromTitlePrefix(rawTitle: unknown) {
+  const raw = decodeHtmlEntities(String(rawTitle || "")).trim();
+  if (!raw) return "";
+
+  // On exige un séparateur clair afin d'éviter de deviner un artiste à partir
+  // d'un simple mot présent dans le titre.
+  const parts = raw.split(/\s+(?:-|–|—|\||:)\s+/);
+  if (parts.length < 2) return "";
+
+  let candidate = cleanArtistName(parts[0]);
+  candidate = candidate
+    .replace(/^\[[^\]]+\]\s*/, "")
+    .replace(/^\([^)]+\)\s*/, "")
+    .trim();
+
+  return candidate;
+}
+
+function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRepairProposal | null {
+  if (!isSuspiciousArtistName(song.artistName)) return null;
+
+  const currentKey = normalizeMusicQuery(song.artistName || "");
+
+  const topicArtist = artistFromTopicChannel(song.channelTitle);
+  if (
+    validRepairArtist(topicArtist) &&
+    normalizeMusicQuery(topicArtist) !== currentKey
+  ) {
+    return {
+      videoId: song.videoId,
+      title: song.title,
+      rawTitle: song.rawTitle,
+      currentArtistName: song.artistName,
+      proposedArtistName: topicArtist,
+      channelTitle: song.channelTitle,
+      source: "TOPIC_CHANNEL",
+      sourceLabel: "Chaîne YouTube Topic",
+      confidence: 98,
+    };
+  }
+
+  const titleArtist = artistFromTitlePrefix(song.rawTitle || song.title);
+  if (
+    validRepairArtist(titleArtist) &&
+    normalizeMusicQuery(titleArtist) !== currentKey
+  ) {
+    return {
+      videoId: song.videoId,
+      title: song.title,
+      rawTitle: song.rawTitle,
+      currentArtistName: song.artistName,
+      proposedArtistName: titleArtist,
+      channelTitle: song.channelTitle,
+      source: "TITLE_PREFIX",
+      sourceLabel: "Artiste présent avant le séparateur du titre YouTube",
+      confidence: 90,
+    };
+  }
+
+  // Dernier essai 100 % local avec le moteur de métadonnées déjà présent.
+  const reparsed = extractMusicMetadata({
+    rawTitle: String(song.rawTitle || song.title || ""),
+    channelTitle: song.channelTitle,
+    query: String(song.rawTitle || song.title || ""),
+  });
+
+  const reparsedArtist = cleanArtistName(reparsed.artistName || "");
+  if (
+    validRepairArtist(reparsedArtist) &&
+    normalizeMusicQuery(reparsedArtist) !== currentKey &&
+    Number(reparsed.metadataConfidence || 0) >= 65
+  ) {
+    return {
+      videoId: song.videoId,
+      title: song.title,
+      rawTitle: song.rawTitle,
+      currentArtistName: song.artistName,
+      proposedArtistName: reparsedArtist,
+      channelTitle: song.channelTitle,
+      source: "METADATA_REPARSE",
+      sourceLabel: "Nouvelle analyse locale des métadonnées",
+      confidence: Math.max(65, Number(reparsed.metadataConfidence || 0)),
+    };
+  }
+
+  return null;
+}
+
+function musicBrainArtistRepairReport() {
+  const repairable: MusicBrainArtistRepairProposal[] = [];
+  const unresolved: Array<{
+    videoId: string;
+    title: string;
+    rawTitle?: string;
+    artistName: string;
+    channelTitle?: string;
+  }> = [];
+
+  for (const song of Object.values(musicBrain.songs)) {
+    if (!isSuspiciousArtistName(song.artistName)) continue;
+
+    const proposal = proposeMusicBrainArtistRepair(song);
+    if (proposal) {
+      repairable.push(proposal);
+    } else {
+      unresolved.push({
+        videoId: song.videoId,
+        title: song.title,
+        rawTitle: song.rawTitle,
+        artistName: song.artistName,
+        channelTitle: song.channelTitle,
+      });
+    }
+  }
+
+  repairable.sort((a, b) =>
+    b.confidence - a.confidence ||
+    a.currentArtistName.localeCompare(b.currentArtistName, "fr")
+  );
+
+  return {
+    generatedAt: Date.now(),
+    suspiciousCount: repairable.length + unresolved.length,
+    repairableCount: repairable.length,
+    unresolvedCount: unresolved.length,
+    repairable,
+    unresolved: unresolved.slice(0, 1000),
+    note:
+      "Aucun appel YouTube : les réparations utilisent uniquement les titres, chaînes et métadonnées déjà présents dans MusicBrain.",
+  };
+}
+
+function removeEmptyMusicBrainArtist(artistKey: string) {
+  const artist = musicBrain.artists[artistKey];
+  if (!artist || Object.keys(artist.songs || {}).length > 0) return;
+
+  delete musicBrain.artists[artistKey];
+
+  for (const [relationKeyValue, relation] of Object.entries(musicBrain.artistRelations)) {
+    if (relation.fromKey === artistKey || relation.toKey === artistKey) {
+      delete musicBrain.artistRelations[relationKeyValue];
+    }
+  }
+
+  for (const otherArtist of Object.values(musicBrain.artists)) {
+    if (otherArtist.collaborators?.[artistKey]) {
+      delete otherArtist.collaborators[artistKey];
+    }
+  }
+}
+
+function applyMusicBrainArtistRepair(proposal: MusicBrainArtistRepairProposal) {
+  const song = musicBrain.songs[proposal.videoId];
+  if (!song) return false;
+
+  // On recalcule au moment de l'action pour ne jamais appliquer une proposition obsolète.
+  const freshProposal = proposeMusicBrainArtistRepair(song);
+  if (
+    !freshProposal ||
+    freshProposal.proposedArtistName !== proposal.proposedArtistName ||
+    freshProposal.source !== proposal.source
+  ) {
+    return false;
+  }
+
+  const oldArtistKey = song.artistKey;
+  const newArtistName = cleanArtistName(freshProposal.proposedArtistName);
+  const newArtistKey = normalizeMusicQuery(newArtistName);
+  if (!newArtistKey || newArtistKey === oldArtistKey) return false;
+
+  const oldArtist = musicBrain.artists[oldArtistKey];
+  if (oldArtist?.songs?.[song.videoId]) {
+    delete oldArtist.songs[song.videoId];
+  }
+
+  song.artistName = newArtistName;
+  song.artistKey = newArtistKey;
+  song.title = cleanTrackTitle(song.rawTitle || song.title, newArtistName);
+  song.metadataConfidence = Math.max(
+    Number(song.metadataConfidence || 0),
+    freshProposal.confidence
+  );
+  song.lastSeenAt = Date.now();
+
+  const now = Date.now();
+  const targetArtist = musicBrain.artists[newArtistKey] || {
+    key: newArtistKey,
+    name: newArtistName,
+    aliases: [],
+    collaborators: {},
+    firstSeenAt: song.firstSeenAt || now,
+    lastSeenAt: now,
+    searchCount: 0,
+    songs: {},
+  };
+
+  targetArtist.name = newArtistName;
+  targetArtist.lastSeenAt = now;
+  targetArtist.songs[song.videoId] = song;
+  musicBrain.artists[newArtistKey] = targetArtist;
+
+  removeEmptyMusicBrainArtist(oldArtistKey);
+
+  const auditEntry = karaokeAudit.entries[song.videoId];
+  if (auditEntry) {
+    auditEntry.sourceArtistName = newArtistName;
+  }
+
+  return true;
+}
+
+function repairMusicBrainArtists() {
+  const before = musicBrainArtistRepairReport();
+  let repaired = 0;
+
+  for (const proposal of before.repairable) {
+    if (applyMusicBrainArtistRepair(proposal)) repaired += 1;
+  }
+
+  musicBrain.updatedAt = Date.now();
+  saveMusicBrain();
+  saveKaraokeAudit();
+
+  const after = musicBrainArtistRepairReport();
+
+  return {
+    repaired,
+    before,
+    after,
+  };
+}
+
+app.post("/partybrain/maintenance/musicbrain-artist-repair/preview", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+  return res.json({
+    ok: true,
+    report: musicBrainArtistRepairReport(),
+  });
+});
+
+app.post("/partybrain/maintenance/musicbrain-artist-repair/run", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  const result = repairMusicBrainArtists();
+  return res.json({
+    ok: true,
+    ...result,
+    message: `${result.repaired} artiste(s) de morceau(x) réparé(s) automatiquement. ${result.after.unresolvedCount} restent à vérifier manuellement.`,
+  });
+});
+
 type MusicBrainCleanupReason =
   | "artiste_inconnu"
   | "artiste_generique"
   | "contenu_non_musical";
 
 type MusicBrainReviewCategory =
+  | "artiste_probablement_mal_attribue"
   | "nom_artiste_tres_court"
   | "query_fallback"
   | "confiance_tres_faible"
@@ -5295,6 +5594,15 @@ function classifyMusicBrainReviewSong(song: MusicBrainSong, decisionReason: stri
     titleKey &&
     titleKey.includes(artistKey)
   );
+
+  const repairProposal = proposeMusicBrainArtistRepair(song);
+  if (isSuspiciousArtistName(song.artistName) && repairProposal) {
+    return {
+      category: "artiste_probablement_mal_attribue",
+      categoryLabel: "Artiste probablement mal attribué",
+      explanation: `${song.artistName} peut être réparé en ${repairProposal.proposedArtistName} grâce à : ${repairProposal.sourceLabel}.`,
+    };
+  }
 
   if (artistKey.length > 0 && artistKey.length <= 3) {
     return {
@@ -5385,6 +5693,7 @@ function musicBrainCleanupReport() {
   };
 
   const reviewCategoryCounts: Record<MusicBrainReviewCategory, number> = {
+    artiste_probablement_mal_attribue: 0,
     nom_artiste_tres_court: 0,
     query_fallback: 0,
     confiance_tres_faible: 0,

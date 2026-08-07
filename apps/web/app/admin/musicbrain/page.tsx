@@ -285,6 +285,11 @@ export default function MusicBrainAdminPage() {
   const [cleanupError, setCleanupError] = useState("");
   const [cleanupReviewFilter, setCleanupReviewFilter] = useState("all");
   const [cleanupReviewSearch, setCleanupReviewSearch] = useState("");
+  const [artistRepairLoading, setArtistRepairLoading] = useState(false);
+  const [artistRepairRunning, setArtistRepairRunning] = useState(false);
+  const [artistRepairReport, setArtistRepairReport] = useState<any | null>(null);
+  const [artistRepairMessage, setArtistRepairMessage] = useState("");
+  const [artistRepairError, setArtistRepairError] = useState("");
 
   const [activeCoverFilter, setActiveCoverFilter] = useState<CoverFilter | null>(null);
   const [coverLibrary, setCoverLibrary] = useState<CoverLibrarySong[]>([]);
@@ -475,6 +480,78 @@ export default function MusicBrainAdminPage() {
       window.clearInterval(historyTimer);
     };
   }, []);
+
+  async function previewMusicBrainArtistRepair() {
+    if (!adminToken.trim()) {
+      setArtistRepairError("Entre le code administrateur Railway avant d’analyser les artistes.");
+      return;
+    }
+
+    setArtistRepairLoading(true);
+    setArtistRepairError("");
+    setArtistRepairMessage("");
+
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/maintenance/musicbrain-artist-repair/preview`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-partybrain-admin-token": adminToken.trim(),
+        },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Analyse des artistes impossible.");
+      setArtistRepairReport(data?.report || null);
+    } catch (err) {
+      setArtistRepairError(err instanceof Error ? err.message : "Analyse des artistes impossible.");
+    } finally {
+      setArtistRepairLoading(false);
+    }
+  }
+
+  async function runMusicBrainArtistRepair() {
+    if (!adminToken.trim()) {
+      setArtistRepairError("Entre le code administrateur Railway avant de réparer les artistes.");
+      return;
+    }
+
+    const repairable = Number(artistRepairReport?.repairableCount || 0);
+    if (repairable <= 0) {
+      setArtistRepairError("Aucun artiste réparable automatiquement.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Réparer automatiquement ${repairable} morceau(x) dont l’artiste semble mal attribué ? Aucun morceau ne sera supprimé.`
+    );
+    if (!confirmed) return;
+
+    setArtistRepairRunning(true);
+    setArtistRepairError("");
+    setArtistRepairMessage("");
+
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/maintenance/musicbrain-artist-repair/run`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-partybrain-admin-token": adminToken.trim(),
+        },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Réparation des artistes impossible.");
+
+      setArtistRepairMessage(data?.message || "Réparation terminée.");
+      setArtistRepairReport(data?.after || null);
+      await loadStats();
+      await loadKaraokeAudit();
+      await previewMusicBrainCleanup();
+    } catch (err) {
+      setArtistRepairError(err instanceof Error ? err.message : "Réparation des artistes impossible.");
+    } finally {
+      setArtistRepairRunning(false);
+    }
+  }
 
   async function previewMusicBrainCleanup() {
     if (!adminToken.trim()) {
@@ -1557,6 +1634,77 @@ export default function MusicBrainAdminPage() {
                       Le nettoyage automatique ne supprime que les erreurs évidentes. Une faible confiance, QUERY_FALLBACK ou une chaîne différente ne suffit jamais à classer un artiste comme douteux si le titre YouTube confirme déjà son nom.
                     </p>
 
+                    <div className="mt-4 rounded-2xl border border-emerald-300/15 bg-emerald-500/[0.06] p-4">
+                      <p className="text-xs font-black uppercase tracking-[.18em] text-emerald-200/75">
+                        Réparation des artistes mal attribués
+                      </p>
+                      <p className="mt-2 text-xs leading-5 text-white/40">
+                        DA, ART et autres noms suspects ne sont jamais supprimés automatiquement. PartyBrain tente d’abord de retrouver le vrai artiste avec les données déjà présentes dans MusicBrain, sans quota YouTube.
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={() => void previewMusicBrainArtistRepair()}
+                        disabled={artistRepairLoading || artistRepairRunning}
+                        className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2.5 text-xs font-black text-emerald-100 disabled:opacity-40"
+                      >
+                        <Search className={`h-3.5 w-3.5 ${artistRepairLoading ? "animate-pulse" : ""}`} />
+                        {artistRepairLoading ? "Analyse des artistes…" : "Analyser les artistes mal attribués"}
+                      </button>
+
+                      {artistRepairReport ? (
+                        <div className="mt-3">
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            <div className="rounded-xl border border-white/8 bg-black/20 p-3">
+                              <p className="text-[10px] uppercase text-white/35">Suspects</p>
+                              <p className="mt-1 text-xl font-black">{number.format(artistRepairReport.suspiciousCount || 0)}</p>
+                            </div>
+                            <div className="rounded-xl border border-emerald-300/15 bg-emerald-500/[0.07] p-3">
+                              <p className="text-[10px] uppercase text-emerald-200/55">Réparables</p>
+                              <p className="mt-1 text-xl font-black text-emerald-100">{number.format(artistRepairReport.repairableCount || 0)}</p>
+                            </div>
+                            <div className="rounded-xl border border-amber-300/15 bg-amber-500/[0.06] p-3">
+                              <p className="text-[10px] uppercase text-amber-200/55">À vérifier</p>
+                              <p className="mt-1 text-xl font-black text-amber-100">{number.format(artistRepairReport.unresolvedCount || 0)}</p>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 max-h-72 space-y-2 overflow-y-auto pr-1">
+                            {(artistRepairReport.repairable || []).slice(0, 100).map((item: any) => (
+                              <article key={item.videoId} className="rounded-xl border border-white/8 bg-black/20 p-3">
+                                <p className="truncate text-xs font-black text-white">{item.rawTitle || item.title}</p>
+                                <p className="mt-1 text-xs">
+                                  <span className="text-red-200/70">{item.currentArtistName}</span>
+                                  <span className="mx-2 text-white/25">→</span>
+                                  <strong className="text-emerald-200">{item.proposedArtistName}</strong>
+                                </p>
+                                <p className="mt-1 text-[10px] text-white/35">
+                                  {item.sourceLabel} • confiance {Math.round(Number(item.confidence || 0))} %
+                                </p>
+                              </article>
+                            ))}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => void runMusicBrainArtistRepair()}
+                            disabled={artistRepairRunning || artistRepairLoading || Number(artistRepairReport.repairableCount || 0) <= 0}
+                            className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-500/15 px-3 py-2.5 text-xs font-black text-emerald-100 disabled:opacity-40"
+                          >
+                            <RefreshCw className={`h-3.5 w-3.5 ${artistRepairRunning ? "animate-spin" : ""}`} />
+                            {artistRepairRunning
+                              ? "Réparation en cours…"
+                              : `Réparer ${number.format(artistRepairReport.repairableCount || 0)} artiste(s)`}
+                          </button>
+                        </div>
+                      ) : null}
+
+                      {artistRepairMessage ? <p className="mt-3 text-xs font-bold text-emerald-300">{artistRepairMessage}</p> : null}
+                      {artistRepairError ? <p className="mt-3 text-xs font-bold text-red-300">{artistRepairError}</p> : null}
+                    </div>
+
+                    <div className="my-4 h-px bg-white/10" />
+
                     <button
                       type="button"
                       onClick={() => void previewMusicBrainCleanup()}
@@ -1586,6 +1734,7 @@ export default function MusicBrainAdminPage() {
 
                           <div className="mt-3 grid gap-2 sm:grid-cols-2">
                             {[
+                              ["artiste_probablement_mal_attribue", "Artiste probablement mal attribué"],
                               ["nom_artiste_tres_court", "Nom artiste très court"],
                               ["query_fallback", "Artiste déduit de la recherche"],
                               ["confiance_tres_faible", "Confiance très faible"],
