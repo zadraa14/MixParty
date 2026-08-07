@@ -232,6 +232,22 @@ type KaraokeLyricsAuditData = {
   batchSizeMax: number;
   delayMs: number;
   note: string;
+  job?: {
+    running: boolean;
+    requested: number;
+    selected: number;
+    searched: number;
+    synced: number;
+    plain: number;
+    instrumental: number;
+    notFound: number;
+    errors: number;
+    rateLimited: boolean;
+    retryAfterSeconds: number;
+    startedAt: number;
+    finishedAt: number;
+    message: string;
+  };
 };
 
 type CoverFilter =
@@ -402,26 +418,33 @@ export default function MusicBrainAdminPage() {
         body: JSON.stringify({ limit: 100 }),
       });
 
-      const data = await response.json();
+      const text = await response.text();
+      let data: any = null;
+
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        throw new Error(
+          response.ok
+            ? "Réponse serveur illisible."
+            : `Erreur serveur ${response.status}.`
+        );
+      }
+
       if (!response.ok) throw new Error(data?.error || "Audit LRCLIB impossible");
 
-      if (data?.summary) setKaraokeLyricsAudit(data.summary);
-
-      const batch = data?.batch;
-      if (batch) {
-        const rateText = batch.rateLimited
-          ? ` • LRCLIB a demandé une pause (${batch.retryAfterSeconds}s)`
-          : "";
-
-        setKaraokeLyricsMessage(
-          `${number.format(batch.searched)} morceau(x) testé(s) • ${number.format(batch.synced)} synchronisé(s) • ${number.format(batch.plain)} paroles simples • ${number.format(batch.instrumental)} instrumental(aux) • ${number.format(batch.notFound)} sans résultat${rateText}.`
-        );
-      } else {
-        setKaraokeLyricsMessage("Audit LRCLIB terminé.");
+      if (data?.summary) {
+        setKaraokeLyricsAudit({
+          ...data.summary,
+          job: data.job,
+        });
       }
+
+      setKaraokeLyricsMessage(
+        "Audit lancé en arrière-plan. La progression va se mettre à jour automatiquement."
+      );
     } catch (err) {
       setKaraokeLyricsError(err instanceof Error ? err.message : "Audit LRCLIB impossible");
-    } finally {
       setKaraokeLyricsLoading(false);
     }
   }
@@ -566,6 +589,42 @@ export default function MusicBrainAdminPage() {
       window.clearInterval(historyTimer);
     };
   }, []);
+
+  useEffect(() => {
+    const running = Boolean(karaokeLyricsAudit?.job?.running);
+
+    if (!running) {
+      if (karaokeLyricsLoading) {
+        setKaraokeLyricsLoading(false);
+
+        const job = karaokeLyricsAudit?.job;
+        if (job?.finishedAt) {
+          const rateText = job.rateLimited
+            ? ` • LRCLIB demande une pause (${job.retryAfterSeconds}s)`
+            : "";
+
+          setKaraokeLyricsMessage(
+            `${number.format(job.searched)} morceau(x) testé(s) • ${number.format(job.synced)} synchronisé(s) • ${number.format(job.plain)} paroles simples • ${number.format(job.instrumental)} instrumental(aux) • ${number.format(job.notFound)} sans résultat${rateText}.`
+          );
+        }
+      }
+      return;
+    }
+
+    setKaraokeLyricsLoading(true);
+
+    const timer = window.setInterval(() => {
+      void loadKaraokeLyricsAudit();
+    }, 1200);
+
+    return () => window.clearInterval(timer);
+  }, [
+    karaokeLyricsAudit?.job?.running,
+    karaokeLyricsAudit?.job?.searched,
+    karaokeLyricsAudit?.job?.finishedAt,
+    karaokeLyricsLoading,
+  ]);
+
 
   function toggleReviewRepair(videoId: string) {
     setSelectedReviewRepairs((current) => ({
@@ -1716,10 +1775,14 @@ export default function MusicBrainAdminPage() {
                     className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/12 px-4 py-3 text-sm font-black text-fuchsia-100 transition hover:bg-fuchsia-500/18 disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     <Search className={`h-4 w-4 ${karaokeLyricsLoading ? "animate-pulse" : ""}`} />
-                    {karaokeLyricsLoading ? "Audit LRCLIB en cours…" : "Tester 100 morceaux sur LRCLIB"}
+                    {karaokeLyricsAudit?.job?.running
+                      ? `Audit ${number.format(karaokeLyricsAudit.job.searched)} / ${number.format(karaokeLyricsAudit.job.selected || karaokeLyricsAudit.job.requested)}…`
+                      : "Tester 100 morceaux sur LRCLIB"}
                   </button>
                   <p className="mt-2 text-xs leading-5 text-white/35">
-                    100 morceaux maximum par clic • environ 300 ms entre chaque requête • résultats sauvegardés pour ne pas rescanner les mêmes titres.
+                    {karaokeLyricsAudit?.job?.running
+                      ? karaokeLyricsAudit.job.message
+                      : "100 morceaux maximum par clic • environ 300 ms entre chaque requête • résultats sauvegardés pour ne pas rescanner les mêmes titres."}
                   </p>
                 </div>
               </div>

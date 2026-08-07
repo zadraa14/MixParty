@@ -5068,23 +5068,47 @@ function karaokeLyricsAuditSummary() {
 
 loadKaraokeLyricsAudit();
 
-app.get("/partybrain/karaoke-lyrics-audit", (_req, res) => {
-  return res.json(karaokeLyricsAuditSummary());
-});
+type KaraokeLyricsAuditJob = {
+  running: boolean;
+  requested: number;
+  selected: number;
+  searched: number;
+  synced: number;
+  plain: number;
+  instrumental: number;
+  notFound: number;
+  errors: number;
+  rateLimited: boolean;
+  retryAfterSeconds: number;
+  startedAt: number;
+  finishedAt: number;
+  message: string;
+};
 
-app.post("/partybrain/karaoke-lyrics-audit/run", async (req, res) => {
-  if (!requirePartyBrainAdmin(req, res)) return;
+let karaokeLyricsAuditJob: KaraokeLyricsAuditJob = {
+  running: false,
+  requested: 0,
+  selected: 0,
+  searched: 0,
+  synced: 0,
+  plain: 0,
+  instrumental: 0,
+  notFound: 0,
+  errors: 0,
+  rateLimited: false,
+  retryAfterSeconds: 0,
+  startedAt: 0,
+  finishedAt: 0,
+  message: "",
+};
 
-  const requestedLimit = Number(req.body?.limit || 100);
-  const limit = Math.max(1, Math.min(100, Number.isFinite(requestedLimit) ? requestedLimit : 100));
-
+async function runKaraokeLyricsAuditBatch(limit: number) {
   const localResolution = karaokeLocalResolution();
 
   const candidates = Object.values(musicBrain.songs)
     .filter(karaokeLyricsArtistReliable)
     .filter((song) => !karaokeLyricsAudit.entries[song.videoId])
     .sort((a, b) => {
-      // On teste en priorité les morceaux déjà prometteurs pour le Karaoké.
       const resolutionA = localResolution.resolutionByVideoId.get(a.videoId);
       const resolutionB = localResolution.resolutionByVideoId.get(b.videoId);
 
@@ -5110,84 +5134,132 @@ app.post("/partybrain/karaoke-lyrics-audit/run", async (req, res) => {
     })
     .slice(0, limit);
 
-  let searched = 0;
-  let synced = 0;
-  let plain = 0;
-  let instrumental = 0;
-  let notFound = 0;
-  let errors = 0;
-  let rateLimited = false;
-  let retryAfterSeconds = 0;
+  karaokeLyricsAuditJob = {
+    running: true,
+    requested: limit,
+    selected: candidates.length,
+    searched: 0,
+    synced: 0,
+    plain: 0,
+    instrumental: 0,
+    notFound: 0,
+    errors: 0,
+    rateLimited: false,
+    retryAfterSeconds: 0,
+    startedAt: Date.now(),
+    finishedAt: 0,
+    message: `Audit LRCLIB en cours : 0 / ${candidates.length}`,
+  };
 
-  for (const song of candidates) {
-    try {
-      const match = await requestLrclibForSong(song);
-      searched += 1;
+  try {
+    for (const song of candidates) {
+      try {
+        const match = await requestLrclibForSong(song);
 
-      let kind: KaraokeLyricsAuditKind = "not_found";
-      if (match?.instrumental) kind = "instrumental";
-      else if (String(match?.syncedLyrics || "").trim()) kind = "synced";
-      else if (String(match?.plainLyrics || "").trim()) kind = "plain";
+        let kind: KaraokeLyricsAuditKind = "not_found";
+        if (match?.instrumental) kind = "instrumental";
+        else if (String(match?.syncedLyrics || "").trim()) kind = "synced";
+        else if (String(match?.plainLyrics || "").trim()) kind = "plain";
 
-      karaokeLyricsAudit.entries[song.videoId] = {
-        videoId: song.videoId,
-        checkedAt: Date.now(),
-        kind,
-        lrclibId: Number.isFinite(Number(match?.id)) ? Number(match.id) : undefined,
-        matchedTrackName: match?.trackName ? String(match.trackName) : undefined,
-        matchedArtistName: match?.artistName ? String(match.artistName) : undefined,
-        matchedAlbumName: match?.albumName ? String(match.albumName) : undefined,
-        matchedDuration: Number.isFinite(Number(match?.duration))
-          ? Number(match.duration)
-          : undefined,
-      };
+        karaokeLyricsAudit.entries[song.videoId] = {
+          videoId: song.videoId,
+          checkedAt: Date.now(),
+          kind,
+          lrclibId: Number.isFinite(Number(match?.id)) ? Number(match.id) : undefined,
+          matchedTrackName: match?.trackName ? String(match.trackName) : undefined,
+          matchedArtistName: match?.artistName ? String(match.artistName) : undefined,
+          matchedAlbumName: match?.albumName ? String(match.albumName) : undefined,
+          matchedDuration: Number.isFinite(Number(match?.duration))
+            ? Number(match.duration)
+            : undefined,
+        };
 
-      if (kind === "synced") synced += 1;
-      else if (kind === "plain") plain += 1;
-      else if (kind === "instrumental") instrumental += 1;
-      else notFound += 1;
+        karaokeLyricsAuditJob.searched += 1;
+        if (kind === "synced") karaokeLyricsAuditJob.synced += 1;
+        else if (kind === "plain") karaokeLyricsAuditJob.plain += 1;
+        else if (kind === "instrumental") karaokeLyricsAuditJob.instrumental += 1;
+        else karaokeLyricsAuditJob.notFound += 1;
 
-      saveKaraokeLyricsAudit();
+        karaokeLyricsAuditJob.message =
+          `Audit LRCLIB en cours : ${karaokeLyricsAuditJob.searched} / ${candidates.length}`;
 
-      // LRCLIB recommande des requêtes séquentielles avec un petit délai.
-      await new Promise((resolve) => setTimeout(resolve, 300));
-    } catch (error: any) {
-      errors += 1;
+        saveKaraokeLyricsAudit();
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      } catch (error: any) {
+        karaokeLyricsAuditJob.errors += 1;
 
-      if (Number(error?.status || 0) === 429 || error?.message === "LRCLIB_RATE_LIMIT") {
-        rateLimited = true;
-        retryAfterSeconds = Math.max(1, Number(error?.retryAfter || 5));
-        break;
+        if (Number(error?.status || 0) === 429 || error?.message === "LRCLIB_RATE_LIMIT") {
+          karaokeLyricsAuditJob.rateLimited = true;
+          karaokeLyricsAuditJob.retryAfterSeconds = Math.max(
+            1,
+            Number(error?.retryAfter || 5)
+          );
+          karaokeLyricsAuditJob.message =
+            `LRCLIB demande une pause de ${karaokeLyricsAuditJob.retryAfterSeconds}s.`;
+          break;
+        }
+
+        console.warn(
+          `Audit LRCLIB impossible pour ${song.artistName} — ${song.title}`,
+          error
+        );
+
+        await new Promise((resolve) => setTimeout(resolve, 500));
       }
+    }
+  } finally {
+    karaokeLyricsAuditJob.running = false;
+    karaokeLyricsAuditJob.finishedAt = Date.now();
 
-      console.warn(
-        `Audit LRCLIB impossible pour ${song.artistName} — ${song.title}`,
-        error
-      );
-
-      // On ne mémorise pas les erreurs techniques afin de pouvoir réessayer.
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    if (!karaokeLyricsAuditJob.rateLimited) {
+      karaokeLyricsAuditJob.message =
+        `Audit terminé : ${karaokeLyricsAuditJob.searched} morceau(x) testé(s), ` +
+        `${karaokeLyricsAuditJob.synced} synchronisé(s).`;
     }
   }
+}
 
+app.get("/partybrain/karaoke-lyrics-audit", (_req, res) => {
   return res.json({
-    ok: true,
-    batch: {
-      requested: limit,
-      selected: candidates.length,
-      searched,
-      synced,
-      plain,
-      instrumental,
-      notFound,
-      errors,
-      rateLimited,
-      retryAfterSeconds,
-    },
-    summary: karaokeLyricsAuditSummary(),
+    ...karaokeLyricsAuditSummary(),
+    job: karaokeLyricsAuditJob,
   });
 });
 
+app.post("/partybrain/karaoke-lyrics-audit/run", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  if (karaokeLyricsAuditJob.running) {
+    return res.status(409).json({
+      error: "Un audit LRCLIB est déjà en cours.",
+      summary: karaokeLyricsAuditSummary(),
+      job: karaokeLyricsAuditJob,
+    });
+  }
+
+  const requestedLimit = Number(req.body?.limit || 100);
+  const limit = Math.max(
+    1,
+    Math.min(100, Number.isFinite(requestedLimit) ? requestedLimit : 100)
+  );
+
+  // Important : on lance le scan en arrière-plan et on répond immédiatement.
+  // Cela évite le timeout HTTP Railway pendant les ~30+ secondes du lot de 100.
+  void runKaraokeLyricsAuditBatch(limit).catch((error) => {
+    console.error("Audit LRCLIB arrière-plan interrompu :", error);
+    karaokeLyricsAuditJob.running = false;
+    karaokeLyricsAuditJob.finishedAt = Date.now();
+    karaokeLyricsAuditJob.message = "Audit interrompu par une erreur serveur.";
+  });
+
+  return res.status(202).json({
+    ok: true,
+    started: true,
+    requested: limit,
+    summary: karaokeLyricsAuditSummary(),
+    job: karaokeLyricsAuditJob,
+  });
+});
 
 loadKaraokeAudit();
 
