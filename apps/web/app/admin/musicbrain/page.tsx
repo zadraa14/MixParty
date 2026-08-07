@@ -215,6 +215,25 @@ type KaraokeAuditData = {
   };
 };
 
+
+type KaraokeLyricsAuditData = {
+  generatedAt: number;
+  updatedAt: number;
+  knownSongs: number;
+  eligibleSongs: number;
+  checked: number;
+  unchecked: number;
+  synced: number;
+  plain: number;
+  instrumental: number;
+  notFound: number;
+  syncedCoverageCheckedPercent: number;
+  syncedCoverageEligiblePercent: number;
+  batchSizeMax: number;
+  delayMs: number;
+  note: string;
+};
+
 type CoverFilter =
   | "downloaded"
   | "pending"
@@ -272,6 +291,10 @@ export default function MusicBrainAdminPage() {
   const [karaokeLocalScanLoading, setKaraokeLocalScanLoading] = useState(false);
   const [karaokeAuditError, setKaraokeAuditError] = useState("");
   const [karaokeAuditMessage, setKaraokeAuditMessage] = useState("");
+  const [karaokeLyricsAudit, setKaraokeLyricsAudit] = useState<KaraokeLyricsAuditData | null>(null);
+  const [karaokeLyricsLoading, setKaraokeLyricsLoading] = useState(false);
+  const [karaokeLyricsMessage, setKaraokeLyricsMessage] = useState("");
+  const [karaokeLyricsError, setKaraokeLyricsError] = useState("");
   const [academyTestLoading, setAcademyTestLoading] = useState(false);
   const [academyTestMessage, setAcademyTestMessage] = useState("");
   const [academyTestError, setAcademyTestError] = useState("");
@@ -340,6 +363,66 @@ export default function MusicBrainAdminPage() {
       setAttendanceHistoryError(
         err instanceof Error ? err.message : "Historique des soirées indisponible"
       );
+    }
+  }
+
+  async function loadKaraokeLyricsAudit() {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/karaoke-lyrics-audit`, {
+        cache: "no-store",
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Audit paroles Karaoké indisponible");
+      setKaraokeLyricsAudit(data);
+      setKaraokeLyricsError("");
+    } catch (err) {
+      setKaraokeLyricsError(
+        err instanceof Error ? err.message : "Audit paroles Karaoké indisponible"
+      );
+    }
+  }
+
+  async function runKaraokeLyricsAudit() {
+    if (!adminToken.trim()) {
+      setKaraokeLyricsError("Entre le code administrateur Railway pour lancer l’audit LRCLIB.");
+      return;
+    }
+
+    setKaraokeLyricsLoading(true);
+    setKaraokeLyricsError("");
+    setKaraokeLyricsMessage("");
+
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/partybrain/karaoke-lyrics-audit/run`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-partybrain-admin-token": adminToken.trim(),
+        },
+        body: JSON.stringify({ limit: 100 }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data?.error || "Audit LRCLIB impossible");
+
+      if (data?.summary) setKaraokeLyricsAudit(data.summary);
+
+      const batch = data?.batch;
+      if (batch) {
+        const rateText = batch.rateLimited
+          ? ` • LRCLIB a demandé une pause (${batch.retryAfterSeconds}s)`
+          : "";
+
+        setKaraokeLyricsMessage(
+          `${number.format(batch.searched)} morceau(x) testé(s) • ${number.format(batch.synced)} synchronisé(s) • ${number.format(batch.plain)} paroles simples • ${number.format(batch.instrumental)} instrumental(aux) • ${number.format(batch.notFound)} sans résultat${rateText}.`
+        );
+      } else {
+        setKaraokeLyricsMessage("Audit LRCLIB terminé.");
+      }
+    } catch (err) {
+      setKaraokeLyricsError(err instanceof Error ? err.message : "Audit LRCLIB impossible");
+    } finally {
+      setKaraokeLyricsLoading(false);
     }
   }
 
@@ -468,6 +551,7 @@ export default function MusicBrainAdminPage() {
     void loadLiveUsers();
     void loadAttendanceHistory();
     void loadKaraokeAudit();
+    void loadKaraokeLyricsAudit();
 
     const liveTimer = window.setInterval(() => {
       void loadLiveUsers();
@@ -1601,6 +1685,109 @@ export default function MusicBrainAdminPage() {
                   <p className="mt-4 text-xs leading-5 text-white/35">{karaokeAudit?.note || "Chargement de l’audit Karaoké…"}</p>
                 </div>
               </div>
+            </section>
+
+
+            <section className="mt-7 rounded-[28px] border border-fuchsia-400/20 bg-gradient-to-br from-fuchsia-500/[0.09] via-violet-500/[0.07] to-cyan-500/[0.06] p-5 backdrop-blur-xl sm:p-7">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div className="flex items-start gap-4">
+                  <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-fuchsia-400/15 text-fuchsia-200">
+                    <Mic2 className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[.22em] text-fuchsia-300">
+                      Karaoké Audit V2
+                    </p>
+                    <h2 className="mt-1 text-2xl font-black">Paroles synchronisées LRCLIB</h2>
+                    <p className="mt-2 max-w-3xl text-sm leading-6 text-white/50">
+                      On mesure combien de morceaux propres de MusicBrain disposent réellement de paroles synchronisées. Cet audit ne consomme aucun quota YouTube.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="w-full max-w-md rounded-2xl border border-white/10 bg-black/25 p-4">
+                  <button
+                    type="button"
+                    onClick={() => void runKaraokeLyricsAudit()}
+                    disabled={
+                      karaokeLyricsLoading ||
+                      (karaokeLyricsAudit?.unchecked ?? 1) <= 0
+                    }
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/12 px-4 py-3 text-sm font-black text-fuchsia-100 transition hover:bg-fuchsia-500/18 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    <Search className={`h-4 w-4 ${karaokeLyricsLoading ? "animate-pulse" : ""}`} />
+                    {karaokeLyricsLoading ? "Audit LRCLIB en cours…" : "Tester 100 morceaux sur LRCLIB"}
+                  </button>
+                  <p className="mt-2 text-xs leading-5 text-white/35">
+                    100 morceaux maximum par clic • environ 300 ms entre chaque requête • résultats sauvegardés pour ne pas rescanner les mêmes titres.
+                  </p>
+                </div>
+              </div>
+
+              {karaokeLyricsError ? (
+                <div className="mt-5 rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm font-bold text-red-100">
+                  {karaokeLyricsError}
+                </div>
+              ) : null}
+
+              {karaokeLyricsMessage ? (
+                <div className="mt-5 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm font-bold text-emerald-100">
+                  {karaokeLyricsMessage}
+                </div>
+              ) : null}
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <article className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-xs font-black uppercase tracking-[.14em] text-white/40">Testés</p>
+                  <p className="mt-2 text-3xl font-black">{number.format(karaokeLyricsAudit?.checked ?? 0)}</p>
+                </article>
+                <article className="rounded-2xl border border-emerald-300/15 bg-emerald-500/[0.07] p-4">
+                  <p className="text-xs font-black uppercase tracking-[.14em] text-emerald-200/65">Synchronisés</p>
+                  <p className="mt-2 text-3xl font-black text-emerald-100">{number.format(karaokeLyricsAudit?.synced ?? 0)}</p>
+                </article>
+                <article className="rounded-2xl border border-amber-300/15 bg-amber-500/[0.07] p-4">
+                  <p className="text-xs font-black uppercase tracking-[.14em] text-amber-200/65">Paroles simples</p>
+                  <p className="mt-2 text-3xl font-black text-amber-100">{number.format(karaokeLyricsAudit?.plain ?? 0)}</p>
+                </article>
+                <article className="rounded-2xl border border-cyan-300/15 bg-cyan-500/[0.07] p-4">
+                  <p className="text-xs font-black uppercase tracking-[.14em] text-cyan-200/65">Instrumentaux</p>
+                  <p className="mt-2 text-3xl font-black text-cyan-100">{number.format(karaokeLyricsAudit?.instrumental ?? 0)}</p>
+                </article>
+                <article className="rounded-2xl border border-red-300/15 bg-red-500/[0.06] p-4">
+                  <p className="text-xs font-black uppercase tracking-[.14em] text-red-200/65">Sans résultat</p>
+                  <p className="mt-2 text-3xl font-black text-red-100">{number.format(karaokeLyricsAudit?.notFound ?? 0)}</p>
+                </article>
+              </div>
+
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[.18em] text-fuchsia-300">
+                    Couverture LRCLIB
+                  </p>
+                  <p className="mt-2 text-4xl font-black text-fuchsia-100">
+                    {karaokeLyricsAudit?.syncedCoverageCheckedPercent ?? 0} %
+                  </p>
+                  <p className="mt-1 text-xs text-white/40">
+                    des morceaux déjà testés ont des paroles synchronisées.
+                  </p>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[.18em] text-cyan-300">
+                    Reste à tester
+                  </p>
+                  <p className="mt-2 text-4xl font-black text-cyan-100">
+                    {number.format(karaokeLyricsAudit?.unchecked ?? 0)}
+                  </p>
+                  <p className="mt-1 text-xs text-white/40">
+                    sur {number.format(karaokeLyricsAudit?.eligibleSongs ?? 0)} morceaux jugés exploitables pour cet audit.
+                  </p>
+                </div>
+              </div>
+
+              <p className="mt-4 text-xs leading-5 text-white/35">
+                {karaokeLyricsAudit?.note || "Chargement de l’audit LRCLIB…"}
+              </p>
             </section>
 
             <div className="mt-7 grid gap-7 xl:grid-cols-[.85fr_1.15fr]">
