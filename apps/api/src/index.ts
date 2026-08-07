@@ -1480,6 +1480,7 @@ function recordMusicBrainSearch(query: string, results: YoutubeSearchResult[]) {
   // Ce filtre agit uniquement sur ce que PartyBrain apprend.
   musicBrain.totals.searches += 1;
   const touchedArtists = new Set<string>();
+  const learnedVideoIds = new Set<string>();
 
   for (const result of results) {
     const decision = shouldLearnSearchResult(result, query);
@@ -1501,13 +1502,21 @@ function recordMusicBrainSearch(query: string, results: YoutubeSearchResult[]) {
     });
     song.searchCount += 1;
     touchedArtists.add(song.artistKey);
+    learnedVideoIds.add(song.videoId);
   }
 
   for (const artistKey of touchedArtists) {
     const artist = musicBrain.artists[artistKey];
     if (artist) artist.searchCount += 1;
   }
+
   saveMusicBrain();
+
+  // Dès qu'un morceau fiable entre dans MusicBrain, LRCLIB est vérifié
+  // automatiquement en arrière-plan. Academy utilise aussi cette fonction.
+  for (const videoId of learnedVideoIds) {
+    enqueueAutomaticLrclibCheck(videoId, "musicbrain-search");
+  }
 }
 
 function recordMusicBrainAddition(song: Song) {
@@ -1533,6 +1542,10 @@ function recordMusicBrainAddition(song: Song) {
   });
   item.addedCount += 1;
   saveMusicBrain();
+
+  // Filet de sécurité : un morceau ajouté est également vérifié s'il ne
+  // possède pas encore de statut LRCLIB exploitable.
+  enqueueAutomaticLrclibCheck(item.videoId, "party-addition");
 }
 
 function recordMusicBrainVote(song: Song) {
@@ -5067,6 +5080,158 @@ function karaokeLyricsAuditSummary() {
 }
 
 loadKaraokeLyricsAudit();
+
+type AutomaticLrclibQueueItem = {
+  videoId: string;
+  reason: "musicbrain-search" | "party-addition";
+  queuedAt: number;
+};
+
+const automaticLrclibQueue: AutomaticLrclibQueueItem[] = [];
+const automaticLrclibQueuedIds = new Set<string>();
+let automaticLrclibWorkerRunning = false;
+
+const AUTOMATIC_LRCLIB_DELAY_MS = 400;
+const AUTOMATIC_LRCLIB_RETRY_AFTER_MS = 30_000;
+
+function automaticLrclibNeedsCheck(song: MusicBrainSong) {
+  if (!karaokeLyricsArtistReliable(song)) return false;
+
+  const existing = karaokeLyricsAudit.entries[song.videoId];
+  if (!existing) return true;
+
+  if (existing.kind === "synced" || existing.kind === "instrumental") {
+    return false;
+  }
+
+  // Si MusicBrain a corrigé l'artiste depuis l'ancien audit, on retente.
+  const currentArtist = normalizeMusicQuery(song.artistName || "");
+  const auditedArtist = normalizeMusicQuery(existing.matchedArtistName || "");
+  if (currentArtist && auditedArtist && currentArtist !== auditedArtist) {
+    return true;
+  }
+
+  // LRCLIB évolue : les échecs/paroles simples sont retestés après 14 jours.
+  const ageMs = Date.now() - Number(existing.checkedAt || 0);
+  return ageMs >= 14 * 24 * 60 * 60_000;
+}
+
+function enqueueAutomaticLrclibCheck(
+  videoId: string,
+  reason: AutomaticLrclibQueueItem["reason"]
+) {
+  const cleanVideoId = String(videoId || "").trim();
+  if (!cleanVideoId) return;
+
+  const song = musicBrain.songs[cleanVideoId];
+  if (!song || !automaticLrclibNeedsCheck(song)) return;
+  if (automaticLrclibQueuedIds.has(cleanVideoId)) return;
+
+  automaticLrclibQueuedIds.add(cleanVideoId);
+  automaticLrclibQueue.push({
+    videoId: cleanVideoId,
+    reason,
+    queuedAt: Date.now(),
+  });
+
+  void runAutomaticLrclibWorker();
+}
+
+async function runAutomaticLrclibWorker() {
+  if (automaticLrclibWorkerRunning) return;
+  automaticLrclibWorkerRunning = true;
+
+  try {
+    while (automaticLrclibQueue.length > 0) {
+      const job = automaticLrclibQueue.shift();
+      if (!job) continue;
+
+      automaticLrclibQueuedIds.delete(job.videoId);
+
+      const song = musicBrain.songs[job.videoId];
+      if (!song || !automaticLrclibNeedsCheck(song)) continue;
+
+      try {
+        const match = await requestLrclibForSong(song);
+
+        let kind: KaraokeLyricsAuditKind = "not_found";
+        if (match?.instrumental) kind = "instrumental";
+        else if (String(match?.syncedLyrics || "").trim()) kind = "synced";
+        else if (String(match?.plainLyrics || "").trim()) kind = "plain";
+
+        karaokeLyricsAudit.entries[song.videoId] = {
+          videoId: song.videoId,
+          checkedAt: Date.now(),
+          kind,
+          lrclibId: Number.isFinite(Number(match?.id)) ? Number(match.id) : undefined,
+          matchedTrackName: match?.trackName ? String(match.trackName) : undefined,
+          matchedArtistName: match?.artistName ? String(match.artistName) : undefined,
+          matchedAlbumName: match?.albumName ? String(match.albumName) : undefined,
+          matchedDuration: Number.isFinite(Number(match?.duration))
+            ? Number(match.duration)
+            : undefined,
+        };
+
+        saveKaraokeLyricsAudit();
+
+        if (kind === "synced") {
+          console.log(
+            `🎤 LRCLIB AUTO : ajouté au catalogue Karaoké → ${song.artistName} — ${song.title}`
+          );
+        }
+
+        await new Promise((resolve) =>
+          setTimeout(resolve, AUTOMATIC_LRCLIB_DELAY_MS)
+        );
+      } catch (error: any) {
+        if (
+          Number(error?.status || 0) === 429 ||
+          error?.message === "LRCLIB_RATE_LIMIT"
+        ) {
+          const retryAfterMs = Math.max(
+            AUTOMATIC_LRCLIB_RETRY_AFTER_MS,
+            Number(error?.retryAfter || 0) * 1000
+          );
+
+          if (!automaticLrclibQueuedIds.has(song.videoId)) {
+            automaticLrclibQueuedIds.add(song.videoId);
+            automaticLrclibQueue.unshift(job);
+          }
+
+          console.warn(
+            `🎤 LRCLIB AUTO : limite atteinte, nouvelle tentative dans ${Math.ceil(
+              retryAfterMs / 1000
+            )}s.`
+          );
+
+          await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+          continue;
+        }
+
+        // Une erreur réseau/serveur n'est pas mémorisée comme "introuvable".
+        console.warn(
+          `🎤 LRCLIB AUTO : vérification impossible pour ${song.artistName} — ${song.title}`,
+          error
+        );
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+    }
+  } finally {
+    automaticLrclibWorkerRunning = false;
+    if (automaticLrclibQueue.length > 0) {
+      void runAutomaticLrclibWorker();
+    }
+  }
+}
+
+app.get("/partybrain/karaoke-lrclib-auto/status", (_req, res) => {
+  return res.json({
+    running: automaticLrclibWorkerRunning,
+    queued: automaticLrclibQueue.length,
+    delayMs: AUTOMATIC_LRCLIB_DELAY_MS,
+  });
+});
+
 
 type KaraokeLyricsAuditJob = {
   running: boolean;
