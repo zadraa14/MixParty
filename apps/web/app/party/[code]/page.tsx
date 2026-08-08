@@ -1720,7 +1720,7 @@ async function removeSong(index: number, song: Song) {
 
   return (
     <main
-      className="v54-mobile-app relative isolate min-h-screen overflow-hidden bg-[#070711] font-[family:var(--font-geist-sans)] text-white"
+      className="v54-mobile-app relative isolate min-h-screen w-full max-w-full overflow-x-hidden bg-[#070711] font-[family:var(--font-geist-sans)] text-white"
       onTouchStart={handleMobileTouchStart}
       onTouchEnd={handleMobileTouchEnd}
     >
@@ -1729,7 +1729,7 @@ async function removeSong(index: number, song: Song) {
 
       <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(to_bottom,rgba(7,7,17,.03),rgba(7,7,17,.14)_54%,rgba(7,7,17,.32))]" />
 
-      <div className="v54-mobile-content relative z-10 mx-auto max-w-[1600px] px-4 py-4 pb-28 sm:px-6 sm:py-5 md:pb-5 lg:px-8 xl:px-10">
+      <div className="v54-mobile-content relative z-10 mx-auto w-full min-w-0 max-w-[1600px] overflow-x-hidden px-4 py-4 pb-28 sm:px-6 sm:py-5 md:pb-5 lg:px-8 xl:px-10">
 
         <header className="v54-mobile-header mb-4 flex items-center justify-between rounded-[22px] border border-white/10 bg-black/25 px-3 py-3 backdrop-blur-xl md:hidden">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -2093,8 +2093,8 @@ const canRemove =
   );
                     return (
                       <div
-                        key={`${song.videoId}-${song.addedAt}`}
-                        className={`v53-queue-item ${index === 0 ? "v53-queue-item--next" : ""}`}
+                          key={`${song.videoId}-${song.addedAt}`}
+  className={`v53-queue-item min-w-0 max-w-full overflow-hidden ${index === 0 ? "v53-queue-item--next" : ""}`}
                         style={{ animationDelay: `${Math.min(index, 8) * 70}ms` }}
                       >
 
@@ -2118,7 +2118,7 @@ const canRemove =
                             </p>
                           )}
 
-                          <p className="v53-queue-title">{song.title}</p>
+                          <p className="v53-queue-title truncate">{song.title}</p>
                           <p className="v53-queue-artist">{song.artistName || "Artiste MixParty"}</p>
 
                           <div className="v53-queue-added"><span className="v53-queue-avatar"><img src={party.participants.find((participant) => participant.name === song.addedBy)?.avatar || defaultAvatarForParticipant(song.addedBy)} alt="" /></span><span>Ajouté par <strong>{song.addedBy}</strong></span></div>
