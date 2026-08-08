@@ -2623,23 +2623,15 @@ app.post("/party",(req,res)=>{
 
 
 const party:Party = {
-
   code: generateCode(),
-
   songs: [],
-
   history: [],
-
   participants: [],
-
   currentSong: null,
-
   createdAt: Date.now(),
-
+  lastActivityAt: Date.now(),
   creatorToken: randomUUID(),
-
   partyBrainAutoRelayEnabled: false
-
 };
 
 
