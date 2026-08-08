@@ -16,6 +16,7 @@ import {
   Copy,
   Crown,
   Disc3,
+  Trash2,
   Expand,
   Headphones,
   Gauge,
@@ -95,6 +96,7 @@ type Song = {
   coverWidth?: number;
   coverHeight?: number;
   coverLastCheckedAt?: number;
+  addedById?: string;
 };
 
 type Participant = { id: string; name: string; avatar?: string };
@@ -821,7 +823,8 @@ export default function PartyPage() {
           videoId: video.id,
           thumbnail: video.thumbnail,
           addedBy: playerName || "Inconnu",
-          sourceQuery: video.sourceQuery || search.trim(),
+addedById: participantId || undefined,
+sourceQuery: video.sourceQuery || search.trim(),
           artistName: video.artistName,
           featuredArtistNames: video.featuredArtistNames,
           albumName: video.albumName,
@@ -856,7 +859,70 @@ export default function PartyPage() {
       setAddingVideoId(null);
     }
   }
+async function removeSong(index: number, song: Song) {
+  const creatorToken =
+    localStorage.getItem(`mixparty_creator_${code}`) || "";
 
+  const isCreator = Boolean(creatorToken);
+
+  const isOwner = Boolean(
+    song.addedById &&
+    participantId &&
+    song.addedById === participantId
+  );
+
+  if (!isCreator && !isOwner) {
+    window.alert(
+      "Tu peux supprimer uniquement les musiques que tu as ajoutées."
+    );
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Supprimer « ${song.title} » de la file ?`
+  );
+
+  if (!confirmed) return;
+
+  try {
+    const response = await fetch(
+      `${getApiBaseUrl()}/party/${code}/song/${index}`,
+      {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          participantId,
+          creatorToken,
+          actor: participantId || playerName,
+        }),
+      }
+    );
+
+    const updated = await response.json();
+
+    if (!response.ok || updated.error) {
+      window.alert(
+        updated.error ||
+        "Impossible de supprimer cette musique."
+      );
+      return;
+    }
+
+    const normalized = normalizeParty(updated);
+
+    if (normalized) {
+      setParty(normalized);
+    }
+  } catch (error) {
+    console.error("Suppression chanson impossible", error);
+
+    window.alert(
+      "Impossible de supprimer cette musique pour le moment."
+    );
+  }
+}
   async function vote(index: number) {
     const votedSong = party?.songs[index];
     if (votedSong) {
@@ -2013,7 +2079,18 @@ export default function PartyPage() {
                     const originalIndex = songs.findIndex(
                       (item) => item.addedAt === song.addedAt
                     );
+const creatorToken =
+  typeof window !== "undefined"
+    ? localStorage.getItem(`mixparty_creator_${code}`) || ""
+    : "";
 
+const canRemove =
+  Boolean(creatorToken) ||
+  Boolean(
+    song.addedById &&
+    participantId &&
+    song.addedById === participantId
+  );
                     return (
                       <div
                         key={`${song.videoId}-${song.addedAt}`}
@@ -2045,7 +2122,16 @@ export default function PartyPage() {
                           <p className="v53-queue-artist">{song.artistName || "Artiste MixParty"}</p>
 
                           <div className="v53-queue-added"><span className="v53-queue-avatar"><img src={party.participants.find((participant) => participant.name === song.addedBy)?.avatar || defaultAvatarForParticipant(song.addedBy)} alt="" /></span><span>Ajouté par <strong>{song.addedBy}</strong></span></div>
-
+{canRemove && (
+  <button
+    type="button"
+    onClick={() => removeSong(originalIndex, song)}
+    className="mt-2 inline-flex items-center gap-1.5 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs font-black text-red-200 transition hover:border-red-400/35 hover:bg-red-500/15 sm:hidden"
+  >
+    <Trash2 className="h-3.5 w-3.5" />
+    Supprimer
+  </button>
+)}
                         </div>
 
                         <div className="v53-queue-actions hidden sm:flex">
@@ -2063,13 +2149,28 @@ export default function PartyPage() {
                           </div>
 
                           <button
-                            onClick={() => vote(originalIndex)}
-                            className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""}`}
-                          >
-                            <span className="vote-button__glow" aria-hidden="true" />
-                            <span className="vote-button__plus">+1</span>
-                            <span className="relative z-10 flex items-center gap-1.5"><ArrowBigUp className="h-4 w-4" />Voter</span>
-                          </button>
+  onClick={() => vote(originalIndex)}
+  className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""}`}
+>
+  <span className="vote-button__glow" aria-hidden="true" />
+  <span className="vote-button__plus">+1</span>
+  <span className="relative z-10 flex items-center gap-1.5">
+    <ArrowBigUp className="h-4 w-4" />
+    Voter
+  </span>
+</button>
+
+{canRemove && (
+  <button
+    type="button"
+    onClick={() => removeSong(originalIndex, song)}
+    className="grid h-11 w-11 place-items-center rounded-xl border border-red-400/20 bg-red-500/10 text-red-200 transition hover:border-red-400/40 hover:bg-red-500/20"
+    aria-label={`Supprimer ${song.title}`}
+    title="Supprimer cette musique"
+  >
+    <Trash2 className="h-4 w-4" />
+  </button>
+)}
 
                         </div>
 

@@ -79,8 +79,9 @@ type Song = {
   thumbnail:string;
   durationSeconds?:number;
   votes:number;
-  addedBy:string;
-  voters:string[];
+addedBy:string;
+addedById?:string;
+voters:string[];
   played:boolean;
   addedAt:number;
   sourceQuery?:string;
@@ -2804,9 +2805,10 @@ app.post("/party/:code/song",(req,res)=>{
   const {
   song,
   videoId,
-  thumbnail,
-  addedBy,
-  sourceQuery,
+ thumbnail,
+addedBy,
+addedById,
+sourceQuery,
   suggestionPool,
   artistName,
   featuredArtistNames,
@@ -2843,7 +2845,9 @@ party.songs.push({
   votes: 0,
 
   addedBy: addedBy || "Inconnu",
-
+addedById: typeof addedById === "string" && addedById.trim()
+  ? addedById.trim()
+  : undefined,
   voters: [],
 
   played:false,
@@ -3026,30 +3030,72 @@ app.post("/party/:code/song/:index/downvote", (req, res) => {
 // Supprimer une chanson de la file
 app.delete("/party/:code/song/:index", (req, res) => {
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  if (!party) {
+    return res.status(404).json({ error: "Soirée introuvable" });
+  }
 
   const index = Number(req.params.index);
   const song = party.songs[index];
-  if (!song) return res.status(404).json({ error: "Chanson introuvable" });
 
-  if (party.currentSong?.videoId === song.videoId && party.currentSong?.addedAt === song.addedAt) {
+  if (!song) {
+    return res.status(404).json({ error: "Chanson introuvable" });
+  }
+
+  const creatorToken = String(
+    req.body?.creatorToken ||
+    req.headers["x-mixparty-creator-token"] ||
+    ""
+  ).trim();
+
+  const participantId = String(
+    req.body?.participantId ||
+    req.query.participantId ||
+    ""
+  ).trim();
+
+  const isCreator = Boolean(
+    creatorToken &&
+    creatorToken === party.creatorToken
+  );
+
+  const isOwner = Boolean(
+    participantId &&
+    song.addedById &&
+    participantId === song.addedById
+  );
+
+  if (!isCreator && !isOwner) {
+    return res.status(403).json({
+      error: "Tu peux supprimer uniquement les musiques que tu as ajoutées."
+    });
+  }
+
+  if (
+    party.currentSong?.videoId === song.videoId &&
+    party.currentSong?.addedAt === song.addedAt
+  ) {
     finalizePlayback(party, "song_change");
     party.currentSong = null;
   }
 
   const snapshot = songEventSnapshot(party, song);
+
   party.songs.splice(index, 1);
 
   recordPartyEvent(party, "SONG_REMOVED", {
     song: snapshot,
-    actorHash: anonymizeActor(req.body?.actor || req.query.actor),
+    actorHash: anonymizeActor(
+      participantId || (isCreator ? "dj" : "")
+    ),
     context: {
-      reason: String(req.body?.reason || req.query.reason || "manual_remove"),
+      reason: isCreator ? "dj_remove" : "owner_remove",
       wasPlayed: Boolean(song.played),
     },
   });
 
   updateParty(party);
+
   return res.json(toPublicParty(party));
 });
 
