@@ -351,9 +351,9 @@ export default function PartyPage() {
   }, []);
 
   useEffect(() => {
-    if (code) {
-      setShareUrl(`${getAppBaseUrl()}/party/${code}`);
-    }
+    if (!code) return;
+
+    setShareUrl(`${window.location.origin}/party/${code}`);
   }, [code]);
 
   useEffect(() => {
