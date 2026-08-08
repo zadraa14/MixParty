@@ -160,6 +160,20 @@ export default function Home() {
 
           <section id="mixparty-join" className="mixparty-join-strip py-10 sm:py-12">
             <div className="mx-auto flex w-full max-w-3xl flex-col items-stretch gap-3 rounded-[28px] border border-white/10 bg-white/[0.045] p-4 backdrop-blur-xl sm:flex-row">
+            <button
+  type="button"
+  onClick={resumeLastParty}
+  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.055] px-5 text-sm font-black text-white transition hover:border-fuchsia-400/35 hover:bg-white/[0.085]"
+>
+  <span className="relative flex h-3 w-3">
+    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
+    <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.8)]" />
+  </span>
+
+  <RotateCcw className="h-4 w-4 text-fuchsia-300" />
+
+  Reprendre la soirée
+</button>
               <div className="flex-1 px-2">
                 <p className="text-sm font-black text-white">Tu as déjà un code ?</p>
                 <p className="mt-1 text-xs text-white/40">Entre-le ici pour rejoindre la soirée instantanément.</p>
