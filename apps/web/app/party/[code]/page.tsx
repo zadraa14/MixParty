@@ -1188,6 +1188,9 @@ async function removeSong(index: number, song: Song) {
           autoplay: 1,
           enablejsapi: 1,
           playsinline: 1,
+          controls: 0,
+          fs: 0,
+          disablekb: 1,
           rel: 0,
           origin: window.location.origin,
         },
@@ -1201,7 +1204,11 @@ async function removeSong(index: number, song: Song) {
 
             const iframe = event.target?.getIframe?.();
             if (iframe) {
-              iframe.setAttribute("allow", "autoplay; encrypted-media; picture-in-picture; fullscreen");
+              // Le lecteur reste audio-only dans l'interface MixParty :
+              // on ne donne pas au navigateur Android les permissions PiP / plein écran
+              // qui peuvent afficher ses propres boutons vidéo par-dessus la console.
+              iframe.setAttribute("allow", "autoplay; encrypted-media");
+              iframe.removeAttribute("allowfullscreen");
               iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
             }
 
