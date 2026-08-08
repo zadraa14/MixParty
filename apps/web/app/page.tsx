@@ -140,15 +140,17 @@ export default function Home() {
         <div className="relative z-10 mx-auto w-full max-w-7xl px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(.5rem,env(safe-area-inset-top))] sm:px-6 lg:px-8">
           <MixPartyHeader />
 
-          <section className="grid min-h-[calc(100svh-88px)] items-center gap-8 py-6 sm:py-10 lg:min-h-[calc(100dvh-110px)] lg:grid-cols-[minmax(0,1.02fr)_minmax(470px,.98fr)] lg:gap-14 lg:py-16">
+          <section className="grid items-center gap-5 py-4 sm:gap-8 sm:py-10 lg:min-h-[calc(100dvh-110px)] lg:grid-cols-[minmax(0,1.02fr)_minmax(470px,.98fr)] lg:gap-14 lg:py-16">
             <MixPartyHero creatingParty={creatingParty} onCreateParty={createParty} onJoinClick={() => document.getElementById("mixparty-join")?.scrollIntoView({ behavior: "smooth", block: "center" })} />
-            <PartyCard />
+            <div className="hidden lg:block">
+              <PartyCard />
+            </div>
           </section>
 
          
           
 
-          <section id="mixparty-join" className="mixparty-join-strip py-10 sm:py-12">
+          <section id="mixparty-join" className="mixparty-join-strip py-5 sm:py-12">
             <div className="mx-auto flex w-full max-w-3xl flex-col items-stretch gap-3 rounded-[28px] border border-white/10 bg-white/[0.045] p-4 backdrop-blur-xl sm:flex-row">
             <button
   type="button"
