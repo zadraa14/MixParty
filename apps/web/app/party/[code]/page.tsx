@@ -42,7 +42,7 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
-import { getApiBaseUrl, getAppBaseUrl, getSocketPath, getSocketUrl } from "../../../lib/config";
+import { getApiBaseUrl, getSocketPath, getSocketUrl } from "../../../lib/config";
 import MixPartyBackground from "../../../components/MixPartyBackground";
 
 declare global {
@@ -260,6 +260,7 @@ export default function PartyPage() {
   const [copied, setCopied] = useState(false);
   const [searching, setSearching] = useState(false);
   const [karaokeMode, setKaraokeMode] = useState(false);
+  const [karaokeScreenOpen, setKaraokeScreenOpen] = useState(false);
   const [karaokeCatalog, setKaraokeCatalog] = useState<KaraokeCatalogResponse | null>(null);
   const [karaokeCatalogSearch, setKaraokeCatalogSearch] = useState("");
   const [karaokeCatalogLoading, setKaraokeCatalogLoading] = useState(false);
@@ -758,6 +759,20 @@ export default function PartyPage() {
   function deactivateKaraokeMode() {
     setKaraokeMode(false);
     setKaraokeCatalogSearch("");
+    setKaraokeScreenOpen(false);
+  }
+
+  function openKaraokeScreen() {
+    const karaokeUrl = `${window.location.origin}/party/${encodeURIComponent(code)}/karaoke`;
+
+    // Sur téléphone, on garde la salle DJ montée dans la même page.
+    // Le lecteur YouTube continue donc de tourner pendant que l'écran Karaoké est affiché.
+    if (window.matchMedia("(max-width: 767px)").matches) {
+      setKaraokeScreenOpen(true);
+      return;
+    }
+
+    window.open(karaokeUrl, "_blank", "noopener,noreferrer");
   }
 
   function addKaraokeCatalogSong(song: KaraokeCatalogSong) {
@@ -1725,6 +1740,30 @@ async function removeSong(index: number, song: Song) {
       onTouchEnd={handleMobileTouchEnd}
     >
 
+      {karaokeScreenOpen ? (
+        <div className="fixed inset-0 z-[9999] flex min-h-[100dvh] flex-col bg-[#070711]">
+          <div className="flex shrink-0 items-center justify-between border-b border-white/10 bg-[#0b0914]/95 px-3 pb-3 pt-[max(.75rem,env(safe-area-inset-top))] backdrop-blur-xl">
+            <div className="min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-300">Mode Karaoké</p>
+              <p className="truncate text-sm font-black text-white">Soirée {party.code}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setKaraokeScreenOpen(false)}
+              className="rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2 text-xs font-black text-white transition active:scale-[.98]"
+            >
+              ← Retour à la soirée
+            </button>
+          </div>
+          <iframe
+            src={`/party/${encodeURIComponent(code)}/karaoke`}
+            title="Écran Karaoké MixParty"
+            className="min-h-0 w-full flex-1 border-0 bg-[#070711]"
+            allow="autoplay; fullscreen"
+          />
+        </div>
+      ) : null}
+
       <MixPartyBackground />
 
       <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(to_bottom,rgba(7,7,17,.03),rgba(7,7,17,.14)_54%,rgba(7,7,17,.32))]" />
@@ -2335,13 +2374,7 @@ const canRemove =
                   {karaokeMode ? (
                     <button
                       type="button"
-                      onClick={() =>
-                        window.open(
-                          `${getAppBaseUrl()}/party/${encodeURIComponent(code)}/karaoke`,
-                          "_blank",
-                          "noopener,noreferrer"
-                        )
-                      }
+                      onClick={openKaraokeScreen}
                       className="inline-flex items-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-500/10 px-4 py-3 text-xs font-black text-cyan-100 transition hover:bg-cyan-500/15"
                     >
                       <Expand className="h-4 w-4" />
