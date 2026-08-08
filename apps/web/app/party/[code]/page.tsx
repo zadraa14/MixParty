@@ -277,7 +277,7 @@ export default function PartyPage() {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [voteBurst, setVoteBurst] = useState<string | null>(null);
-  const [activeMobileTab, setActiveMobileTab] = useState<"playback" | "add" | "queue" | "guests">("playback");
+  const [activeMobileTab, setActiveMobileTab] = useState<"playback" | "add" | "karaoke" | "queue" | "guests">("playback");
   const [isPlaybackController, setIsPlaybackController] = useState(false);
   const [remotePlayback, setRemotePlayback] = useState({ state: 2, time: 0, receivedAt: Date.now() });
   const [youtubeError, setYoutubeError] = useState<number | null>(null);
@@ -1721,10 +1721,29 @@ async function removeSong(index: number, song: Song) {
     : 0;
   const totalSessionVotes = [...(party.history || []), ...queue].reduce((total, song) => total + Number(song.votes || 0), 0);
 
-  const mobileTabs = ["playback", "add", "queue", "guests"] as const;
+  const mobileTabs = ["playback", "add", "karaoke", "queue", "guests"] as const;
+
+  const karaokeArtistGroups = Object.entries(
+    (karaokeCatalog?.items || []).reduce<Record<string, KaraokeCatalogSong[]>>((groups, song) => {
+      const artist =
+        String(song.artistName || song.matchedArtistName || "Artiste inconnu").trim() ||
+        "Artiste inconnu";
+
+      if (!groups[artist]) groups[artist] = [];
+      groups[artist].push(song);
+      return groups;
+    }, {})
+  ).sort(([artistA], [artistB]) =>
+    artistA.localeCompare(artistB, "fr", { sensitivity: "base" })
+  );
 
   function switchMobileTab(nextTab: typeof mobileTabs[number]) {
     setActiveMobileTab(nextTab);
+
+    if (nextTab === "karaoke" && !karaokeCatalog && !karaokeCatalogLoading) {
+      void loadKaraokeCatalog("");
+    }
+
     if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate?.(8);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -1749,6 +1768,120 @@ async function removeSong(index: number, song: Song) {
       ? Math.min(mobileTabs.length - 1, currentIndex + 1)
       : Math.max(0, currentIndex - 1);
     if (nextIndex !== currentIndex) switchMobileTab(mobileTabs[nextIndex]);
+  }
+
+  function renderKaraokeArtistFolders() {
+    if (karaokeCatalogError) {
+      return (
+        <div className="mt-4 rounded-2xl border border-red-300/15 bg-red-500/[0.07] p-4 text-sm font-bold text-red-100">
+          {karaokeCatalogError}
+        </div>
+      );
+    }
+
+    if (karaokeCatalogLoading && !karaokeCatalog) {
+      return (
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          {[0, 1, 2, 3, 4, 5].map((item) => (
+            <div
+              key={item}
+              className="h-24 animate-pulse rounded-[22px] border border-white/[0.06] bg-white/[0.035]"
+            />
+          ))}
+        </div>
+      );
+    }
+
+    if (!karaokeArtistGroups.length) {
+      return (
+        <div className="mt-5 rounded-[22px] border border-dashed border-fuchsia-300/15 bg-black/20 px-5 py-10 text-center">
+          <Mic2 className="mx-auto h-7 w-7 text-fuchsia-300/60" />
+          <p className="mt-3 font-black">
+            {karaokeCatalogSearch.trim()
+              ? "Aucun morceau Karaoké ne correspond à ce filtre."
+              : "Aucun morceau Karaoké validé pour le moment."}
+          </p>
+          <p className="mt-1 text-sm text-white/35">
+            Le catalogue se remplit automatiquement grâce aux audits LRCLIB.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <div className="mt-5 max-h-[720px] space-y-3 overflow-y-auto pr-1">
+        {karaokeArtistGroups.map(([artist, artistSongs]) => (
+          <details
+            key={artist}
+            open={Boolean(karaokeCatalogSearch.trim())}
+            className="group overflow-hidden rounded-[22px] border border-fuchsia-300/[0.11] bg-black/20 open:border-fuchsia-300/25 open:bg-fuchsia-500/[0.035]"
+          >
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 [&::-webkit-details-marker]:hidden">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-fuchsia-300/15 bg-gradient-to-br from-fuchsia-500/15 to-purple-500/10 text-fuchsia-200">
+                  <Mic2 className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-black text-white">{artist}</p>
+                  <p className="mt-0.5 text-xs font-bold text-white/35">
+                    {artistSongs.length} morceau{artistSongs.length > 1 ? "x" : ""}
+                  </p>
+                </div>
+              </div>
+
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-lg font-black text-fuchsia-200 transition group-open:rotate-45">
+                +
+              </span>
+            </summary>
+
+            <div className="grid gap-3 border-t border-white/[0.06] p-3 md:grid-cols-2">
+              {artistSongs.map((song) => (
+                <article
+                  key={song.videoId}
+                  className="flex min-w-0 gap-3 rounded-[18px] border border-white/[0.06] bg-black/25 p-3"
+                >
+                  <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-white/[0.04]">
+                    <img
+                      src={song.thumbnail || MIXPARTY_DEFAULT_COVER}
+                      alt={song.title}
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="absolute bottom-1.5 left-1.5 rounded-full border border-emerald-300/20 bg-emerald-950/85 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.06em] text-emerald-200">
+                      Synchro
+                    </div>
+                  </div>
+
+                  <div className="flex min-w-0 flex-1 flex-col justify-between">
+                    <div>
+                      <p className="line-clamp-2 text-sm font-black leading-snug text-white">
+                        {song.title}
+                      </p>
+                      {song.matchedAlbumName ? (
+                        <p className="mt-1 truncate text-[10px] font-bold text-white/30">
+                          {song.matchedAlbumName}
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => addKaraokeCatalogSong(song)}
+                      disabled={addingVideoId === song.videoId}
+                      className="mt-2 w-fit rounded-xl bg-gradient-to-r from-fuchsia-600/80 to-purple-600/80 px-3 py-2 text-[11px] font-black text-white transition hover:from-fuchsia-500 hover:to-purple-500 disabled:opacity-50"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <Plus className="h-3.5 w-3.5" />
+                        {addingVideoId === song.videoId ? "Ajout…" : "Ajouter"}
+                      </span>
+                    </button>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </details>
+        ))}
+      </div>
+    );
   }
 
   return (
@@ -2375,7 +2508,7 @@ const canRemove =
                   </p>
                 </div>
 
-                <div className="flex flex-wrap gap-2">
+                <div className="hidden flex-wrap gap-2 md:flex">
                   <button
                     type="button"
                     onClick={karaokeMode ? deactivateKaraokeMode : activateKaraokeMode}
@@ -2457,78 +2590,7 @@ const canRemove =
                     </div>
                   </div>
 
-                  {karaokeCatalogError ? (
-                    <div className="mt-4 rounded-2xl border border-red-300/15 bg-red-500/[0.07] p-4 text-sm font-bold text-red-100">
-                      {karaokeCatalogError}
-                    </div>
-                  ) : null}
-
-                  {karaokeCatalogLoading && !karaokeCatalog ? (
-                    <div className="mt-5 grid gap-3 md:grid-cols-2">
-                      {[0, 1, 2, 3, 4, 5].map((item) => (
-                        <div
-                          key={item}
-                          className="h-28 animate-pulse rounded-[22px] border border-white/[0.06] bg-white/[0.035]"
-                        />
-                      ))}
-                    </div>
-                  ) : (karaokeCatalog?.items || []).length > 0 ? (
-                    <div className="mt-6 grid max-h-[720px] gap-3 overflow-y-auto pr-1 md:grid-cols-2">
-                      {(karaokeCatalog?.items || []).map((song) => (
-                        <article
-                          key={song.videoId}
-                          className="group flex gap-3 rounded-[22px] border border-fuchsia-300/[0.10] bg-black/20 p-3 transition hover:border-fuchsia-300/30 hover:bg-fuchsia-500/[0.05]"
-                        >
-                          <div className="relative h-24 w-32 shrink-0 overflow-hidden rounded-2xl bg-white/[0.04]">
-                            <img
-                              src={song.thumbnail || MIXPARTY_DEFAULT_COVER}
-                              alt={song.title}
-                              className="h-full w-full object-cover"
-                            />
-                            <div className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full border border-emerald-300/20 bg-emerald-950/85 px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] text-emerald-200">
-                              <Mic2 className="h-3 w-3" />
-                              Synchro
-                            </div>
-                          </div>
-
-                          <div className="flex min-w-0 flex-1 flex-col justify-between py-1">
-                            <div>
-                              <p className="line-clamp-2 text-sm font-black leading-snug">
-                                {song.title}
-                              </p>
-                              <p className="mt-1 truncate text-xs font-bold text-fuchsia-200/60">
-                                {song.artistName}
-                              </p>
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => addKaraokeCatalogSong(song)}
-                              disabled={addingVideoId === song.videoId}
-                              className="mt-3 w-fit rounded-xl bg-gradient-to-r from-fuchsia-600/80 to-purple-600/80 px-4 py-2 text-xs font-black text-white transition hover:from-fuchsia-500 hover:to-purple-500 disabled:opacity-50"
-                            >
-                              <span className="flex items-center gap-1.5">
-                                <Plus className="h-3.5 w-3.5" />
-                                {addingVideoId === song.videoId ? "Ajout…" : "Ajouter au karaoké"}
-                              </span>
-                            </button>
-                          </div>
-                        </article>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-5 rounded-[22px] border border-dashed border-fuchsia-300/15 bg-black/20 px-5 py-10 text-center">
-                      <Mic2 className="mx-auto h-7 w-7 text-fuchsia-300/60" />
-                      <p className="mt-3 font-black">
-                        {karaokeCatalogSearch.trim()
-                          ? "Aucun morceau Karaoké ne correspond à ce filtre."
-                          : "Aucun morceau Karaoké validé pour le moment."}
-                      </p>
-                      <p className="mt-1 text-sm text-white/35">
-                        Le catalogue se remplit automatiquement grâce aux audits LRCLIB.
-                      </p>
-                    </div>
-                  )}
+                  {renderKaraokeArtistFolders()}
                 </>
               ) : (
                 <>
@@ -2622,6 +2684,89 @@ const canRemove =
                 </>
               )}
 
+            </section>
+
+
+            <section
+              className={`${activeMobileTab === "karaoke" ? "block" : "hidden"} premium-glass-card rounded-[24px] border border-fuchsia-300/15 bg-gradient-to-br from-fuchsia-500/[0.07] via-purple-500/[0.045] to-cyan-500/[0.035] p-3 backdrop-blur-xl md:hidden`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/10 text-fuchsia-200">
+                      <Mic2 className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.2em] text-fuchsia-300">
+                        Mode Karaoké
+                      </p>
+                      <h2 className="mt-0.5 text-xl font-black">Catalogue Karaoké</h2>
+                    </div>
+                  </div>
+
+                  <p className="mt-3 text-sm leading-6 text-white/40">
+                    Choisis d’abord un artiste, puis le morceau à ajouter. Seuls les titres avec paroles synchronisées sont proposés.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={openKaraokeScreen}
+                className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-500/10 px-4 py-3 text-xs font-black text-cyan-100 transition active:scale-[.99]"
+              >
+                <Expand className="h-4 w-4" />
+                Ouvrir l’écran paroles
+              </button>
+
+              <div className="mt-4 rounded-[20px] border border-white/[0.07] bg-black/20 p-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+                  <input
+                    value={karaokeCatalogSearch}
+                    onChange={(e) => setKaraokeCatalogSearch(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        void loadKaraokeCatalog(karaokeCatalogSearch);
+                      }
+                    }}
+                    placeholder="Rechercher un artiste ou un titre..."
+                    className="w-full rounded-2xl border border-white/10 bg-black/25 py-3.5 pl-11 pr-4 text-sm outline-none transition placeholder:text-white/25 focus:border-fuchsia-400/50"
+                  />
+                </div>
+
+                <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void loadKaraokeCatalog(karaokeCatalogSearch)}
+                    disabled={karaokeCatalogLoading}
+                    className="rounded-2xl bg-gradient-to-r from-fuchsia-600 to-purple-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
+                  >
+                    {karaokeCatalogLoading ? "Chargement…" : "Rechercher"}
+                  </button>
+
+                  {karaokeCatalogSearch.trim() ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setKaraokeCatalogSearch("");
+                        void loadKaraokeCatalog("");
+                      }}
+                      className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 text-xs font-black text-white/60"
+                    >
+                      Tout
+                    </button>
+                  ) : null}
+                </div>
+
+                <p className="mt-3 text-xs font-bold text-fuchsia-100/60">
+                  {karaokeCatalog
+                    ? `${karaokeArtistGroups.length} artiste${karaokeArtistGroups.length > 1 ? "s" : ""} · ${karaokeCatalog.totalReady} morceau${karaokeCatalog.totalReady > 1 ? "x" : ""} prêts`
+                    : "Chargement du catalogue…"}
+                </p>
+              </div>
+
+              {renderKaraokeArtistFolders()}
             </section>
 
             {party.history?.length > 0 && (
@@ -3273,10 +3418,11 @@ const canRemove =
 
         </footer>
 
-        <nav className="v54-mobile-nav fixed inset-x-3 bottom-3 z-50 grid grid-cols-4 gap-1 rounded-[22px] border border-white/12 bg-[#11111d]/95 p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.55)] backdrop-blur-2xl md:hidden" aria-label="Navigation de la soirée">
+        <nav className="v54-mobile-nav fixed inset-x-2 bottom-3 z-50 grid grid-cols-5 gap-0.5 rounded-[22px] border border-white/12 bg-[#11111d]/95 p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.55)] backdrop-blur-2xl md:hidden" aria-label="Navigation de la soirée">
           {[
             { id: "playback", label: "Lecture", Icon: Music4 },
             { id: "add", label: "Ajouter", Icon: Plus },
+            { id: "karaoke", label: "Karaoké", Icon: Mic2 },
             { id: "queue", label: "File", Icon: ListMusic },
             { id: "guests", label: "Invités", Icon: UserPlus },
           ].map(({ id, label, Icon }) => {
@@ -3285,12 +3431,12 @@ const canRemove =
               <button
                 key={id}
                 type="button"
-                onClick={() => switchMobileTab(id as "playback" | "add" | "queue" | "guests")}
-                className={`v54-mobile-nav__item flex min-w-0 flex-col items-center justify-center gap-1 rounded-[17px] px-1 py-2.5 text-[10px] font-black transition ${active ? "v54-mobile-nav__item--active bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 text-white shadow-[0_8px_24px_rgba(168,85,247,0.28)]" : "text-white/45 active:bg-white/[0.06]"}`}
+                onClick={() => switchMobileTab(id as "playback" | "add" | "karaoke" | "queue" | "guests")}
+                className={`v54-mobile-nav__item flex min-w-0 flex-col items-center justify-center gap-1 rounded-[17px] px-0.5 py-2.5 text-[9px] font-black transition ${active ? "v54-mobile-nav__item--active bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 text-white shadow-[0_8px_24px_rgba(168,85,247,0.28)]" : "text-white/45 active:bg-white/[0.06]"}`}
                 aria-current={active ? "page" : undefined}
               >
                 <Icon className="h-5 w-5" />
-                <span className="truncate">{label}</span>
+                <span className="w-full truncate text-center">{label}</span>
               </button>
             );
           })}
