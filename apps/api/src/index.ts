@@ -3640,8 +3640,10 @@ type SearchCacheEntry = {
   normalizedQuery: string;
   createdAt: number;
   results: YoutubeSearchResult[];
+  engineVersion?: number;
 };
 
+const YOUTUBE_SEARCH_ENGINE_VERSION = 2;
 const YOUTUBE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const YOUTUBE_CACHE_MAX_ENTRIES = 2000;
 const youtubeCacheFilePath = path.resolve(persistentDataDir, "youtube-search-cache.json");
@@ -3961,6 +3963,7 @@ function loadYoutubeCache() {
         entry &&
         typeof entry.normalizedQuery === "string" &&
         Array.isArray(entry.results) &&
+        Number(entry.engineVersion || 0) === YOUTUBE_SEARCH_ENGINE_VERSION &&
         Date.now() - Number(entry.createdAt || 0) <= YOUTUBE_CACHE_TTL_MS
       ) {
         youtubeSearchCache.set(entry.normalizedQuery, entry);
@@ -3997,33 +4000,92 @@ function extractMusicMetadata(params: {
   return coreExtractMusicMetadata(params);
 }
 
-function scoreMusicResult(result: YoutubeSearchResult, query: string) {
-  const title = stripDiacritics(result.title).toLowerCase();
+function normalizeSearchMatchText(value: string) {
+  return stripDiacritics(value)
+    .toLowerCase()
+    .replace(/[\'’`]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function significantSearchTokens(value: string) {
+  return normalizeSearchMatchText(value)
+    .split(" ")
+    .filter((token) => token.length >= 2);
+}
+
+function officialMusicStrength(result: YoutubeSearchResult) {
+  const titleText = stripDiacritics(`${result.rawTitle || ""} ${result.title || ""}`).toLowerCase();
   const channel = stripDiacritics(result.channelTitle || "").toLowerCase();
-  const normalizedTitle = normalizeMusicQuery(title);
-  const queryTokens = normalizeMusicQuery(query).split(" ").filter(Boolean);
+  let strength = 0;
+
+  if (/official audio|audio officiel/i.test(titleText)) strength += 5;
+  if (/provided to youtube/i.test(titleText)) strength += 5;
+  if (result.metadataSource === "ART_TRACK_DESCRIPTION") strength += 5;
+  if (/official (music )?video|clip officiel/i.test(titleText)) strength += 4;
+  if (/\btopic\b/i.test(channel)) strength += 4;
+  if (/vevo/i.test(channel)) strength += 4;
+  if (/official|officiel/i.test(channel)) strength += 3;
+
+  return strength;
+}
+
+function scoreMusicResult(result: YoutubeSearchResult, query: string) {
+  const cleanTitle = stripDiacritics(result.title || "").toLowerCase();
+  const rawTitle = stripDiacritics(result.rawTitle || result.title || "").toLowerCase();
+  const titleText = `${rawTitle} ${cleanTitle}`;
+  const channel = stripDiacritics(result.channelTitle || "").toLowerCase();
+  const artist = stripDiacritics(result.artistName || "").toLowerCase();
+
+  const normalizedTitle = normalizeSearchMatchText(titleText);
+  const normalizedChannel = normalizeSearchMatchText(channel);
+  const normalizedArtist = normalizeSearchMatchText(artist);
+  const normalizedQuery = normalizeSearchMatchText(query);
+  const compactQuery = normalizedQuery.replace(/\s+/g, "");
+  const compactArtist = normalizedArtist.replace(/\s+/g, "");
+  const compactChannel = normalizedChannel.replace(/\s+/g, "");
+  const queryTokens = significantSearchTokens(query);
+
   let score = 0;
 
-  if (/official audio|audio officiel|provided to youtube/i.test(title)) score += 120;
-  if (/official (music )?video|clip officiel/i.test(title)) score += 110;
-  if (/\btopic\b/i.test(channel)) score += 95;
-  if (/vevo/i.test(channel)) score += 85;
-  if (/official/i.test(channel)) score += 70;
-  if (/music/i.test(channel)) score += 20;
+  // Les versions réellement officielles doivent dominer le classement.
+  if (/official audio|audio officiel/i.test(titleText)) score += 190;
+  if (/provided to youtube/i.test(titleText)) score += 180;
+  if (result.metadataSource === "ART_TRACK_DESCRIPTION") score += 175;
+  if (/official (music )?video|clip officiel/i.test(titleText)) score += 155;
+  if (/\btopic\b/i.test(channel)) score += 140;
+  if (/vevo/i.test(channel)) score += 125;
+  if (/official|officiel/i.test(channel)) score += 90;
+  if (/music/i.test(channel)) score += 15;
+
+  // Correspondance forte avec l'artiste / la chaîne. Le compact permet
+  // notamment de rapprocher "Diam's" et "Diams" sans polluer la requête avec "s".
+  if (compactQuery.length >= 3 && compactArtist === compactQuery) score += 145;
+  else if (normalizedQuery && normalizedArtist.includes(normalizedQuery)) score += 75;
+
+  if (compactQuery.length >= 3 && compactChannel.includes(compactQuery)) score += 90;
+  if (normalizedQuery && normalizedTitle.includes(normalizedQuery)) score += 55;
 
   for (const token of queryTokens) {
-    if (normalizedTitle.includes(token)) score += 16;
-    if (channel.includes(token)) score += 10;
+    if (normalizedTitle.includes(token)) score += 18;
+    if (normalizedArtist.includes(token)) score += 24;
+    if (normalizedChannel.includes(token)) score += 12;
   }
 
-  if (/lyrics?|paroles/i.test(title)) score -= 35;
-  if (/karaoke|instrumental/i.test(title)) score -= 70;
-  if (/cover|reprise/i.test(title)) score -= 65;
-  if (/reaction|reacts?|analyse|analysis|review/i.test(title)) score -= 120;
-  if (/interview|podcast|documentary|documentaire|making of|behind the scenes/i.test(title)) score -= 140;
-  if (/shorts?|#shorts/i.test(title)) score -= 250;
-  if (/live|concert|festival/i.test(title)) score -= 25;
-  if (/mix|compilation|playlist|best of/i.test(title)) score -= 40;
+  // Les versions alternatives restent visibles, mais passent après les versions propres.
+  if (/lyrics?|paroles/i.test(titleText)) score -= 50;
+  if (/karaoke|instrumental/i.test(titleText)) score -= 100;
+  if (/cover|reprise/i.test(titleText)) score -= 110;
+  if (/reaction|reacts?|analyse|analysis|review/i.test(titleText)) score -= 150;
+  if (/interview|podcast|documentary|documentaire|making of|behind the scenes/i.test(titleText)) score -= 170;
+  if (/shorts?|#shorts/i.test(titleText)) score -= 280;
+  if (/live|concert|festival/i.test(titleText)) score -= 35;
+  if (/mix|compilation|playlist|best of/i.test(titleText)) score -= 55;
+
+  const confidence = Number(result.metadataConfidence || 0);
+  if (confidence >= 85) score += 35;
+  else if (confidence >= 70) score += 20;
 
   const duration = result.durationSeconds || 0;
   if (duration >= 90 && duration <= 600) score += 35;
@@ -4133,7 +4195,7 @@ async function requestYoutubeMusic(
       })
       .filter((result: any) => result.embeddable && result.privacyStatus !== "private")
       .filter((result: YoutubeSearchResult) => {
-        const text = `${result.title} ${result.channelTitle || ""}`.toLowerCase();
+        const text = `${result.rawTitle || ""} ${result.title} ${result.channelTitle || ""}`.toLowerCase();
         // On écarte seulement les contenus clairement non musicaux ou trop courts.
         // Les remix, lives, paroles, instrumentaux, reprises et versions alternatives restent disponibles.
         return !/(podcast|interview|reaction|reacts?|documentary|documentaire|#shorts|\bshorts?\b|audition|the voice|incroyable talent|concours|talent show|making of|behind the scenes)/i.test(text);
@@ -4208,10 +4270,21 @@ async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResu
   const primary = await requestYoutubeMusic(query, "user");
   let combined = [...known, ...primary];
 
-  // Une seconde requête ciblée seulement si la première page reste pauvre.
-  // Cela évite le cas "PLK = seulement 8 titres" sans multiplier les appels à chaque recherche.
-  if (deduplicateMusicResults(combined).length < 16) {
-    const fallbackQuery = `${query} official audio topic`;
+  const firstPass = deduplicateMusicResults(combined);
+  const officialCount = firstPass.filter((result) => officialMusicStrength(result) >= 4).length;
+  const compactQueryTokenCount = significantSearchTokens(query).length;
+
+  console.log(`🎵 Recherche "${query}" : ${firstPass.length} résultat(s), ${officialCount} officiel(s)/fiable(s) avant secours ciblé.`);
+
+  // Une liste peut contenir 30 ou 40 vidéos et pourtant presque aucune version
+  // officielle. Dans ce cas on lance une recherche ciblée au lieu de considérer
+  // à tort que la première page est "assez riche".
+  const needsOfficialFallback =
+    firstPass.length < 16 ||
+    (compactQueryTokenCount > 0 && compactQueryTokenCount <= 5 && officialCount < 6);
+
+  if (needsOfficialFallback) {
+    const fallbackQuery = `${query} official audio`;
     const fallback = await requestYoutubeMusic(fallbackQuery, "user");
     combined = [...combined, ...fallback];
   }
@@ -4539,6 +4612,7 @@ async function runPartyBrainAcademy(trigger: "scheduler" | "manual" = "scheduler
           normalizedQuery,
           createdAt: Date.now(),
           results,
+          engineVersion: YOUTUBE_SEARCH_ENGINE_VERSION,
         });
         saveYoutubeCache();
 
@@ -7242,6 +7316,7 @@ app.post("/partybrain/academy/test-one", async (req, res) => {
       normalizedQuery,
       createdAt: Date.now(),
       results,
+      engineVersion: YOUTUBE_SEARCH_ENGINE_VERSION,
     });
     saveYoutubeCache();
 
@@ -7562,6 +7637,7 @@ app.get("/search/youtube", async (req, res) => {
       normalizedQuery,
       createdAt: Date.now(),
       results,
+      engineVersion: YOUTUBE_SEARCH_ENGINE_VERSION,
     });
     saveYoutubeCache();
     recordMusicBrainSearch(query, results);
