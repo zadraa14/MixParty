@@ -253,6 +253,7 @@ export default function PartyPage() {
   const [participantId, setParticipantId] = useState("");
   const [participantAvatar, setParticipantAvatar] = useState("");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+  const [isInAppBrowser, setIsInAppBrowser] = useState(false);
 
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<any[]>([]);
@@ -308,8 +309,6 @@ export default function PartyPage() {
   const applyingRemotePlaybackRef = useRef(false);
   const changingSongRef = useRef(false);
   const mobileSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
-  const cameraPhotoInputRef = useRef<HTMLInputElement | null>(null);
-  const galleryPhotoInputRef = useRef<HTMLInputElement | null>(null);
 
   function addPlayerAudit(event: string, detail?: string) {
     const entry = { at: Date.now(), event, detail };
@@ -328,6 +327,18 @@ export default function PartyPage() {
       console.warn("Impossible de remettre le volume YouTube à 100 %", error);
     }
   }
+
+  useEffect(() => {
+    const userAgent = navigator.userAgent || "";
+    const androidWebView =
+      /;\s*wv\)/i.test(userAgent) ||
+      /\bVersion\/\d+(?:\.\d+)*\s+Chrome\/.*Mobile\s+Safari/i.test(userAgent);
+
+    const knownInAppBrowser =
+      /Snapchat|Instagram|FBAN|FBAV|FB_IAB|Line\//i.test(userAgent);
+
+    setIsInAppBrowser(androidWebView || knownInAppBrowser);
+  }, []);
 
   useEffect(() => {
     const saved = localStorage.getItem("playerName");
@@ -2761,43 +2772,58 @@ const canRemove =
                   className="mt-5 w-full rounded-2xl border border-white/10 bg-black/25 px-4 py-4 outline-none transition placeholder:text-white/25 focus:border-pink-400/50"
                 />
 
+                {isInAppBrowser ? (
+                  <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-500/[0.08] px-4 py-3 text-left">
+                    <p className="text-sm font-black text-amber-100">
+                      Ouvert depuis une application
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-amber-50/65">
+                      Sur certains Android, Snapchat ou un autre navigateur intégré peut bloquer la caméra et la galerie.
+                      Si rien ne s’ouvre, utilise le menu de l’application puis « Ouvrir dans le navigateur ».
+                      Tu peux aussi continuer sans photo : MixParty te donnera un avatar automatiquement.
+                    </p>
+                  </div>
+                ) : null}
+
                 <div className="mt-4 grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    disabled={uploadingAvatar}
-                    onClick={() => cameraPhotoInputRef.current?.click()}
-                    className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-pink-400/25 bg-pink-500/10 px-3 py-3 text-sm font-black text-pink-100 transition hover:border-pink-300/45 hover:bg-pink-500/15 disabled:cursor-wait disabled:opacity-50"
+                  <label
+                    htmlFor="mixparty-profile-camera-join"
+                    aria-disabled={uploadingAvatar}
+                    className={`flex min-h-14 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-pink-400/25 bg-pink-500/10 px-3 py-3 text-sm font-black text-pink-100 transition hover:border-pink-300/45 hover:bg-pink-500/15 ${
+                      uploadingAvatar ? "pointer-events-none cursor-wait opacity-50" : ""
+                    }`}
                   >
                     <Camera className="h-5 w-5 shrink-0" />
                     <span>{uploadingAvatar ? "Préparation…" : "Prendre une photo"}</span>
-                  </button>
+                  </label>
 
-                  <button
-                    type="button"
-                    disabled={uploadingAvatar}
-                    onClick={() => galleryPhotoInputRef.current?.click()}
-                    className="flex min-h-14 items-center justify-center gap-2 rounded-2xl border border-purple-400/25 bg-purple-500/10 px-3 py-3 text-sm font-black text-purple-100 transition hover:border-purple-300/45 hover:bg-purple-500/15 disabled:cursor-wait disabled:opacity-50"
+                  <label
+                    htmlFor="mixparty-profile-gallery-join"
+                    aria-disabled={uploadingAvatar}
+                    className={`flex min-h-14 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-purple-400/25 bg-purple-500/10 px-3 py-3 text-sm font-black text-purple-100 transition hover:border-purple-300/45 hover:bg-purple-500/15 ${
+                      uploadingAvatar ? "pointer-events-none cursor-wait opacity-50" : ""
+                    }`}
                   >
                     <Images className="h-5 w-5 shrink-0" />
                     <span>Choisir dans la galerie</span>
-                  </button>
+                  </label>
                 </div>
 
                 <input
-                  ref={cameraPhotoInputRef}
+                  id="mixparty-profile-camera-join"
                   type="file"
                   accept="image/*"
                   capture="user"
-                  className="hidden"
+                  className="sr-only"
                   disabled={uploadingAvatar}
                   onChange={handleProfilePhotoSelection}
                 />
 
                 <input
-                  ref={galleryPhotoInputRef}
+                  id="mixparty-profile-gallery-join"
                   type="file"
                   accept="image/*"
-                  className="hidden"
+                  className="sr-only"
                   disabled={uploadingAvatar}
                   onChange={handleProfilePhotoSelection}
                 />
@@ -2850,41 +2876,50 @@ const canRemove =
 
                 </div>
 
+                {isInAppBrowser ? (
+                  <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-500/[0.08] px-4 py-3 text-xs leading-5 text-amber-50/65">
+                    Si la caméra ou la galerie ne s’ouvre pas depuis Snapchat ou une autre application,
+                    ouvre MixParty dans ton navigateur Android.
+                  </div>
+                ) : null}
+
                 <div className="mt-4 grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    disabled={uploadingAvatar}
-                    onClick={() => cameraPhotoInputRef.current?.click()}
-                    className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 text-sm font-bold text-white/70 transition hover:border-pink-400/30 hover:bg-pink-500/10 disabled:opacity-50"
+                  <label
+                    htmlFor="mixparty-profile-camera-settings"
+                    aria-disabled={uploadingAvatar}
+                    className={`flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 text-sm font-bold text-white/70 transition hover:border-pink-400/30 hover:bg-pink-500/10 ${
+                      uploadingAvatar ? "pointer-events-none opacity-50" : ""
+                    }`}
                   >
                     <Camera className="h-4 w-4 text-pink-300" />
                     Prendre une photo
-                  </button>
-                  <button
-                    type="button"
-                    disabled={uploadingAvatar}
-                    onClick={() => galleryPhotoInputRef.current?.click()}
-                    className="flex items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 text-sm font-bold text-white/70 transition hover:border-purple-400/30 hover:bg-purple-500/10 disabled:opacity-50"
+                  </label>
+                  <label
+                    htmlFor="mixparty-profile-gallery-settings"
+                    aria-disabled={uploadingAvatar}
+                    className={`flex cursor-pointer items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 text-sm font-bold text-white/70 transition hover:border-purple-400/30 hover:bg-purple-500/10 ${
+                      uploadingAvatar ? "pointer-events-none opacity-50" : ""
+                    }`}
                   >
                     <Images className="h-4 w-4 text-purple-300" />
                     Galerie
-                  </button>
+                  </label>
                 </div>
 
                 <input
-                  ref={cameraPhotoInputRef}
+                  id="mixparty-profile-camera-settings"
                   type="file"
                   accept="image/*"
                   capture="user"
-                  className="hidden"
+                  className="sr-only"
                   disabled={uploadingAvatar}
                   onChange={handleProfilePhotoSelection}
                 />
                 <input
-                  ref={galleryPhotoInputRef}
+                  id="mixparty-profile-gallery-settings"
                   type="file"
                   accept="image/*"
-                  className="hidden"
+                  className="sr-only"
                   disabled={uploadingAvatar}
                   onChange={handleProfilePhotoSelection}
                 />
