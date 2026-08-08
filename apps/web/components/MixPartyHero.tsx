@@ -24,7 +24,7 @@ export default function MixPartyHero({ creatingParty, onCreateParty, onJoinClick
         La playlist devient collective
       </NeonBadge>
 
-      <h1 className="mixparty-hero-title mixparty-reveal mixparty-reveal-delay-2 mx-auto mt-7 max-w-[760px] font-[family:var(--font-exo-2)] text-[2.3rem] font-black leading-[0.98] tracking-[-0.055em] sm:text-[3.8rem] lg:mx-0 lg:text-[5.25rem]">
+      <h1 className="mixparty-hero-title mixparty-reveal mixparty-reveal-delay-2 mx-auto mt-7 max-w-[760px] font-[family:var(--font-exo-2)] text-[3rem] font-black leading-[0.98] tracking-[-0.055em] sm:text-6xl lg:mx-0 lg:text-[5.25rem]">
         <span className="block">La musique de la soirée</span>
         <span className="block">appartient à</span>
         <GradientText className="mt-1 block pb-2">tout le monde.</GradientText>
@@ -46,7 +46,7 @@ export default function MixPartyHero({ creatingParty, onCreateParty, onJoinClick
         </button>
       </div>
 
-      <div className="mixparty-feature-row mx-auto mt-8 grid max-w-[760px] grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:mx-0 lg:grid-cols-4">
+      <div className="mixparty-feature-row mixparty-mobile-feature-grid mx-auto mt-9 grid max-w-[760px] grid-cols-2 gap-4 lg:mx-0 lg:grid-cols-4">
         {FEATURES.map(({ title, text, icon: Icon, accent }, index) => (
           <div key={title} className="mixparty-feature-item mixparty-reveal" style={{ animationDelay: `${700 + index * 90}ms` }}>
             <div className={`mixparty-feature-icon mixparty-feature-icon--${accent}`}><Icon className="h-5 w-5" /></div>
@@ -55,6 +55,32 @@ export default function MixPartyHero({ creatingParty, onCreateParty, onJoinClick
           </div>
         ))}
       </div>
+
+      <style jsx>{`
+        @media (max-width: 1023px) {
+          .mixparty-mobile-feature-grid {
+            display: grid !important;
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+            column-gap: 0.75rem !important;
+            row-gap: 1.75rem !important;
+          }
+
+          .mixparty-mobile-feature-grid :global(.mixparty-feature-item) {
+            min-width: 0;
+            text-align: center !important;
+          }
+
+          .mixparty-mobile-feature-grid :global(.mixparty-feature-icon) {
+            margin-inline: auto !important;
+          }
+        }
+
+        @media (min-width: 1024px) {
+          .mixparty-mobile-feature-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+          }
+        }
+      `}</style>
     </section>
   );
 }
