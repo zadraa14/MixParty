@@ -787,6 +787,14 @@ export default function PartyPage() {
   }
 
   function addKaraokeCatalogSong(song: KaraokeCatalogSong) {
+    const alreadyInPlaylist =
+      party.currentSong?.videoId === song.videoId ||
+      (party.songs || []).some(
+        (queuedSong) => !queuedSong.played && queuedSong.videoId === song.videoId
+      );
+
+    if (alreadyInPlaylist) return;
+
     void addYoutubeSong({
       id: song.videoId,
       title: song.title,
@@ -1835,10 +1843,22 @@ async function removeSong(index: number, song: Song) {
             </summary>
 
             <div className="grid gap-3 border-t border-white/[0.06] p-3 md:grid-cols-2">
-              {artistSongs.map((song) => (
+              {artistSongs.map((song) => {
+                const alreadyInPlaylist =
+                  party.currentSong?.videoId === song.videoId ||
+                  (party.songs || []).some(
+                    (queuedSong) =>
+                      !queuedSong.played && queuedSong.videoId === song.videoId
+                  );
+
+                return (
                 <article
                   key={song.videoId}
-                  className="flex min-w-0 gap-3 rounded-[18px] border border-white/[0.06] bg-black/25 p-3"
+                  className={`flex min-w-0 gap-3 rounded-[18px] border p-3 transition ${
+                    alreadyInPlaylist
+                      ? "border-white/[0.05] bg-white/[0.025] opacity-70"
+                      : "border-white/[0.06] bg-black/25"
+                  }`}
                 >
                   <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-white/[0.04]">
                     <img
@@ -1866,17 +1886,30 @@ async function removeSong(index: number, song: Song) {
                     <button
                       type="button"
                       onClick={() => addKaraokeCatalogSong(song)}
-                      disabled={addingVideoId === song.videoId}
-                      className="mt-2 w-fit rounded-xl bg-gradient-to-r from-fuchsia-600/80 to-purple-600/80 px-3 py-2 text-[11px] font-black text-white transition hover:from-fuchsia-500 hover:to-purple-500 disabled:opacity-50"
+                      disabled={alreadyInPlaylist || addingVideoId === song.videoId}
+                      className={`mt-2 rounded-xl px-3 py-2 text-[11px] font-black transition ${
+                        alreadyInPlaylist
+                          ? "w-full cursor-not-allowed border border-white/[0.08] bg-white/[0.06] text-white/40"
+                          : "w-fit bg-gradient-to-r from-fuchsia-600/80 to-purple-600/80 text-white hover:from-fuchsia-500 hover:to-purple-500 disabled:opacity-50"
+                      }`}
                     >
-                      <span className="flex items-center gap-1.5">
-                        <Plus className="h-3.5 w-3.5" />
-                        {addingVideoId === song.videoId ? "Ajout…" : "Ajouter"}
+                      <span className="flex items-center justify-center gap-1.5">
+                        {alreadyInPlaylist ? (
+                          <Check className="h-3.5 w-3.5" />
+                        ) : (
+                          <Plus className="h-3.5 w-3.5" />
+                        )}
+                        {alreadyInPlaylist
+                          ? "Déjà dans la liste de lecture"
+                          : addingVideoId === song.videoId
+                            ? "Ajout…"
+                            : "Ajouter"}
                       </span>
                     </button>
                   </div>
                 </article>
-              ))}
+                );
+              })}
             </div>
           </details>
         ))}

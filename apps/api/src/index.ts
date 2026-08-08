@@ -5574,6 +5574,122 @@ async function runKaraokeLyricsAuditBatch(limit: number) {
   }
 }
 
+/* =========================================================
+   KARAOKÉ AUDIT V2 — PLANIFICATEUR LRCLIB AUTONOME
+   - LRCLIB uniquement : aucun appel YouTube
+   - 100 morceaux maximum par vague
+   - une tentative toutes les 60 secondes
+   - aucun chevauchement avec un autre audit / worker LRCLIB
+   ========================================================= */
+
+const karaokeLyricsAuditSchedulerEnabled =
+  String(process.env.KARAOKE_LRCLIB_SCHEDULER_ENABLED || "true").toLowerCase() !== "false";
+
+const karaokeLyricsAuditSchedulerIntervalMs = Math.max(
+  60_000,
+  Number(process.env.KARAOKE_LRCLIB_SCHEDULER_INTERVAL_MS || 60_000)
+);
+
+const karaokeLyricsAuditSchedulerBatchSize = Math.max(
+  1,
+  Math.min(100, Number(process.env.KARAOKE_LRCLIB_SCHEDULER_BATCH_SIZE || 100))
+);
+
+let karaokeLyricsAuditSchedulerLastCheckAt = 0;
+let karaokeLyricsAuditSchedulerLastStartedAt = 0;
+let karaokeLyricsAuditSchedulerLastSkipReason = "";
+
+function karaokeLyricsAuditPendingCount() {
+  return Object.values(musicBrain.songs)
+    .filter(karaokeLyricsArtistReliable)
+    .filter((song) => !karaokeLyricsAudit.entries[song.videoId])
+    .length;
+}
+
+function karaokeLyricsAuditSchedulerSnapshot() {
+  return {
+    enabled: karaokeLyricsAuditSchedulerEnabled,
+    intervalMs: karaokeLyricsAuditSchedulerIntervalMs,
+    batchSize: karaokeLyricsAuditSchedulerBatchSize,
+    pending: karaokeLyricsAuditPendingCount(),
+    lastCheckAt: karaokeLyricsAuditSchedulerLastCheckAt,
+    lastStartedAt: karaokeLyricsAuditSchedulerLastStartedAt,
+    lastSkipReason: karaokeLyricsAuditSchedulerLastSkipReason,
+  };
+}
+
+async function runScheduledKaraokeLyricsAudit() {
+  karaokeLyricsAuditSchedulerLastCheckAt = Date.now();
+
+  if (!karaokeLyricsAuditSchedulerEnabled) {
+    karaokeLyricsAuditSchedulerLastSkipReason = "Planificateur désactivé.";
+    return;
+  }
+
+  // Ne jamais superposer deux lots LRCLIB.
+  if (karaokeLyricsAuditJob.running) {
+    karaokeLyricsAuditSchedulerLastSkipReason = "Audit LRCLIB déjà en cours.";
+    return;
+  }
+
+  // Le petit worker automatique utilisé lors des recherches/ajouts passe d'abord.
+  // Cela évite de bombarder LRCLIB avec deux flux en parallèle.
+  if (automaticLrclibWorkerRunning || automaticLrclibQueue.length > 0) {
+    karaokeLyricsAuditSchedulerLastSkipReason = "Worker LRCLIB temps réel occupé.";
+    return;
+  }
+
+  // Respecte aussi un éventuel Retry-After renvoyé par LRCLIB lors de la vague précédente.
+  const retryAfterMs = Math.max(
+    0,
+    Number(karaokeLyricsAuditJob.retryAfterSeconds || 0) * 1000
+  );
+  const retryUntil =
+    karaokeLyricsAuditJob.rateLimited && karaokeLyricsAuditJob.finishedAt
+      ? karaokeLyricsAuditJob.finishedAt + retryAfterMs
+      : 0;
+
+  if (retryUntil > Date.now()) {
+    karaokeLyricsAuditSchedulerLastSkipReason =
+      `Pause LRCLIB jusqu'à ${new Date(retryUntil).toISOString()}.`;
+    return;
+  }
+
+  const pending = karaokeLyricsAuditPendingCount();
+  if (pending <= 0) {
+    karaokeLyricsAuditSchedulerLastSkipReason = "Aucun nouveau morceau à vérifier.";
+    return;
+  }
+
+  const batchSize = Math.min(karaokeLyricsAuditSchedulerBatchSize, pending);
+
+  karaokeLyricsAuditSchedulerLastStartedAt = Date.now();
+  karaokeLyricsAuditSchedulerLastSkipReason = "";
+
+  console.log(
+    `🎤 KARAOKÉ AUDIT V2 AUTO : lancement d'une vague LRCLIB de ${batchSize} morceau(x) ` +
+    `(${pending} en attente).`
+  );
+
+  try {
+    await runKaraokeLyricsAuditBatch(batchSize);
+  } catch (error) {
+    console.error("🎤 KARAOKÉ AUDIT V2 AUTO : vague LRCLIB interrompue", error);
+  }
+}
+
+if (karaokeLyricsAuditSchedulerEnabled) {
+  // Petit délai au démarrage de Railway pour laisser MusicBrain et les fichiers persistants se charger.
+  setTimeout(() => {
+    void runScheduledKaraokeLyricsAudit();
+  }, 15_000);
+
+  setInterval(() => {
+    void runScheduledKaraokeLyricsAudit();
+  }, karaokeLyricsAuditSchedulerIntervalMs);
+}
+
+
 
 type KaraokeTimedLine = {
   time: number;
@@ -5841,6 +5957,7 @@ app.get("/partybrain/karaoke-lyrics-audit", (_req, res) => {
   return res.json({
     ...karaokeLyricsAuditSummary(),
     job: karaokeLyricsAuditJob,
+    scheduler: karaokeLyricsAuditSchedulerSnapshot(),
   });
 });
 
