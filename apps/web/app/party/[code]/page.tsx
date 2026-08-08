@@ -788,8 +788,8 @@ export default function PartyPage() {
 
   function addKaraokeCatalogSong(song: KaraokeCatalogSong) {
     const alreadyInPlaylist =
-      party.currentSong?.videoId === song.videoId ||
-      (party.songs || []).some(
+      party?.currentSong?.videoId === song.videoId ||
+      (party?.songs || []).some(
         (queuedSong) => !queuedSong.played && queuedSong.videoId === song.videoId
       );
 
@@ -1845,8 +1845,8 @@ async function removeSong(index: number, song: Song) {
             <div className="grid gap-3 border-t border-white/[0.06] p-3 md:grid-cols-2">
               {artistSongs.map((song) => {
                 const alreadyInPlaylist =
-                  party.currentSong?.videoId === song.videoId ||
-                  (party.songs || []).some(
+                  party?.currentSong?.videoId === song.videoId ||
+                  (party?.songs || []).some(
                     (queuedSong) =>
                       !queuedSong.played && queuedSong.videoId === song.videoId
                   );
