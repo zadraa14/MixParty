@@ -129,6 +129,53 @@ type Stats = {
 
 
 
+type PublicationQualitySummary = {
+  generatedAt: number;
+  ready: number;
+  review: number;
+  blocked: number;
+  total: number;
+  karaokeSyncedReady: number;
+  karaokeSyncedReview: number;
+  karaokeSyncedBlocked: number;
+  karaokeSyncedTotal: number;
+};
+
+type PublicationQualityItem = {
+  videoId: string;
+  title: string;
+  rawTitle: string;
+  artistName: string;
+  channelTitle: string;
+  thumbnail: string;
+  metadataSource?: string | null;
+  metadataConfidence: number;
+  searchCount: number;
+  addedCount: number;
+  playedCount: number;
+  voteCount: number;
+  publicationStatus: "ready" | "review" | "blocked";
+  publicationReason: string;
+  proposedArtistName?: string;
+  karaokeSynced: boolean;
+  lrclibArtistName?: string;
+  lrclibTrackName?: string;
+};
+
+type PublicationQualityResponse = {
+  generatedAt: number;
+  status: "ready" | "review" | "blocked" | "all";
+  query: string;
+  total: number;
+  returned: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  nextOffset?: number | null;
+  summary: PublicationQualitySummary;
+  items: PublicationQualityItem[];
+};
+
 type LiveUsersData = {
   generatedAt: number;
   onlineWindowMs: number;
@@ -368,6 +415,14 @@ export default function MusicBrainAdminPage() {
   const [manualCoverVideoId, setManualCoverVideoId] = useState("");
   const [manualCoverUrl, setManualCoverUrl] = useState("");
   const [coverActionMessage, setCoverActionMessage] = useState("");
+  const [publicationQuality, setPublicationQuality] =
+    useState<PublicationQualityResponse | null>(null);
+  const [publicationQualityLoading, setPublicationQualityLoading] = useState(false);
+  const [publicationQualityError, setPublicationQualityError] = useState("");
+  const [publicationQualityFilter, setPublicationQualityFilter] =
+    useState<"review" | "ready" | "blocked" | "all">("review");
+  const [publicationQualitySearch, setPublicationQualitySearch] = useState("");
+
   const [activeAdminTab, setActiveAdminTab] = useState<
     | "overview"
     | "catalog"
@@ -380,6 +435,44 @@ export default function MusicBrainAdminPage() {
   >("overview");
 
 
+
+  async function loadPublicationQuality(
+    status = publicationQualityFilter,
+    search = publicationQualitySearch
+  ) {
+    setPublicationQualityLoading(true);
+    setPublicationQualityError("");
+
+    try {
+      const params = new URLSearchParams({
+        status,
+        limit: "300",
+      });
+
+      if (search.trim()) params.set("q", search.trim());
+
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/musicbrain-publication/items?${params.toString()}`,
+        { cache: "no-store" }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Contrôle qualité MusicBrain indisponible");
+      }
+
+      setPublicationQuality(data);
+    } catch (err) {
+      setPublicationQualityError(
+        err instanceof Error
+          ? err.message
+          : "Contrôle qualité MusicBrain indisponible"
+      );
+    } finally {
+      setPublicationQualityLoading(false);
+    }
+  }
 
   async function loadLiveUsers() {
     try {
@@ -1095,6 +1188,13 @@ export default function MusicBrainAdminPage() {
   }
 
   useEffect(() => {
+    if (activeAdminTab === "quality") {
+      void loadPublicationQuality(publicationQualityFilter, publicationQualitySearch);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAdminTab, publicationQualityFilter]);
+
+  useEffect(() => {
     const refreshDelay = stats?.academy.running ? 5_000 : 60_000;
     const timer = window.setInterval(() => {
       void loadStats();
@@ -1164,6 +1264,19 @@ export default function MusicBrainAdminPage() {
     { key: "activity", label: "Activité", icon: Activity, description: "Utilisateurs et soirées" },
     { key: "maintenance", label: "Maintenance", icon: KeyRound, description: "Actions sensibles" },
   ];
+
+  const publicationReasonLabels: Record<string, string> = {
+    musicbrain_validated: "Identité validée",
+    musicbrain_requires_review: "Métadonnées à vérifier",
+    safe_repair_available: "Réparation sûre disponible",
+    artist_repair_requires_validation: "Correction artiste à valider",
+    artist_conflicts_with_youtube_title: "Conflit artiste / titre YouTube",
+    suspicious_artist_identity: "Identité artiste suspecte",
+    contenu_non_musical: "Contenu non musical",
+    artiste_inconnu: "Artiste inconnu",
+    artiste_generique: "Artiste générique",
+    musicbrain_rejected: "Refusé par MusicBrain",
+  };
 
   const cleanupReviewItems = Array.isArray(cleanupReport?.reviewItems) ? cleanupReport.reviewItems : [];
   const visibleCleanupReviewItems = cleanupReviewItems.filter((item: any) => {
@@ -2217,6 +2330,292 @@ export default function MusicBrainAdminPage() {
 
 
               </>
+            ) : null}
+
+{activeAdminTab === "quality" ? (
+              <section className="mt-7 rounded-[28px] border border-violet-300/20 bg-gradient-to-br from-violet-500/[0.10] via-fuchsia-500/[0.06] to-cyan-500/[0.05] p-5 backdrop-blur-xl sm:p-7">
+                <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="max-w-3xl">
+                    <div className="flex items-start gap-4">
+                      <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-violet-400/15 text-violet-200">
+                        <ShieldCheck className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[.22em] text-violet-300">
+                          Publication Gate
+                        </p>
+                        <h2 className="mt-1 text-2xl font-black">
+                          MusicBrain décide avant MixParty
+                        </h2>
+                        <p className="mt-2 text-sm leading-6 text-white/50">
+                          Les morceaux validés peuvent être publiés. Les morceaux incertains restent dans MusicBrain pour contrôle. Les erreurs évidentes sont bloquées avant d’atteindre MixParty ou la bibliothèque Karaoké.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void loadPublicationQuality(
+                        publicationQualityFilter,
+                        publicationQualitySearch
+                      )
+                    }
+                    disabled={publicationQualityLoading}
+                    className="inline-flex items-center justify-center gap-2 rounded-2xl border border-violet-300/20 bg-violet-500/10 px-4 py-3 text-sm font-black text-violet-100 transition hover:bg-violet-500/15 disabled:opacity-40"
+                  >
+                    <RefreshCw
+                      className={`h-4 w-4 ${
+                        publicationQualityLoading ? "animate-spin" : ""
+                      }`}
+                    />
+                    Actualiser la qualité
+                  </button>
+                </div>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {[
+                    {
+                      key: "ready" as const,
+                      label: "Validés",
+                      value: publicationQuality?.summary.ready || 0,
+                      detail: "publiables dans MixParty",
+                      tone: "border-emerald-300/15 bg-emerald-500/[0.07] text-emerald-100",
+                    },
+                    {
+                      key: "review" as const,
+                      label: "À vérifier",
+                      value: publicationQuality?.summary.review || 0,
+                      detail: "retenus par MusicBrain",
+                      tone: "border-amber-300/15 bg-amber-500/[0.07] text-amber-100",
+                    },
+                    {
+                      key: "blocked" as const,
+                      label: "Bloqués",
+                      value: publicationQuality?.summary.blocked || 0,
+                      detail: "erreurs évidentes",
+                      tone: "border-red-300/15 bg-red-500/[0.06] text-red-100",
+                    },
+                    {
+                      key: "all" as const,
+                      label: "Karaoké publiable",
+                      value: publicationQuality?.summary.karaokeSyncedReady || 0,
+                      detail: `${number.format(
+                        publicationQuality?.summary.karaokeSyncedReview || 0
+                      )} synchronisé(s) encore à vérifier`,
+                      tone: "border-cyan-300/15 bg-cyan-500/[0.07] text-cyan-100",
+                    },
+                  ].map((card) => (
+                    <button
+                      key={card.label}
+                      type="button"
+                      onClick={() => {
+                        if (card.key !== "all") {
+                          setPublicationQualityFilter(card.key);
+                        }
+                      }}
+                      className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 ${card.tone}`}
+                    >
+                      <p className="text-[10px] font-black uppercase tracking-[.16em] opacity-60">
+                        {card.label}
+                      </p>
+                      <p className="mt-2 text-3xl font-black">
+                        {number.format(card.value)}
+                      </p>
+                      <p className="mt-1 text-xs opacity-55">{card.detail}</p>
+                    </button>
+                  ))}
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        ["review", "À vérifier"],
+                        ["ready", "Validés"],
+                        ["blocked", "Bloqués"],
+                        ["all", "Tout"],
+                      ].map(([key, label]) => (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() =>
+                            setPublicationQualityFilter(
+                              key as "review" | "ready" | "blocked" | "all"
+                            )
+                          }
+                          className={`rounded-xl border px-3 py-2 text-xs font-black transition ${
+                            publicationQualityFilter === key
+                              ? "border-violet-300/30 bg-violet-500/15 text-violet-100"
+                              : "border-white/10 bg-white/[0.035] text-white/45 hover:text-white/80"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <form
+                      className="flex min-w-0 gap-2 lg:w-[420px]"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void loadPublicationQuality(
+                          publicationQualityFilter,
+                          publicationQualitySearch
+                        );
+                      }}
+                    >
+                      <label className="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-3 py-2">
+                        <Search className="h-4 w-4 shrink-0 text-white/35" />
+                        <input
+                          value={publicationQualitySearch}
+                          onChange={(event) =>
+                            setPublicationQualitySearch(event.target.value)
+                          }
+                          placeholder="Artiste, titre, chaîne…"
+                          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-white/25"
+                        />
+                      </label>
+                      <button
+                        type="submit"
+                        className="rounded-xl border border-violet-300/20 bg-violet-500/10 px-4 py-2 text-xs font-black text-violet-100"
+                      >
+                        Filtrer
+                      </button>
+                    </form>
+                  </div>
+
+                  {publicationQualityError ? (
+                    <div className="mt-4 rounded-xl border border-red-400/20 bg-red-500/10 p-3 text-sm font-bold text-red-100">
+                      {publicationQualityError}
+                    </div>
+                  ) : null}
+
+                  <div className="mt-4 flex items-center justify-between gap-3 text-[11px] font-bold text-white/35">
+                    <span>
+                      {number.format(publicationQuality?.total || 0)} entrée(s) dans ce filtre
+                    </span>
+                    <span>
+                      priorité aux morceaux Karaoké synchronisés et les plus utilisés
+                    </span>
+                  </div>
+
+                  <div className="mt-3 max-h-[720px] space-y-2 overflow-y-auto pr-1">
+                    {(publicationQuality?.items || []).map((item) => (
+                      <article
+                        key={item.videoId}
+                        className="rounded-2xl border border-white/8 bg-black/25 p-3 sm:p-4"
+                      >
+                        <div className="flex gap-3">
+                          <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/8 bg-white/[0.03]">
+                            {item.thumbnail ? (
+                              <img
+                                src={item.thumbnail}
+                                alt=""
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="grid h-full w-full place-items-center">
+                                <Music2 className="h-5 w-5 text-white/20" />
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-black text-white">
+                                  {item.title}
+                                </p>
+                                <p className="mt-1 truncate text-xs font-bold text-fuchsia-200/80">
+                                  {item.artistName || "Artiste inconnu"}
+                                </p>
+                              </div>
+
+                              <div className="flex shrink-0 flex-wrap gap-1.5">
+                                {item.karaokeSynced ? (
+                                  <span className="rounded-full border border-cyan-300/15 bg-cyan-500/10 px-2 py-1 text-[9px] font-black text-cyan-200">
+                                    🎤 LRCLIB synchronisé
+                                  </span>
+                                ) : null}
+
+                                <span
+                                  className={`rounded-full border px-2 py-1 text-[9px] font-black ${
+                                    item.publicationStatus === "ready"
+                                      ? "border-emerald-300/15 bg-emerald-500/10 text-emerald-200"
+                                      : item.publicationStatus === "review"
+                                        ? "border-amber-300/15 bg-amber-500/10 text-amber-200"
+                                        : "border-red-300/15 bg-red-500/10 text-red-200"
+                                  }`}
+                                >
+                                  {item.publicationStatus === "ready"
+                                    ? "Validé"
+                                    : item.publicationStatus === "review"
+                                      ? "À vérifier"
+                                      : "Bloqué"}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="mt-2 grid gap-1 text-[10px] text-white/35">
+                              <p>
+                                <span className="text-white/55">Raison :</span>{" "}
+                                {publicationReasonLabels[item.publicationReason] ||
+                                  item.publicationReason}
+                              </p>
+                              <p>
+                                <span className="text-white/55">Chaîne :</span>{" "}
+                                {item.channelTitle || "—"}
+                                {" • "}
+                                <span className="text-white/55">Confiance :</span>{" "}
+                                {Math.round(item.metadataConfidence || 0)} %
+                              </p>
+
+                              {item.proposedArtistName ? (
+                                <p className="font-bold text-amber-100/70">
+                                  Proposition MusicBrain : {item.artistName} →{" "}
+                                  <strong className="text-amber-200">
+                                    {item.proposedArtistName}
+                                  </strong>
+                                </p>
+                              ) : null}
+
+                              {item.lrclibArtistName &&
+                              item.lrclibArtistName !== item.artistName ? (
+                                <p className="text-cyan-100/55">
+                                  LRCLIB propose : {item.lrclibArtistName}
+                                </p>
+                              ) : null}
+
+                              <p className="text-white/25">
+                                Recherches {number.format(item.searchCount)} • Ajouts{" "}
+                                {number.format(item.addedCount)} • Lectures{" "}
+                                {number.format(item.playedCount)} • Votes{" "}
+                                {number.format(item.voteCount)}
+                              </p>
+                            </div>
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+
+                    {!publicationQualityLoading &&
+                    !(publicationQuality?.items || []).length ? (
+                      <div className="rounded-2xl border border-white/8 bg-black/20 p-6 text-center text-sm text-white/35">
+                        Aucune entrée dans ce filtre.
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {(publicationQuality?.total || 0) >
+                  (publicationQuality?.returned || 0) ? (
+                    <p className="mt-3 text-xs text-white/30">
+                      Les {number.format(publicationQuality.returned)} premières entrées sont affichées. Utilise la recherche pour cibler un artiste ou une chaîne précise.
+                    </p>
+                  ) : null}
+                </div>
+              </section>
             ) : null}
 
 {activeAdminTab === "quality" || activeAdminTab === "maintenance" ? (

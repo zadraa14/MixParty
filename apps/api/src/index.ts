@@ -7144,17 +7144,31 @@ function musicBrainPublicationSummary() {
     ready: 0,
     review: 0,
     blocked: 0,
+    karaokeSyncedReady: 0,
+    karaokeSyncedReview: 0,
+    karaokeSyncedBlocked: 0,
   };
 
   for (const song of Object.values(musicBrain.songs)) {
     const decision = musicBrainPublicationDecision(song);
     summary[decision.status] += 1;
+
+    const karaokeEntry = karaokeLyricsAudit.entries[song.videoId];
+    if (karaokeEntry?.kind === "synced") {
+      if (decision.status === "ready") summary.karaokeSyncedReady += 1;
+      else if (decision.status === "review") summary.karaokeSyncedReview += 1;
+      else summary.karaokeSyncedBlocked += 1;
+    }
   }
 
   return {
     generatedAt: Date.now(),
     ...summary,
     total: summary.ready + summary.review + summary.blocked,
+    karaokeSyncedTotal:
+      summary.karaokeSyncedReady +
+      summary.karaokeSyncedReview +
+      summary.karaokeSyncedBlocked,
   };
 }
 
@@ -7724,6 +7738,109 @@ function cleanMusicBrainDatabase() {
 
 app.get("/partybrain/musicbrain-publication/status", (_req, res) => {
   return res.json(musicBrainPublicationSummary());
+});
+
+
+app.get("/partybrain/musicbrain-publication/items", (req, res) => {
+  const requestedStatus = String(req.query?.status || "review").trim().toLowerCase();
+  const status: MusicBrainPublicationStatus | "all" =
+    requestedStatus === "ready" ||
+    requestedStatus === "review" ||
+    requestedStatus === "blocked"
+      ? requestedStatus
+      : "all";
+
+  const query = normalizeMusicQuery(String(req.query?.q || ""));
+  const rawLimit = Number(req.query?.limit || 200);
+  const rawOffset = Number(req.query?.offset || 0);
+
+  const limit = Math.max(
+    1,
+    Math.min(500, Number.isFinite(rawLimit) ? Math.floor(rawLimit) : 200)
+  );
+  const offset = Math.max(
+    0,
+    Number.isFinite(rawOffset) ? Math.floor(rawOffset) : 0
+  );
+
+  const items = Object.values(musicBrain.songs)
+    .map((song) => {
+      const publication = musicBrainPublicationDecision(song);
+      const karaokeEntry = karaokeLyricsAudit.entries[song.videoId];
+
+      return {
+        videoId: song.videoId,
+        title: song.title,
+        rawTitle: song.rawTitle || song.title,
+        artistName: song.artistName,
+        channelTitle: song.channelTitle || "",
+        thumbnail: song.thumbnail || "",
+        metadataSource: song.metadataSource || null,
+        metadataConfidence: Number(song.metadataConfidence || 0),
+        searchCount: Number(song.searchCount || 0),
+        addedCount: Number(song.addedCount || 0),
+        playedCount: Number(song.playedCount || 0),
+        voteCount: Number(song.voteCount || 0),
+        publicationStatus: publication.status,
+        publicationReason: publication.reason,
+        proposedArtistName: publication.proposedArtistName || "",
+        karaokeSynced: karaokeEntry?.kind === "synced",
+        lrclibArtistName: karaokeEntry?.matchedArtistName || "",
+        lrclibTrackName: karaokeEntry?.matchedTrackName || "",
+      };
+    })
+    .filter((item) => status === "all" || item.publicationStatus === status)
+    .filter((item) => {
+      if (!query) return true;
+      const haystack = normalizeMusicQuery(
+        `${item.title} ${item.rawTitle} ${item.artistName} ${item.channelTitle} ${item.proposedArtistName} ${item.lrclibArtistName}`
+      );
+      return haystack.includes(query);
+    })
+    .sort((a, b) => {
+      if (a.karaokeSynced !== b.karaokeSynced) {
+        return Number(b.karaokeSynced) - Number(a.karaokeSynced);
+      }
+
+      const activityA =
+        a.playedCount * 6 +
+        a.addedCount * 5 +
+        a.voteCount * 4 +
+        a.searchCount * 2;
+
+      const activityB =
+        b.playedCount * 6 +
+        b.addedCount * 5 +
+        b.voteCount * 4 +
+        b.searchCount * 2;
+
+      if (activityB !== activityA) return activityB - activityA;
+
+      return String(a.artistName || "").localeCompare(
+        String(b.artistName || ""),
+        "fr",
+        { sensitivity: "base" }
+      );
+    });
+
+  const pageItems = items.slice(offset, offset + limit);
+
+  return res.json({
+    generatedAt: Date.now(),
+    status,
+    query: String(req.query?.q || ""),
+    total: items.length,
+    returned: pageItems.length,
+    offset,
+    limit,
+    hasMore: offset + pageItems.length < items.length,
+    nextOffset:
+      offset + pageItems.length < items.length
+        ? offset + pageItems.length
+        : null,
+    summary: musicBrainPublicationSummary(),
+    items: pageItems,
+  });
 });
 
 
