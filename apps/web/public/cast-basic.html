@@ -71,10 +71,10 @@
     .khead{display:flex;align-items:center;justify-content:space-between}
     .ktitle{display:grid;grid-template-columns:5.2vw minmax(0,1fr);align-items:center;gap:1vw;padding:1vh 1vw;border:1px solid var(--border);border-radius:1.1vw;background:rgba(255,255,255,.035)}.ktitle img{width:5.2vw;max-width:80px;aspect-ratio:1;border-radius:.8vw;object-fit:cover}.ktitle h1{margin:0;font-size:clamp(22px,2vw,36px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ktitle p{margin:.4vh 0 0;color:var(--muted);font-weight:800;font-size:clamp(12px,.9vw,16px)}
     .lyrics{min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2vh 4vw}
-    .lyrics .prev{font-size:clamp(16px,1.45vw,26px);color:rgba(255,255,255,.16);font-weight:900;max-width:88vw}
-    .lyrics .current{margin-top:2vh;font-size:clamp(42px,5.6vw,100px);line-height:1.02;font-weight:900;letter-spacing:-.045em;background:linear-gradient(90deg,#f0abfc,#fbcfe8,#fed7aa);-webkit-background-clip:text;background-clip:text;color:transparent;max-width:88vw;max-height:2.05em;overflow:hidden;text-wrap:balance}
-    .lyrics .next{margin-top:2.6vh;font-size:clamp(26px,3vw,54px);line-height:1.05;font-weight:900;color:rgba(245,208,254,.38);max-width:84vw;max-height:2.1em;overflow:hidden;text-wrap:balance}
-    .lyric-progress{margin-top:2.2vh;width:min(62vw,900px);height:.48vh;min-height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.lyric-progress i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left center;background:linear-gradient(90deg,#7c3aed,#ec4899,#fb923c);will-change:transform}
+    .lyrics .prev{font-size:clamp(16px,1.45vw,26px);color:rgba(255,255,255,.12);font-weight:900;max-width:88vw;transition:opacity .42s ease,transform .42s ease;transform:translateY(-1.2vh)}
+    .lyrics .current{position:relative;margin-top:2vh;font-size:clamp(42px,5.6vw,100px);line-height:1.02;font-weight:900;letter-spacing:-.045em;background:linear-gradient(90deg,#f0abfc,#fbcfe8,#fed7aa);-webkit-background-clip:text;background-clip:text;color:transparent;max-width:88vw;max-height:2.05em;overflow:hidden;text-wrap:balance;transition:opacity .42s ease,transform .42s cubic-bezier(.2,.8,.2,1),filter .42s ease;transform:translateY(0) scale(1);filter:drop-shadow(0 0 2.2vw rgba(236,72,153,.10))}
+    .lyrics .next{margin-top:2.6vh;font-size:clamp(26px,3vw,54px);line-height:1.05;font-weight:900;color:rgba(245,208,254,.42);max-width:84vw;max-height:2.1em;overflow:hidden;text-wrap:balance;transition:opacity .42s ease,transform .42s cubic-bezier(.2,.8,.2,1);transform:translateY(1.2vh)}
+    .lyric-progress{margin-top:2.4vh;width:min(42vw,620px);height:.22vh;min-height:2px;border-radius:999px;background:rgba(255,255,255,.035);overflow:hidden;opacity:.42}.lyric-progress i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left center;background:linear-gradient(90deg,rgba(124,58,237,.5),rgba(236,72,153,.52),rgba(251,146,60,.5));will-change:transform}
     .kstatus{font-size:clamp(9px,.62vw,11px);font-weight:900;color:#a7f3d0}
 
     @media (max-aspect-ratio: 16/10){
@@ -85,6 +85,11 @@
       .footer{grid-template-columns:minmax(0,1fr) auto auto}
       .ambiance{display:none}
     }
+  
+    .lyrics.soft-transition .prev{opacity:.06;transform:translateY(-2vh)}
+    .lyrics.soft-transition .current{opacity:.58;transform:translateY(-1.2vh) scale(.985);filter:drop-shadow(0 0 1vw rgba(236,72,153,.04))}
+    .lyrics.soft-transition .next{opacity:.92;transform:translateY(0)}
+
   </style>
 </head>
 <body>
@@ -157,7 +162,7 @@
   <section id="karaoke" class="hidden">
     <header class="khead"><div class="brand"><img src="/branding/icon.png"><strong>MIX<span>PARTY</span></strong><em>KARAOKÉ</em></div><div class="kstatus" id="kstatus">● SYNCHRONISÉ</div></header>
     <div class="ktitle"><img id="kcover" src="/branding/icon.png"><div><h1 id="ktitle">MixParty Karaoké</h1><p id="kartist">En attente du morceau…</p></div></div>
-    <div class="lyrics"><div class="prev" id="lyric-prev">&nbsp;</div><div class="current" id="lyric-current">♪</div><div class="lyric-progress"><i id="lyric-bar"></i></div><div class="next" id="lyric-next">&nbsp;</div></div>
+    <div class="lyrics" id="lyrics-box"><div class="prev" id="lyric-prev">&nbsp;</div><div class="current" id="lyric-current">♪</div><div class="lyric-progress"><i id="lyric-bar"></i></div><div class="next" id="lyric-next">&nbsp;</div></div>
   </section>
 
   <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
@@ -173,6 +178,10 @@
     let playback = {videoId:"",time:0,duration:0,state:2,receivedAt:Date.now()};
     let displayClock = {time:0,lastAt:performance.now(),initialized:false};
     let renderedLyricIndex = -999;
+    let pendingLyricIndex = -999;
+    let lyricTransitionTimer = null;
+    const KARAOKE_PREROLL = 0.72; // seconds: show the next line a little early
+    const KARAOKE_TRANSITION_MS = 420;
     let lastUiTick = 0;
 
     function esc(value){return String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
@@ -295,7 +304,7 @@
     async function ensureLyrics(){
       const videoId=String(party?.currentSong?.videoId||"");
       if(!videoId||videoId===lyricsVideoId)return;
-      lyricsVideoId=videoId;lyrics=null;renderedLyricIndex=-999;
+      lyricsVideoId=videoId;lyrics=null;renderedLyricIndex=-999;pendingLyricIndex=-999;
       $("lyric-current").textContent="Chargement des paroles…";$("lyric-next").innerHTML="&nbsp;";
       try{
         const r=await fetch(`/mixparty-api/partybrain/karaoke/lyrics/${encodeURIComponent(videoId)}`,{cache:"no-store"});
@@ -305,31 +314,83 @@
       }catch(e){lyrics={available:false};$("lyric-current").textContent="Paroles indisponibles"}
     }
 
-    function renderLyrics(t){
-      if(displayMode!=="karaoke"||!lyrics?.available)return;
-      const lines=Array.isArray(lyrics.lines)?lyrics.lines:[];
-      let idx=-1;
-      for(let i=0;i<lines.length;i++){
-        if(Number(lines[i].time)<=t+.055)idx=i;
-        else break;
-      }
-
+    function applyLyricLine(idx, lines){
       const prev=idx>0?lines[idx-1]:null;
       const cur=idx>=0?lines[idx]:null;
       const next=lines[idx+1]||null;
 
-      // Text layout is expensive on Android TV. Update only when the line changes.
-      if(idx!==renderedLyricIndex){
-        renderedLyricIndex=idx;
-        $("lyric-prev").textContent=prev?.text||"\u00A0";
-        $("lyric-current").textContent=cur?.text||(next?"♪":"…");
-        $("lyric-next").textContent=next?.text||"\u00A0";
+      $("lyric-prev").textContent=prev?.text||"\u00A0";
+      $("lyric-current").textContent=cur?.text||(next?"♪":"…");
+      $("lyric-next").textContent=next?.text||"\u00A0";
+
+      renderedLyricIndex=idx;
+      pendingLyricIndex=-999;
+    }
+
+    function queueSoftLyricTransition(nextIndex, lines){
+      if(nextIndex===pendingLyricIndex || nextIndex===renderedLyricIndex) return;
+
+      pendingLyricIndex=nextIndex;
+      const box=$("lyrics-box");
+
+      if(lyricTransitionTimer){
+        clearTimeout(lyricTransitionTimer);
+        lyricTransitionTimer=null;
       }
+
+      box?.classList.add("soft-transition");
+
+      lyricTransitionTimer=setTimeout(()=>{
+        applyLyricLine(nextIndex, lines);
+        requestAnimationFrame(()=>{
+          box?.classList.remove("soft-transition");
+        });
+        lyricTransitionTimer=null;
+      }, KARAOKE_TRANSITION_MS);
+    }
+
+    function renderLyrics(t){
+      if(displayMode!=="karaoke"||!lyrics?.available)return;
+
+      const lines=Array.isArray(lyrics.lines)?lyrics.lines:[];
+      if(!lines.length)return;
+
+      // Soft sync:
+      // We intentionally anticipate the next timestamp so a 300–800 ms
+      // source offset feels natural instead of looking "late".
+      let active=-1;
+      for(let i=0;i<lines.length;i++){
+        if(Number(lines[i].time)<=t+.055)active=i;
+        else break;
+      }
+
+      let visualIndex=active;
+      const nextIndex=active+1;
+      const nextLine=lines[nextIndex];
+
+      if(nextLine){
+        const untilNext=Number(nextLine.time)-t;
+        if(untilNext<=KARAOKE_PREROLL && untilNext>0){
+          visualIndex=nextIndex;
+        }
+      }
+
+      if(renderedLyricIndex===-999){
+        applyLyricLine(Math.max(-1,visualIndex), lines);
+      }else if(visualIndex!==renderedLyricIndex){
+        queueSoftLyricTransition(visualIndex, lines);
+      }
+
+      // Keep only a discreet "breathing" progress hint.
+      const curIndex=Math.max(0,renderedLyricIndex);
+      const cur=lines[curIndex]||null;
+      const next=lines[curIndex+1]||null;
 
       let p=0;
       if(cur&&next){
-        const d=Math.max(.2,Number(next.time)-Number(cur.time));
-        p=Math.min(1,Math.max(0,(t-Number(cur.time))/d));
+        const start=Number(cur.time)-KARAOKE_PREROLL;
+        const end=Math.max(start+.25,Number(next.time)-KARAOKE_PREROLL);
+        p=Math.min(1,Math.max(0,(t-start)/(end-start)));
       }else if(cur){
         p=1;
       }

@@ -54,6 +54,8 @@ type PlaybackState = {
 };
 
 const DEFAULT_COVER = "/branding/icon.png";
+const KARAOKE_PREROLL_SECONDS = 0.72;
+const KARAOKE_TRANSITION_MS = 420;
 
 function songArtwork(song?: Song | null) {
   return song?.coverStatus === "found" && song.coverUrl
@@ -83,8 +85,11 @@ export default function KaraokePartyPage() {
   });
   const [clock, setClock] = useState(Date.now());
   const [creatorToken, setCreatorToken] = useState("");
+  const [visualLyricIndex, setVisualLyricIndex] = useState(-1);
+  const [lyricTransitioning, setLyricTransitioning] = useState(false);
 
   const lyricsRequestRef = useRef("");
+  const lyricTransitionTimerRef = useRef<number | null>(null);
   const socketRef = useRef<any>(null);
 
   async function loadParty() {
@@ -160,6 +165,14 @@ export default function KaraokePartyPage() {
   useEffect(() => {
     const timer = window.setInterval(() => setClock(Date.now()), 100);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (lyricTransitionTimerRef.current !== null) {
+        window.clearTimeout(lyricTransitionTimerRef.current);
+      }
+    };
   }, []);
 
   function sendPlaybackControl(action: "play" | "pause" | "next" | "previous") {
@@ -248,6 +261,68 @@ export default function KaraokePartyPage() {
     return Math.max(0, playback.time);
   }, [clock, currentVideoId, playback]);
 
+  const rawLyricIndex = useMemo(() => {
+    const lines = lyrics?.available ? lyrics.lines || [] : [];
+    if (!lines.length) return -1;
+
+    let index = -1;
+    for (let i = 0; i < lines.length; i += 1) {
+      if (lines[i].time <= playbackTime + 0.055) index = i;
+      else break;
+    }
+    return index;
+  }, [lyrics, playbackTime]);
+
+  const desiredVisualLyricIndex = useMemo(() => {
+    const lines = lyrics?.available ? lyrics.lines || [] : [];
+    if (!lines.length) return -1;
+
+    let index = rawLyricIndex;
+    const next = lines[rawLyricIndex + 1];
+
+    if (next) {
+      const untilNext = next.time - playbackTime;
+      if (untilNext > 0 && untilNext <= KARAOKE_PREROLL_SECONDS) {
+        index = rawLyricIndex + 1;
+      }
+    }
+
+    return index;
+  }, [lyrics, playbackTime, rawLyricIndex]);
+
+  useEffect(() => {
+    if (!lyrics?.available) {
+      setVisualLyricIndex(-1);
+      setLyricTransitioning(false);
+      return;
+    }
+
+    if (desiredVisualLyricIndex === visualLyricIndex) return;
+
+    if (lyricTransitionTimerRef.current !== null) {
+      window.clearTimeout(lyricTransitionTimerRef.current);
+      lyricTransitionTimerRef.current = null;
+    }
+
+    setLyricTransitioning(true);
+
+    lyricTransitionTimerRef.current = window.setTimeout(() => {
+      setVisualLyricIndex(desiredVisualLyricIndex);
+      setLyricTransitioning(false);
+      lyricTransitionTimerRef.current = null;
+    }, KARAOKE_TRANSITION_MS);
+  }, [desiredVisualLyricIndex, lyrics?.available, visualLyricIndex]);
+
+  useEffect(() => {
+    setVisualLyricIndex(-1);
+    setLyricTransitioning(false);
+
+    if (lyricTransitionTimerRef.current !== null) {
+      window.clearTimeout(lyricTransitionTimerRef.current);
+      lyricTransitionTimerRef.current = null;
+    }
+  }, [currentVideoId]);
+
   const lyricState = useMemo(() => {
     const lines = lyrics?.available ? lyrics.lines || [] : [];
     if (!lines.length) {
@@ -260,12 +335,7 @@ export default function KaraokePartyPage() {
       };
     }
 
-    let index = -1;
-    for (let i = 0; i < lines.length; i += 1) {
-      if (lines[i].time <= playbackTime + 0.08) index = i;
-      else break;
-    }
-
+    const index = Math.max(-1, visualLyricIndex);
     const current = index >= 0 ? lines[index] : null;
     const next = lines[index + 1] || null;
     const afterNext = lines[index + 2] || null;
@@ -273,14 +343,15 @@ export default function KaraokePartyPage() {
 
     let progress = 0;
     if (current && next) {
-      const duration = Math.max(0.2, next.time - current.time);
-      progress = Math.min(1, Math.max(0, (playbackTime - current.time) / duration));
+      const start = current.time - KARAOKE_PREROLL_SECONDS;
+      const end = Math.max(start + 0.25, next.time - KARAOKE_PREROLL_SECONDS);
+      progress = Math.min(1, Math.max(0, (playbackTime - start) / (end - start)));
     } else if (current) {
       progress = 1;
     }
 
     return { previous, current, next, afterNext, progress };
-  }, [lyrics, playbackTime]);
+  }, [lyrics, playbackTime, visualLyricIndex]);
 
 
 
@@ -418,15 +489,22 @@ export default function KaraokePartyPage() {
                     <div className="relative z-10 flex min-h-[48vh] flex-col justify-center">
                       <p
                         key={`prev-${lyricState.previous?.time ?? -1}`}
-                        className="mx-auto min-h-8 max-w-5xl text-balance text-base font-black leading-snug text-white/20 blur-[0.15px] transition-all duration-500 sm:text-xl lg:text-2xl"
+                        className={`mx-auto min-h-8 max-w-5xl text-balance text-base font-black leading-snug blur-[0.15px] transition-all duration-500 sm:text-xl lg:text-2xl ${
+                          lyricTransitioning
+                            ? "-translate-y-2 text-white/10 opacity-40"
+                            : "translate-y-0 text-white/20 opacity-100"
+                        }`}
                       >
                         {lyricState.previous?.text || "\u00A0"}
                       </p>
 
                       <div
                         key={`current-${lyricState.current?.time ?? -1}`}
-                        className="relative mx-auto mt-4 w-full max-w-6xl"
-                        style={{ animation: "karaokeLineIn .55s cubic-bezier(.2,.8,.2,1) both" }}
+                        className={`relative mx-auto mt-4 w-full max-w-6xl transition-all duration-500 ${
+                          lyricTransitioning
+                            ? "-translate-y-2 scale-[.985] opacity-60"
+                            : "translate-y-0 scale-100 opacity-100"
+                        }`}
                       >
                         <div className="relative mx-auto max-w-full">
                           <p className="mx-auto text-balance bg-gradient-to-r from-fuchsia-300 via-pink-200 to-orange-200 bg-clip-text text-[clamp(2.7rem,6.5vw,7.7rem)] font-black leading-[1.02] tracking-[-0.045em] text-transparent drop-shadow-[0_0_28px_rgba(236,72,153,.18)]">
@@ -435,7 +513,7 @@ export default function KaraokePartyPage() {
                         </div>
 
                         {lyricState.current?.text ? (
-                          <div className="mx-auto mt-7 h-1.5 max-w-4xl overflow-hidden rounded-full bg-white/[0.07]">
+                          <div className="mx-auto mt-7 h-1 max-w-3xl overflow-hidden rounded-full bg-white/[0.04] opacity-50">
                             <div
                               className="h-full rounded-full bg-gradient-to-r from-violet-400 via-fuchsia-400 to-orange-300 shadow-[0_0_24px_rgba(217,70,239,.45)] transition-[width] duration-100 ease-linear"
                               style={{ width: `${Math.round(lyricState.progress * 100)}%` }}
@@ -446,8 +524,11 @@ export default function KaraokePartyPage() {
 
                       <p
                         key={`next-${lyricState.next?.time ?? -1}`}
-                        className="mx-auto mt-8 min-h-14 max-w-5xl text-balance text-2xl font-black leading-tight text-fuchsia-100/45 blur-[0.35px] transition-all duration-500 sm:text-3xl lg:text-5xl"
-                        style={{ animation: "karaokeNextIn .6s ease both" }}
+                        className={`mx-auto mt-8 min-h-14 max-w-5xl text-balance text-2xl font-black leading-tight blur-[0.35px] transition-all duration-500 sm:text-3xl lg:text-5xl ${
+                          lyricTransitioning
+                            ? "translate-y-0 text-fuchsia-100/80 opacity-95"
+                            : "translate-y-2 text-fuchsia-100/45 opacity-100"
+                        }`}
                       >
                         {lyricState.next?.text || "\u00A0"}
                       </p>
@@ -608,32 +689,6 @@ export default function KaraokePartyPage() {
       </div>
 
       <style jsx global>{`
-        @keyframes karaokeLineIn {
-          0% {
-            opacity: 0;
-            transform: translateY(18px) scale(.985);
-            filter: blur(6px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-            filter: blur(0);
-          }
-        }
-
-        @keyframes karaokeNextIn {
-          0% {
-            opacity: 0;
-            transform: translateY(10px);
-            filter: blur(5px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0);
-            filter: blur(.35px);
-          }
-        }
-
         @keyframes karaokeCountdown {
           0% {
             opacity: 0;
