@@ -368,6 +368,16 @@ export default function MusicBrainAdminPage() {
   const [manualCoverVideoId, setManualCoverVideoId] = useState("");
   const [manualCoverUrl, setManualCoverUrl] = useState("");
   const [coverActionMessage, setCoverActionMessage] = useState("");
+  const [activeAdminTab, setActiveAdminTab] = useState<
+    | "overview"
+    | "catalog"
+    | "quality"
+    | "karaoke"
+    | "covers"
+    | "academy"
+    | "activity"
+    | "maintenance"
+  >("overview");
 
 
 
@@ -1131,6 +1141,30 @@ export default function MusicBrainAdminPage() {
   );
   const chartMax = Math.max(1, ...academyHistory.map((session) => session.songsAdded));
 
+  const adminTabs: Array<{
+    key:
+      | "overview"
+      | "catalog"
+      | "quality"
+      | "karaoke"
+      | "covers"
+      | "academy"
+      | "activity"
+      | "maintenance";
+    label: string;
+    icon: LucideIcon;
+    description: string;
+  }> = [
+    { key: "overview", label: "Vue d’ensemble", icon: BrainCircuit, description: "Santé générale de MusicBrain" },
+    { key: "catalog", label: "Catalogue", icon: Database, description: "Artistes et morceaux appris" },
+    { key: "quality", label: "Qualité", icon: ShieldCheck, description: "Entrées incertaines et réparations" },
+    { key: "karaoke", label: "Karaoké", icon: Mic2, description: "Audio officiel et LRCLIB" },
+    { key: "covers", label: "Jaquettes", icon: Sparkles, description: "Bibliothèque HD Covers" },
+    { key: "academy", label: "Academy", icon: BookOpen, description: "Apprentissage automatique" },
+    { key: "activity", label: "Activité", icon: Activity, description: "Utilisateurs et soirées" },
+    { key: "maintenance", label: "Maintenance", icon: KeyRound, description: "Actions sensibles" },
+  ];
+
   const cleanupReviewItems = Array.isArray(cleanupReport?.reviewItems) ? cleanupReport.reviewItems : [];
   const visibleCleanupReviewItems = cleanupReviewItems.filter((item: any) => {
     if (cleanupReviewFilter !== "all" && item.category !== cleanupReviewFilter) return false;
@@ -1185,7 +1219,47 @@ export default function MusicBrainAdminPage() {
           <div className="rounded-3xl border border-white/10 bg-white/5 p-8 text-white/60">Chargement de MusicBrain…</div>
         ) : (
           <>
+            <nav className="sticky top-3 z-40 mb-7 rounded-[24px] border border-white/10 bg-[#0b0714]/90 p-2 shadow-[0_18px_50px_rgba(0,0,0,.35)] backdrop-blur-2xl">
+              <div className="flex gap-2 overflow-x-auto">
+                {adminTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const selected = activeAdminTab === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setActiveAdminTab(tab.key)}
+                      className={`group flex min-w-[150px] shrink-0 items-center gap-3 rounded-2xl border px-3 py-3 text-left transition ${
+                        selected
+                          ? "border-fuchsia-300/25 bg-gradient-to-r from-fuchsia-500/15 via-violet-500/12 to-cyan-500/10 text-white shadow-[0_0_28px_rgba(168,85,247,.12)]"
+                          : "border-transparent bg-white/[0.025] text-white/45 hover:border-white/10 hover:bg-white/[0.05] hover:text-white/80"
+                      }`}
+                    >
+                      <div className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ${
+                        selected ? "bg-white/10 text-fuchsia-200" : "bg-white/[0.04] text-white/35"
+                      }`}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-black">{tab.label}</p>
+                        <p className="mt-0.5 truncate text-[9px] font-bold text-white/30">{tab.description}</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </nav>
+            <div className="mb-5">
+              <p className="text-[10px] font-black uppercase tracking-[.22em] text-fuchsia-300">
+                {adminTabs.find((tab) => tab.key === activeAdminTab)?.label}
+              </p>
+              <h2 className="mt-1 text-2xl font-black">
+                {adminTabs.find((tab) => tab.key === activeAdminTab)?.description}
+              </h2>
+            </div>
 
+{activeAdminTab === "activity" ? (
+              <>
             <section className="mb-7 rounded-[28px] border border-emerald-400/20 bg-gradient-to-br from-emerald-500/10 via-cyan-500/[0.08] to-violet-500/10 p-5 backdrop-blur-xl sm:p-7">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-4">
@@ -1366,6 +1440,12 @@ export default function MusicBrainAdminPage() {
               )}
             </section>
 
+
+              </>
+            ) : null}
+
+{activeAdminTab === "overview" ? (
+              <>
             <section className="mb-7 rounded-[28px] border border-fuchsia-400/20 bg-gradient-to-r from-fuchsia-500/10 via-violet-500/10 to-cyan-500/10 p-5 backdrop-blur-xl sm:p-7">
               <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -1383,6 +1463,12 @@ export default function MusicBrainAdminPage() {
               </div>
             </section>
 
+
+              </>
+            ) : null}
+
+{activeAdminTab === "covers" ? (
+              <>
             <section className="mb-7 rounded-[28px] border border-orange-400/20 bg-gradient-to-br from-orange-500/10 via-fuchsia-500/8 to-violet-500/10 p-5 backdrop-blur-xl sm:p-7">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -1420,6 +1506,12 @@ export default function MusicBrainAdminPage() {
               </div>
             </section>
 
+
+              </>
+            ) : null}
+
+{activeAdminTab === "academy" ? (
+              <>
             <section className="mb-7 rounded-[28px] border border-cyan-400/20 bg-gradient-to-br from-cyan-500/10 via-violet-500/10 to-fuchsia-500/10 p-5 backdrop-blur-xl sm:p-7">
               <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
                 <div className="max-w-2xl">
@@ -1651,6 +1743,12 @@ export default function MusicBrainAdminPage() {
               </div>
             </section>
 
+
+              </>
+            ) : null}
+
+{activeAdminTab === "overview" ? (
+              <>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {summaryCards.map(([label, value, Icon]) => (
                 <article key={String(label)} className="rounded-[24px] border border-white/10 bg-white/[0.055] p-5 backdrop-blur-xl">
@@ -1663,6 +1761,12 @@ export default function MusicBrainAdminPage() {
               ))}
             </div>
 
+
+              </>
+            ) : null}
+
+{activeAdminTab === "karaoke" ? (
+              <>
             <section className="mt-7 rounded-[28px] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-violet-500/[0.08] to-cyan-500/[0.06] p-5 backdrop-blur-xl sm:p-7">
               <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
                 <div className="flex items-start gap-4">
@@ -2034,6 +2138,12 @@ export default function MusicBrainAdminPage() {
               ) : null}
             </section>
 
+
+              </>
+            ) : null}
+
+{activeAdminTab === "catalog" ? (
+              <>
             <div className="mt-7 grid gap-7 xl:grid-cols-[.85fr_1.15fr]">
               <section className="rounded-[28px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl sm:p-6">
                 <div className="mb-5 flex items-center justify-between">
@@ -2105,6 +2215,12 @@ export default function MusicBrainAdminPage() {
               </section>
             </div>
 
+
+              </>
+            ) : null}
+
+{activeAdminTab === "quality" || activeAdminTab === "maintenance" ? (
+              <>
             <section className="mt-7 rounded-[28px] border border-amber-400/20 bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-fuchsia-500/5 p-5 backdrop-blur-xl sm:p-6">
               <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
                 <div className="max-w-2xl">
@@ -2113,8 +2229,8 @@ export default function MusicBrainAdminPage() {
                       <ShieldCheck className="h-5 w-5" />
                     </div>
                     <div>
-                      <p className="text-xs font-black uppercase tracking-[.22em] text-amber-300">Maintenance sécurisée</p>
-                      <h2 className="mt-1 text-2xl font-black">Cache des recherches YouTube</h2>
+                      <p className="text-xs font-black uppercase tracking-[.22em] text-amber-300">{activeAdminTab === "quality" ? "Qualité des données" : "Maintenance sécurisée"}</p>
+                      <h2 className="mt-1 text-2xl font-black">{activeAdminTab === "quality" ? "Contrôle et nettoyage MusicBrain" : "Cache et opérations administrateur"}</h2>
                     </div>
                   </div>
                   <p className="mt-4 text-sm leading-6 text-white/55">
@@ -2480,6 +2596,12 @@ export default function MusicBrainAdminPage() {
               </div>
             </section>
 
+
+              </>
+            ) : null}
+
+{activeAdminTab === "activity" ? (
+              <>
             <section className="mt-7 rounded-[28px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl sm:p-6">
               <p className="text-xs font-black uppercase tracking-[.22em] text-violet-300">Apprentissage</p>
               <h2 className="mt-1 text-2xl font-black">Enchaînements les plus fréquents</h2>
@@ -2495,6 +2617,10 @@ export default function MusicBrainAdminPage() {
                 {!stats.topTransitions.length && <p className="text-sm text-white/45">Les enchaînements apparaîtront après plusieurs lectures.</p>}
               </div>
             </section>
+
+
+              </>
+            ) : null}
 
             <footer className="mt-6 text-center text-xs text-white/35">
               Dernière mise à jour : {new Date(stats.updatedAt).toLocaleString("fr-FR")}. {stats.storage.persistent ? "Les connaissances sont conservées sur le volume Railway." : "Le stockage local sera perdu lors d’un redéploiement Railway."}
