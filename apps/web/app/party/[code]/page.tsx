@@ -327,7 +327,6 @@ export default function PartyPage() {
   const castContextRef = useRef<any>(null);
   const castDisplayModeRef = useRef<"tv" | "karaoke">("tv");
   const castPlaybackRef = useRef({ time: 0, duration: 0, state: 2, videoId: "" });
-  const mediaSessionVideoIdRef = useRef("");
 
   function addPlayerAudit(event: string, detail?: string) {
     const entry = { at: Date.now(), event, detail };
@@ -456,80 +455,6 @@ export default function PartyPage() {
     const timer = window.setInterval(sendPlaybackToCast, 750);
     return () => window.clearInterval(timer);
   }, [castConnected, code]);
-
-
-  // TEST SAFE — Media Session
-  // Ce bloc n'ajoute AUCUN nouveau lecteur audio, ne relance pas YouTube en
-  // arrière-plan et ne modifie pas la logique du player existant.
-  // Il expose uniquement le morceau en cours aux contrôles média du système
-  // quand le navigateur/OS le permet.
-  useEffect(() => {
-    if (!("mediaSession" in navigator)) return;
-
-    const song = party?.currentSong;
-    const videoId = String(song?.videoId || "");
-
-    try {
-      if (!song) {
-        navigator.mediaSession.metadata = null;
-        navigator.mediaSession.playbackState = "none";
-        mediaSessionVideoIdRef.current = "";
-        return;
-      }
-
-      if (videoId !== mediaSessionVideoIdRef.current) {
-        mediaSessionVideoIdRef.current = videoId;
-
-        const artworkUrl =
-          String(song.coverUrl || song.thumbnail || "/branding/icon.png");
-
-        navigator.mediaSession.metadata = new MediaMetadata({
-          title: String(song.title || "MixParty"),
-          artist: String(song.artistName || "MixParty"),
-          album: String(song.albumName || "MixParty"),
-          artwork: artworkUrl
-            ? [
-                {
-                  src: artworkUrl,
-                  sizes: "512x512",
-                },
-              ]
-            : [],
-        });
-      }
-
-      const state = Number(tvPlayback.state ?? 2);
-      navigator.mediaSession.playbackState =
-        state === 1 ? "playing" : state === 2 ? "paused" : "none";
-    } catch (error) {
-      console.warn("Media Session indisponible sur cet appareil", error);
-    }
-  }, [
-    party?.currentSong?.videoId,
-    party?.currentSong?.title,
-    party?.currentSong?.artistName,
-    party?.currentSong?.albumName,
-    party?.currentSong?.coverUrl,
-    party?.currentSong?.thumbnail,
-    tvPlayback.state,
-  ]);
-
-  // Diagnostic uniquement : on note quand le DJ passe MixParty en arrière-plan.
-  // On ne force jamais playVideo() ici afin de ne pas perturber le lecteur YouTube.
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      addPlayerAudit(
-        document.visibilityState === "hidden"
-          ? "APP_BACKGROUND"
-          : "APP_FOREGROUND",
-        navigator.userAgent
-      );
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () =>
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
