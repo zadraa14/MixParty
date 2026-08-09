@@ -54,8 +54,9 @@ type PlaybackState = {
 };
 
 const DEFAULT_COVER = "/branding/icon.png";
-const KARAOKE_PREROLL_SECONDS = 0.72;
-const KARAOKE_TRANSITION_MS = 420;
+const KARAOKE_FLOW_LEAD_SECONDS = 0.38;
+const KARAOKE_FLOW_WINDOW = 4;
+const KARAOKE_FLOW_LINE_GAP_PX = 118;
 
 function songArtwork(song?: Song | null) {
   return song?.coverStatus === "found" && song.coverUrl
@@ -85,11 +86,7 @@ export default function KaraokePartyPage() {
   });
   const [clock, setClock] = useState(Date.now());
   const [creatorToken, setCreatorToken] = useState("");
-  const [visualLyricIndex, setVisualLyricIndex] = useState(-1);
-  const [lyricTransitioning, setLyricTransitioning] = useState(false);
-
   const lyricsRequestRef = useRef("");
-  const lyricTransitionTimerRef = useRef<number | null>(null);
   const socketRef = useRef<any>(null);
 
   async function loadParty() {
@@ -163,16 +160,8 @@ export default function KaraokePartyPage() {
   }, [code]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setClock(Date.now()), 100);
+    const timer = window.setInterval(() => setClock(Date.now()), 50);
     return () => window.clearInterval(timer);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (lyricTransitionTimerRef.current !== null) {
-        window.clearTimeout(lyricTransitionTimerRef.current);
-      }
-    };
   }, []);
 
   function sendPlaybackControl(action: "play" | "pause" | "next" | "previous") {
@@ -267,92 +256,116 @@ export default function KaraokePartyPage() {
 
     let index = -1;
     for (let i = 0; i < lines.length; i += 1) {
-      if (lines[i].time <= playbackTime + 0.055) index = i;
+      if (lines[i].time <= playbackTime + KARAOKE_FLOW_LEAD_SECONDS) index = i;
       else break;
     }
     return index;
   }, [lyrics, playbackTime]);
 
-  const desiredVisualLyricIndex = useMemo(() => {
+  const lyricFlow = useMemo(() => {
     const lines = lyrics?.available ? lyrics.lines || [] : [];
-    if (!lines.length) return -1;
 
-    let index = rawLyricIndex;
-    const next = lines[rawLyricIndex + 1];
-
-    if (next) {
-      const untilNext = next.time - playbackTime;
-      if (untilNext > 0 && untilNext <= KARAOKE_PREROLL_SECONDS) {
-        index = rawLyricIndex + 1;
-      }
-    }
-
-    return index;
-  }, [lyrics, playbackTime, rawLyricIndex]);
-
-  useEffect(() => {
-    if (!lyrics?.available) {
-      setVisualLyricIndex(-1);
-      setLyricTransitioning(false);
-      return;
-    }
-
-    if (desiredVisualLyricIndex === visualLyricIndex) return;
-
-    if (lyricTransitionTimerRef.current !== null) {
-      window.clearTimeout(lyricTransitionTimerRef.current);
-      lyricTransitionTimerRef.current = null;
-    }
-
-    setLyricTransitioning(true);
-
-    lyricTransitionTimerRef.current = window.setTimeout(() => {
-      setVisualLyricIndex(desiredVisualLyricIndex);
-      setLyricTransitioning(false);
-      lyricTransitionTimerRef.current = null;
-    }, KARAOKE_TRANSITION_MS);
-  }, [desiredVisualLyricIndex, lyrics?.available, visualLyricIndex]);
-
-  useEffect(() => {
-    setVisualLyricIndex(-1);
-    setLyricTransitioning(false);
-
-    if (lyricTransitionTimerRef.current !== null) {
-      window.clearTimeout(lyricTransitionTimerRef.current);
-      lyricTransitionTimerRef.current = null;
-    }
-  }, [currentVideoId]);
-
-  const lyricState = useMemo(() => {
-    const lines = lyrics?.available ? lyrics.lines || [] : [];
     if (!lines.length) {
       return {
-        previous: null as TimedLine | null,
-        current: null as TimedLine | null,
-        next: null as TimedLine | null,
-        afterNext: null as TimedLine | null,
-        progress: 0,
+        position: -1,
+        activeIndex: -1,
+        visible: [] as Array<{
+          line: TimedLine;
+          index: number;
+          distance: number;
+          translateY: number;
+          opacity: number;
+          scale: number;
+          blur: number;
+        }>,
       };
     }
 
-    const index = Math.max(-1, visualLyricIndex);
-    const current = index >= 0 ? lines[index] : null;
-    const next = lines[index + 1] || null;
-    const afterNext = lines[index + 2] || null;
-    const previous = index > 0 ? lines[index - 1] : null;
+    if (rawLyricIndex < 0) {
+      const firstVisible = lines
+        .map((line, index) => ({ line, index }))
+        .filter(({ line }) => String(line.text || "").trim())
+        .slice(0, 3)
+        .map(({ line, index }) => ({
+          line,
+          index,
+          distance: index + 1,
+          translateY: (index + 1) * KARAOKE_FLOW_LINE_GAP_PX,
+          opacity: index === 0 ? 0.48 : 0.22,
+          scale: index === 0 ? 0.92 : 0.82,
+          blur: index === 0 ? 0 : 0.45,
+        }));
 
-    let progress = 0;
-    if (current && next) {
-      const start = current.time - KARAOKE_PREROLL_SECONDS;
-      const end = Math.max(start + 0.25, next.time - KARAOKE_PREROLL_SECONDS);
-      progress = Math.min(1, Math.max(0, (playbackTime - start) / (end - start)));
-    } else if (current) {
-      progress = 1;
+      return {
+        position: -1,
+        activeIndex: -1,
+        visible: firstVisible,
+      };
     }
 
-    return { previous, current, next, afterNext, progress };
-  }, [lyrics, playbackTime, visualLyricIndex]);
+    const current = lines[rawLyricIndex];
+    const next = lines[rawLyricIndex + 1];
 
+    let fractionalProgress = 0;
+
+    if (current && next) {
+      const start = current.time - KARAOKE_FLOW_LEAD_SECONDS;
+      const end = Math.max(start + 0.35, next.time - KARAOKE_FLOW_LEAD_SECONDS);
+      const linear = Math.min(1, Math.max(0, (playbackTime - start) / (end - start)));
+
+      // Smoothstep : le mouvement démarre et se termine sans à-coup.
+      fractionalProgress = linear * linear * (3 - 2 * linear);
+    }
+
+    const position = rawLyricIndex + fractionalProgress;
+    const centerIndex = Math.round(position);
+
+    const visible = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line, index }) => {
+        if (!String(line.text || "").trim()) return false;
+        return Math.abs(index - position) <= KARAOKE_FLOW_WINDOW;
+      })
+      .map(({ line, index }) => {
+        const distance = index - position;
+        const absDistance = Math.abs(distance);
+
+        return {
+          line,
+          index,
+          distance,
+          translateY: distance * KARAOKE_FLOW_LINE_GAP_PX,
+          opacity:
+            absDistance < 0.55
+              ? 1
+              : absDistance < 1.45
+                ? 0.52
+                : absDistance < 2.45
+                  ? 0.24
+                  : 0.10,
+          scale:
+            absDistance < 0.55
+              ? 1
+              : absDistance < 1.45
+                ? 0.88
+                : absDistance < 2.45
+                  ? 0.78
+                  : 0.70,
+          blur:
+            absDistance < 0.75
+              ? 0
+              : absDistance < 1.7
+                ? 0.25
+                : 0.7,
+        };
+      });
+
+    return {
+      position,
+      activeIndex: centerIndex,
+      visible,
+    };
+  }, [lyrics, playbackTime, rawLyricIndex]);
 
 
 
@@ -486,56 +499,49 @@ export default function KaraokePartyPage() {
                       </div>
                     ) : null}
 
-                    <div className="relative z-10 flex min-h-[48vh] flex-col justify-center">
-                      <p
-                        key={`prev-${lyricState.previous?.time ?? -1}`}
-                        className={`mx-auto min-h-8 max-w-5xl text-balance text-base font-black leading-snug blur-[0.15px] transition-all duration-500 sm:text-xl lg:text-2xl ${
-                          lyricTransitioning
-                            ? "-translate-y-2 text-white/10 opacity-40"
-                            : "translate-y-0 text-white/20 opacity-100"
-                        }`}
-                      >
-                        {lyricState.previous?.text || "\u00A0"}
-                      </p>
+                    <div className="relative z-10 min-h-[48vh] overflow-hidden">
+                      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-28 bg-gradient-to-b from-black/45 via-black/10 to-transparent" />
+                      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-28 bg-gradient-to-t from-black/45 via-black/10 to-transparent" />
 
-                      <div
-                        key={`current-${lyricState.current?.time ?? -1}`}
-                        className={`relative mx-auto mt-4 w-full max-w-6xl transition-all duration-500 ${
-                          lyricTransitioning
-                            ? "-translate-y-2 scale-[.985] opacity-60"
-                            : "translate-y-0 scale-100 opacity-100"
-                        }`}
-                      >
-                        <div className="relative mx-auto max-w-full">
-                          <p className="mx-auto text-balance bg-gradient-to-r from-fuchsia-300 via-pink-200 to-orange-200 bg-clip-text text-[clamp(2.7rem,6.5vw,7.7rem)] font-black leading-[1.02] tracking-[-0.045em] text-transparent drop-shadow-[0_0_28px_rgba(236,72,153,.18)]">
-                            {lyricState.current?.text || (lyricState.next ? "♪" : "…")}
-                          </p>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="relative h-full w-full max-w-6xl">
+                          {lyricFlow.visible.map(({ line, index, translateY, opacity, scale, blur }) => {
+                            const isCenter = Math.abs(index - lyricFlow.position) < 0.58;
+
+                            return (
+                              <div
+                                key={`${line.time}-${index}`}
+                                className="absolute left-1/2 top-1/2 w-full -translate-x-1/2 px-2 will-change-transform"
+                                style={{
+                                  transform: `translate(-50%, calc(-50% + ${translateY}px)) scale(${scale})`,
+                                  opacity,
+                                  filter: `blur(${blur}px)`,
+                                  transition:
+                                    "transform 110ms linear, opacity 180ms ease, filter 180ms ease",
+                                }}
+                              >
+                                <p
+                                  className={`mx-auto max-w-6xl text-balance font-black leading-[1.05] tracking-[-0.04em] transition-colors duration-300 ${
+                                    isCenter
+                                      ? "bg-gradient-to-r from-fuchsia-300 via-pink-100 to-orange-200 bg-clip-text text-[clamp(2.65rem,6vw,7.2rem)] text-transparent drop-shadow-[0_0_30px_rgba(236,72,153,.18)]"
+                                      : "text-[clamp(1.55rem,3.6vw,3.8rem)] text-white/75"
+                                  }`}
+                                >
+                                  {line.text}
+                                </p>
+                              </div>
+                            );
+                          })}
+
+                          {!lyricFlow.visible.length ? (
+                            <div className="absolute inset-0 grid place-items-center text-6xl font-black text-fuchsia-100/60">
+                              ♪
+                            </div>
+                          ) : null}
                         </div>
-
-                        {lyricState.current?.text ? (
-                          <div className="mx-auto mt-7 h-1 max-w-3xl overflow-hidden rounded-full bg-white/[0.04] opacity-50">
-                            <div
-                              className="h-full rounded-full bg-gradient-to-r from-violet-400 via-fuchsia-400 to-orange-300 shadow-[0_0_24px_rgba(217,70,239,.45)] transition-[width] duration-100 ease-linear"
-                              style={{ width: `${Math.round(lyricState.progress * 100)}%` }}
-                            />
-                          </div>
-                        ) : null}
                       </div>
 
-                      <p
-                        key={`next-${lyricState.next?.time ?? -1}`}
-                        className={`mx-auto mt-8 min-h-14 max-w-5xl text-balance text-2xl font-black leading-tight blur-[0.35px] transition-all duration-500 sm:text-3xl lg:text-5xl ${
-                          lyricTransitioning
-                            ? "translate-y-0 text-fuchsia-100/80 opacity-95"
-                            : "translate-y-2 text-fuchsia-100/45 opacity-100"
-                        }`}
-                      >
-                        {lyricState.next?.text || "\u00A0"}
-                      </p>
-
-                      <p className="mx-auto mt-4 min-h-8 max-w-4xl text-balance text-sm font-bold text-white/14 blur-[0.45px] sm:text-base lg:text-lg">
-                        {lyricState.afterNext?.text || "\u00A0"}
-                      </p>
+                      <div className="pointer-events-none absolute left-1/2 top-1/2 z-30 h-px w-[82%] -translate-x-1/2 bg-gradient-to-r from-transparent via-fuchsia-300/10 to-transparent" />
                     </div>
                   </div>
                 ) : (
@@ -684,11 +690,17 @@ export default function KaraokePartyPage() {
 
         <footer className="flex items-center justify-between gap-4 border-t border-white/[0.06] pt-4 text-[10px] font-black uppercase tracking-[.12em] text-white/22">
           <span>Soirée {code || "—"}</span>
-          <span>MixParty Karaoké • LRCLIB Sync</span>
+          <span>MixParty Karaoké • Lyrics Flow V2</span>
         </footer>
       </div>
 
       <style jsx global>{`
+        @media (prefers-reduced-motion: reduce) {
+          .will-change-transform {
+            transition: none !important;
+          }
+        }
+
         @keyframes karaokeCountdown {
           0% {
             opacity: 0;
