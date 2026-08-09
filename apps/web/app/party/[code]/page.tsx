@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { QRCodeCanvas } from "qrcode.react";
 import { io } from "socket.io-client";
 import {
@@ -243,7 +243,9 @@ function transitionScore(from: string, to: string) {
 
 export default function PartyPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const code = params.code as string;
+  const externalDisplayMode = searchParams.get("display");
 
   const [party, setParty] = useState<Party | null>(null);
   const [loadError, setLoadError] = useState("");
@@ -371,6 +373,19 @@ export default function PartyPage() {
   useEffect(() => {
     djModeActiveRef.current = djModeActive;
   }, [djModeActive]);
+
+  // Écran externe / Google Cast :
+  // quand la page est ouverte avec ?display=tv, on réutilise exactement
+  // le Mode TV existant sans créer un second design.
+  useEffect(() => {
+    if (externalDisplayMode !== "tv") return;
+
+    setTvModeActive(true);
+
+    return () => {
+      setTvModeActive(false);
+    };
+  }, [externalDisplayMode]);
 
   useEffect(() => {
     if (!code || !playerName || !participantId) return;
@@ -3381,17 +3396,23 @@ const canRemove =
                 <div><UsersRound /><b>{party.participants.length}</b><span>participants en ligne</span></div>
                 <div><TrendingUp /><b>{totalVisibleVotes}</b><span>votes en temps réel</span></div>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setKaraokeScreenOpen(true)}
-                  className="inline-flex items-center gap-2 rounded-xl border border-fuchsia-300/25 bg-fuchsia-500/10 px-4 py-2 text-xs font-black text-fuchsia-100 transition hover:bg-fuchsia-500/15"
-                >
-                  <Mic2 className="h-4 w-4" />
-                  Karaoké
-                </button>
-                <button type="button" onClick={deactivateTvMode} className="v60-tv__close">Quitter</button>
-              </div>
+              {externalDisplayMode !== "tv" ? (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setKaraokeScreenOpen(true)}
+                    className="inline-flex items-center gap-2 rounded-xl border border-fuchsia-300/25 bg-fuchsia-500/10 px-4 py-2 text-xs font-black text-fuchsia-100 transition hover:bg-fuchsia-500/15"
+                  >
+                    <Mic2 className="h-4 w-4" />
+                    Karaoké
+                  </button>
+                  <button type="button" onClick={deactivateTvMode} className="v60-tv__close">Quitter</button>
+                </div>
+              ) : (
+                <div className="rounded-full border border-emerald-300/15 bg-emerald-500/10 px-3 py-2 text-[10px] font-black uppercase tracking-[.16em] text-emerald-200">
+                  Écran connecté
+                </div>
+              )}
             </header>
 
             <main className="v60-tv__grid">
