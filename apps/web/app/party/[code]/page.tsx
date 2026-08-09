@@ -9,6 +9,7 @@ import {
   Activity,
   Battery,
   Camera,
+  Cast,
   Images,
   Bot,
   BrainCircuit,
@@ -49,6 +50,7 @@ declare global {
   interface Window {
     YT: any;
     onYouTubeIframeAPIReady: any;
+    __onGCastApiAvailable?: (isAvailable: boolean) => void;
   }
 }
 
@@ -111,6 +113,8 @@ type DjInteraction = {
 };
 
 const MIXPARTY_DEFAULT_COVER = "/branding/icon.png";
+const MIXPARTY_CAST_APP_ID = "111703F0";
+const MIXPARTY_CAST_NAMESPACE = "urn:x-cast:fr.mixparty.display";
 
 function hasHdCover(song?: Song | null): boolean {
   return Boolean(song?.coverStatus === "found" && song.coverUrl);
@@ -289,6 +293,12 @@ export default function PartyPage() {
   const [djModeStartedAt, setDjModeStartedAt] = useState<number | null>(null);
   const [djModeElapsed, setDjModeElapsed] = useState(0);
   const [tvModeActive, setTvModeActive] = useState(false);
+  const [castSdkReady, setCastSdkReady] = useState(false);
+  const [castAvailable, setCastAvailable] = useState(false);
+  const [castConnected, setCastConnected] = useState(false);
+  const [castConnecting, setCastConnecting] = useState(false);
+  const [castDeviceName, setCastDeviceName] = useState("");
+  const [castDisplayMode, setCastDisplayMode] = useState<"tv" | "karaoke">("tv");
   const [tvPlayback, setTvPlayback] = useState({ time: 0, duration: 0, state: 2 });
   const [wakeLockActive, setWakeLockActive] = useState(false);
   const [networkOnline, setNetworkOnline] = useState(true);
@@ -311,6 +321,8 @@ export default function PartyPage() {
   const applyingRemotePlaybackRef = useRef(false);
   const changingSongRef = useRef(false);
   const mobileSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const castContextRef = useRef<any>(null);
+  const castDisplayModeRef = useRef<"tv" | "karaoke">("tv");
 
   function addPlayerAudit(event: string, detail?: string) {
     const entry = { at: Date.now(), event, detail };
@@ -386,6 +398,252 @@ export default function PartyPage() {
       setTvModeActive(false);
     };
   }, [externalDisplayMode]);
+
+  useEffect(() => {
+    castDisplayModeRef.current = castDisplayMode;
+  }, [castDisplayMode]);
+
+  useEffect(() => {
+    let cancelled = false;
+    let context: any = null;
+    let castStateHandler: ((event: any) => void) | null = null;
+    let sessionStateHandler: ((event: any) => void) | null = null;
+
+    function sendInitialDisplayToSession(session: any) {
+      if (!session) return;
+
+      const payload = {
+        type: "mixparty_display",
+        partyCode: code,
+        mode: castDisplayModeRef.current,
+      };
+
+      session
+        .sendMessage(MIXPARTY_CAST_NAMESPACE, payload)
+        .catch((error: unknown) => {
+          console.warn("Message Cast initial non envoyé", error);
+        });
+    }
+
+    function initializeCastApi() {
+      if (cancelled) return;
+
+      const framework = (window as any).cast?.framework;
+      const chromeCast = (window as any).chrome?.cast;
+
+      if (!framework?.CastContext || !chromeCast?.AutoJoinPolicy) return;
+
+      try {
+        context = framework.CastContext.getInstance();
+        castContextRef.current = context;
+
+        context.setOptions({
+          receiverApplicationId: MIXPARTY_CAST_APP_ID,
+          autoJoinPolicy: chromeCast.AutoJoinPolicy.ORIGIN_SCOPED,
+        });
+
+        castStateHandler = (event: any) => {
+          const state = event?.castState;
+          setCastAvailable(
+            state === framework.CastState.NOT_CONNECTED ||
+              state === framework.CastState.CONNECTING ||
+              state === framework.CastState.CONNECTED
+          );
+          setCastConnected(state === framework.CastState.CONNECTED);
+        };
+
+        sessionStateHandler = (event: any) => {
+          const sessionState = event?.sessionState;
+
+          if (
+            sessionState === framework.SessionState.SESSION_STARTED ||
+            sessionState === framework.SessionState.SESSION_RESUMED
+          ) {
+            const session = context.getCurrentSession?.();
+            const device = session?.getCastDevice?.();
+
+            setCastConnected(true);
+            setCastConnecting(false);
+            setCastDeviceName(String(device?.friendlyName || "TV"));
+            sendInitialDisplayToSession(session);
+
+            // Petit second envoi de sécurité le temps que le Receiver /cast
+            // termine complètement son initialisation.
+            window.setTimeout(() => {
+              sendInitialDisplayToSession(context?.getCurrentSession?.());
+            }, 700);
+          }
+
+          if (
+            sessionState === framework.SessionState.SESSION_ENDING ||
+            sessionState === framework.SessionState.SESSION_ENDED
+          ) {
+            setCastConnected(false);
+            setCastConnecting(false);
+            setCastDeviceName("");
+          }
+        };
+
+        context.addEventListener(
+          framework.CastContextEventType.CAST_STATE_CHANGED,
+          castStateHandler
+        );
+        context.addEventListener(
+          framework.CastContextEventType.SESSION_STATE_CHANGED,
+          sessionStateHandler
+        );
+
+        const currentState = context.getCastState?.();
+        setCastAvailable(
+          currentState === framework.CastState.NOT_CONNECTED ||
+            currentState === framework.CastState.CONNECTING ||
+            currentState === framework.CastState.CONNECTED
+        );
+
+        const currentSession = context.getCurrentSession?.();
+        if (currentSession) {
+          const device = currentSession.getCastDevice?.();
+          setCastConnected(true);
+          setCastDeviceName(String(device?.friendlyName || "TV"));
+        }
+
+        setCastSdkReady(true);
+      } catch (error) {
+        console.error("Initialisation Google Cast impossible", error);
+        setCastSdkReady(false);
+      }
+    }
+
+    const previousCallback = window.__onGCastApiAvailable;
+    window.__onGCastApiAvailable = (isAvailable: boolean) => {
+      if (typeof previousCallback === "function") previousCallback(isAvailable);
+      if (isAvailable) initializeCastApi();
+    };
+
+    if ((window as any).cast?.framework?.CastContext) {
+      initializeCastApi();
+    } else {
+      const existingScript = document.querySelector<HTMLScriptElement>(
+        'script[src*="cast_sender.js"]'
+      );
+
+      if (!existingScript) {
+        const script = document.createElement("script");
+        script.src =
+          "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1";
+        script.async = true;
+        document.head.appendChild(script);
+      }
+    }
+
+    return () => {
+      cancelled = true;
+
+      const framework = (window as any).cast?.framework;
+      if (context && framework && castStateHandler) {
+        context.removeEventListener?.(
+          framework.CastContextEventType.CAST_STATE_CHANGED,
+          castStateHandler
+        );
+      }
+      if (context && framework && sessionStateHandler) {
+        context.removeEventListener?.(
+          framework.CastContextEventType.SESSION_STATE_CHANGED,
+          sessionStateHandler
+        );
+      }
+
+      castContextRef.current = null;
+    };
+  }, [code]);
+
+  async function sendCastDisplayMode(mode: "tv" | "karaoke") {
+    setCastDisplayMode(mode);
+    castDisplayModeRef.current = mode;
+
+    const context =
+      castContextRef.current ||
+      (window as any).cast?.framework?.CastContext?.getInstance?.();
+    const session = context?.getCurrentSession?.();
+
+    if (!session) return false;
+
+    try {
+      await session.sendMessage(MIXPARTY_CAST_NAMESPACE, {
+        type: "mixparty_display",
+        partyCode: code,
+        mode,
+      });
+      return true;
+    } catch (error) {
+      console.error("Impossible de changer l’écran Cast", error);
+      return false;
+    }
+  }
+
+  async function startMixPartyCast(mode: "tv" | "karaoke" = "tv") {
+    const framework = (window as any).cast?.framework;
+    const context =
+      castContextRef.current || framework?.CastContext?.getInstance?.();
+
+    if (!castSdkReady || !context) {
+      window.alert(
+        "Google Cast n’est pas disponible dans ce navigateur. Utilise Chrome sur Android ou un navigateur compatible Cast."
+      );
+      return;
+    }
+
+    setCastConnecting(true);
+    setCastDisplayMode(mode);
+    castDisplayModeRef.current = mode;
+
+    try {
+      if (!context.getCurrentSession?.()) {
+        await context.requestSession();
+      }
+
+      const session = context.getCurrentSession?.();
+      if (!session) throw new Error("Aucune session Cast active");
+
+      const device = session.getCastDevice?.();
+      setCastDeviceName(String(device?.friendlyName || "TV"));
+      setCastConnected(true);
+
+      // Le Receiver vient d’être lancé : on lui transmet la soirée et
+      // l’affichage demandé. Un second envoi sécurise les appareils plus lents.
+      await sendCastDisplayMode(mode);
+      window.setTimeout(() => {
+        void sendCastDisplayMode(mode);
+      }, 700);
+    } catch (error: any) {
+      // "cancel" est fréquent quand l’utilisateur ferme simplement la fenêtre Cast.
+      console.warn("Connexion Google Cast annulée ou impossible", error);
+    } finally {
+      setCastConnecting(false);
+    }
+  }
+
+  async function stopMixPartyCast() {
+    const context =
+      castContextRef.current ||
+      (window as any).cast?.framework?.CastContext?.getInstance?.();
+    const session = context?.getCurrentSession?.();
+
+    if (!session) {
+      setCastConnected(false);
+      setCastDeviceName("");
+      return;
+    }
+
+    try {
+      await session.endSession(true);
+    } catch (error) {
+      console.warn("Impossible d’arrêter la session Cast", error);
+    } finally {
+      setCastConnected(false);
+      setCastDeviceName("");
+    }
+  }
 
   useEffect(() => {
     if (!code || !playerName || !participantId) return;
@@ -3373,6 +3631,68 @@ const canRemove =
                     <Expand className="h-3 w-3" />
                     Mode TV
                   </button>
+
+                  {!castConnected ? (
+                    <button
+                      type="button"
+                      onClick={() => void startMixPartyCast("tv")}
+                      disabled={!castSdkReady || !castAvailable || castConnecting}
+                      className="inline-flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-cyan-500/10 px-3 py-1.5 text-[10px] font-black text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-40"
+                      title={
+                        !castSdkReady
+                          ? "Initialisation Google Cast…"
+                          : !castAvailable
+                            ? "Aucun appareil Google Cast détecté"
+                            : "Caster le Mode TV MixParty"
+                      }
+                    >
+                      <Cast className={`h-3 w-3 ${castConnecting ? "animate-pulse" : ""}`} />
+                      {castConnecting
+                        ? "Connexion…"
+                        : !castAvailable && castSdkReady
+                          ? "Aucun Cast"
+                          : "Caster sur TV"}
+                    </button>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-2.5 py-1.5 text-[10px] font-black text-emerald-200">
+                        <Cast className="h-3 w-3" />
+                        {castDeviceName || "TV"} connectée
+                      </span>
+
+                      <button
+                        type="button"
+                        onClick={() => void sendCastDisplayMode("tv")}
+                        className={`rounded-full border px-2.5 py-1.5 text-[10px] font-black transition ${
+                          castDisplayMode === "tv"
+                            ? "border-purple-300/30 bg-purple-500/20 text-purple-100"
+                            : "border-white/10 bg-white/[0.05] text-white/55"
+                        }`}
+                      >
+                        📺 TV
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => void sendCastDisplayMode("karaoke")}
+                        className={`rounded-full border px-2.5 py-1.5 text-[10px] font-black transition ${
+                          castDisplayMode === "karaoke"
+                            ? "border-fuchsia-300/30 bg-fuchsia-500/20 text-fuchsia-100"
+                            : "border-white/10 bg-white/[0.05] text-white/55"
+                        }`}
+                      >
+                        🎤 Karaoké
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => void stopMixPartyCast()}
+                        className="rounded-full border border-red-300/15 bg-red-500/10 px-2.5 py-1.5 text-[10px] font-black text-red-200 transition hover:bg-red-500/15"
+                      >
+                        Arrêter
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </section>
