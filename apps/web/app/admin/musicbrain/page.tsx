@@ -466,6 +466,10 @@ export default function MusicBrainAdminPage() {
   const [qualityDiagnosticLoading, setQualityDiagnosticLoading] = useState(false);
   const [qualityDiagnosticError, setQualityDiagnosticError] = useState("");
   const [selectedDiagnosticCategory, setSelectedDiagnosticCategory] = useState<string | null>(null);
+  const [selectedDiagnosticItems, setSelectedDiagnosticItems] = useState<Record<string, boolean>>({});
+  const [diagnosticValidationLoading, setDiagnosticValidationLoading] = useState(false);
+  const [diagnosticValidationMessage, setDiagnosticValidationMessage] = useState("");
+  const [diagnosticValidationError, setDiagnosticValidationError] = useState("");
 
   const [autoFixLoading, setAutoFixLoading] = useState(false);
   const [autoFixMessage, setAutoFixMessage] = useState("");
@@ -506,6 +510,119 @@ export default function MusicBrainAdminPage() {
       );
     } finally {
       setQualityDiagnosticLoading(false);
+    }
+  }
+
+  function toggleDiagnosticItem(videoId: string) {
+    setSelectedDiagnosticItems((current) => ({
+      ...current,
+      [videoId]: !current[videoId],
+    }));
+  }
+
+  function toggleAllVisibleDiagnosticItems() {
+    const items = publicationQuality?.items || [];
+    if (!items.length) return;
+
+    const allSelected = items.every(
+      (item) => selectedDiagnosticItems[item.videoId]
+    );
+
+    if (allSelected) {
+      setSelectedDiagnosticItems({});
+      return;
+    }
+
+    const next: Record<string, boolean> = {};
+    for (const item of items) next[item.videoId] = true;
+    setSelectedDiagnosticItems(next);
+  }
+
+  async function validateDiagnosticCategory(mode: "selected" | "all") {
+    if (!adminToken.trim()) {
+      setDiagnosticValidationError(
+        "Entre le code administrateur Railway avant de valider."
+      );
+      return;
+    }
+
+    if (!selectedDiagnosticCategory) {
+      setDiagnosticValidationError("Choisis d’abord une catégorie.");
+      return;
+    }
+
+    const selectedIds = Object.entries(selectedDiagnosticItems)
+      .filter(([, checked]) => checked)
+      .map(([videoId]) => videoId);
+
+    if (mode === "selected" && !selectedIds.length) {
+      setDiagnosticValidationError("Sélectionne au moins un morceau.");
+      return;
+    }
+
+    const categoryLabel =
+      qualityDiagnostic?.categories.find(
+        (category) => category.key === selectedDiagnosticCategory
+      )?.label || selectedDiagnosticCategory;
+
+    const count =
+      mode === "all"
+        ? Number(publicationQuality?.total || 0)
+        : selectedIds.length;
+
+    const confirmed = window.confirm(
+      mode === "all"
+        ? `Valider les ${count} morceau(x) de « ${categoryLabel} » ?`
+        : `Valider les ${count} morceau(x) sélectionné(s) dans « ${categoryLabel} » ?`
+    );
+
+    if (!confirmed) return;
+
+    setDiagnosticValidationLoading(true);
+    setDiagnosticValidationMessage("");
+    setDiagnosticValidationError("");
+
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/maintenance/musicbrain-category-validation/apply`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-partybrain-admin-token": adminToken.trim(),
+          },
+          body: JSON.stringify({
+            category: selectedDiagnosticCategory,
+            mode,
+            videoIds: selectedIds,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Validation impossible.");
+      }
+
+      setDiagnosticValidationMessage(
+        data?.message || "Validation terminée."
+      );
+      setSelectedDiagnosticItems({});
+
+      await loadPublicationQuality(
+        "review",
+        "",
+        selectedDiagnosticCategory
+      );
+      await loadMusicBrainQualityDiagnostic();
+      await loadStats();
+    } catch (err) {
+      setDiagnosticValidationError(
+        err instanceof Error ? err.message : "Validation impossible."
+      );
+    } finally {
+      setDiagnosticValidationLoading(false);
     }
   }
 
@@ -2474,7 +2591,7 @@ export default function MusicBrainAdminPage() {
                       </div>
                       <div>
                         <p className="text-xs font-black uppercase tracking-[.22em] text-violet-300">
-                          MusicBrain Quality V3.3
+                          MusicBrain Quality V3.4
                         </p>
                         <h2 className="mt-1 text-2xl font-black">
                           MusicBrain applique ses décisions sûres, toi seulement en dernier
@@ -2658,6 +2775,9 @@ export default function MusicBrainAdminPage() {
                           onClick={() => {
                             const nextCategory = selected ? null : category.key;
                             setSelectedDiagnosticCategory(nextCategory);
+                            setSelectedDiagnosticItems({});
+                            setDiagnosticValidationMessage("");
+                            setDiagnosticValidationError("");
                             setPublicationQualityFilter("review");
                             setPublicationQualitySearch("");
                             void loadPublicationQuality("review", "", nextCategory || "");
@@ -2700,31 +2820,100 @@ export default function MusicBrainAdminPage() {
                 </div>
 
                 {selectedDiagnosticCategory ? (
-                  <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/[0.07] p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[.15em] text-fuchsia-200">
-                        Filtre diagnostic actif
-                      </p>
-                      <p className="mt-1 text-sm font-black">
-                        {qualityDiagnostic?.categories.find(
-                          (category) => category.key === selectedDiagnosticCategory
-                        )?.label || selectedDiagnosticCategory}
-                      </p>
-                      <p className="mt-1 text-xs text-white/40">
-                        Cette catégorie est chargée directement depuis MusicBrain.
-                      </p>
-                    </div>
+                  <div className="mt-4 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/[0.07] p-4">
+                    <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[.15em] text-fuchsia-200">
+                          Filtre diagnostic actif
+                        </p>
+                        <p className="mt-1 text-sm font-black">
+                          {qualityDiagnostic?.categories.find(
+                            (category) => category.key === selectedDiagnosticCategory
+                          )?.label || selectedDiagnosticCategory}
+                        </p>
+                        <p className="mt-1 text-xs text-white/40">
+                          Tu peux valider morceau par morceau, sélectionner les 300 affichés, ou valider toute la catégorie.
+                        </p>
+                      </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedDiagnosticCategory(null);
-                        void loadPublicationQuality("review", "", "");
-                      }}
-                      className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-black text-white/70"
-                    >
-                      Afficher tous les cas
-                    </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => toggleAllVisibleDiagnosticItems()}
+                          disabled={
+                            diagnosticValidationLoading ||
+                            !(publicationQuality?.items || []).length
+                          }
+                          className="rounded-xl border border-cyan-300/20 bg-cyan-500/10 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-40"
+                        >
+                          {(publicationQuality?.items || []).length > 0 &&
+                          (publicationQuality?.items || []).every(
+                            (item) => selectedDiagnosticItems[item.videoId]
+                          )
+                            ? "Tout désélectionner"
+                            : `Tout sélectionner (${number.format(
+                                publicationQuality?.returned || 0
+                              )})`}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void validateDiagnosticCategory("selected")}
+                          disabled={
+                            diagnosticValidationLoading ||
+                            Object.values(selectedDiagnosticItems).filter(Boolean)
+                              .length <= 0
+                          }
+                          className="rounded-xl border border-emerald-300/20 bg-emerald-500/10 px-3 py-2 text-xs font-black text-emerald-100 disabled:opacity-40"
+                        >
+                          Valider{" "}
+                          {number.format(
+                            Object.values(selectedDiagnosticItems).filter(Boolean)
+                              .length
+                          )}{" "}
+                          sélectionné(s)
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => void validateDiagnosticCategory("all")}
+                          disabled={
+                            diagnosticValidationLoading ||
+                            Number(publicationQuality?.total || 0) <= 0
+                          }
+                          className="rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-3 py-2 text-xs font-black text-fuchsia-100 disabled:opacity-40"
+                        >
+                          Valider toute la catégorie (
+                          {number.format(publicationQuality?.total || 0)})
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedDiagnosticCategory(null);
+                            setSelectedDiagnosticItems({});
+                            setDiagnosticValidationMessage("");
+                            setDiagnosticValidationError("");
+                            void loadPublicationQuality("review", "", "");
+                          }}
+                          className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-black text-white/70"
+                        >
+                          Afficher tous les cas
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
+                {diagnosticValidationMessage ? (
+                  <div className="mt-3 rounded-2xl border border-emerald-300/20 bg-emerald-500/[0.08] p-3 text-xs font-bold text-emerald-200">
+                    {diagnosticValidationMessage}
+                  </div>
+                ) : null}
+
+                {diagnosticValidationError ? (
+                  <div className="mt-3 rounded-2xl border border-red-300/20 bg-red-500/[0.08] p-3 text-xs font-bold text-red-200">
+                    {diagnosticValidationError}
                   </div>
                 ) : null}
 
@@ -2807,9 +2996,26 @@ export default function MusicBrainAdminPage() {
                     {(publicationQuality?.items || []).map((item) => (
                       <article
                         key={item.videoId}
-                        className="rounded-2xl border border-white/8 bg-black/25 p-3 sm:p-4"
+                        className={`rounded-2xl border p-3 sm:p-4 ${
+                          selectedDiagnosticCategory &&
+                          selectedDiagnosticItems[item.videoId]
+                            ? "border-emerald-300/30 bg-emerald-500/[0.06]"
+                            : "border-white/8 bg-black/25"
+                        }`}
                       >
                         <div className="flex gap-3">
+                          {selectedDiagnosticCategory ? (
+                            <label className="mt-1 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(
+                                  selectedDiagnosticItems[item.videoId]
+                                )}
+                                onChange={() => toggleDiagnosticItem(item.videoId)}
+                                className="h-4 w-4 accent-emerald-400"
+                              />
+                            </label>
+                          ) : null}
                           <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/8 bg-white/[0.03]">
                             {item.thumbnail ? (
                               <img

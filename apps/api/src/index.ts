@@ -8660,6 +8660,73 @@ app.post("/partybrain/maintenance/musicbrain-autofix/run", (req, res) => {
 });
 
 
+
+app.post("/partybrain/maintenance/musicbrain-category-validation/apply", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  const category = String(req.body?.category || "").trim();
+  const mode = String(req.body?.mode || "selected").trim();
+  const requestedVideoIds = Array.isArray(req.body?.videoIds)
+    ? req.body.videoIds
+        .map((value: unknown) => String(value || "").trim())
+        .filter(Boolean)
+    : [];
+
+  if (!category) {
+    return res.status(400).json({ error: "Catégorie de validation manquante." });
+  }
+
+  const candidates = Object.values(musicBrain.songs).filter((song) => {
+    const publication = musicBrainPublicationDecision(song);
+    return (
+      publication.consensusResolution === "manual_review" &&
+      musicBrainManualReviewCategory(song) === category
+    );
+  });
+
+  const selected =
+    mode === "all"
+      ? candidates
+      : candidates.filter((song) => requestedVideoIds.includes(song.videoId));
+
+  if (!selected.length) {
+    return res.status(400).json({
+      error: "Aucun morceau sélectionné dans cette catégorie.",
+    });
+  }
+
+  const validatedAt = Date.now();
+
+  for (const song of selected) {
+    // Validation humaine = l'identité actuellement affichée est confirmée.
+    // Aucun changement de titre ou d'artiste.
+    song.metadataConfidence = Math.max(
+      Number(song.metadataConfidence || 0),
+      99
+    );
+    song.lastSeenAt = validatedAt;
+
+    const artist = musicBrain.artists[song.artistKey];
+    if (artist) {
+      artist.lastSeenAt = validatedAt;
+    }
+  }
+
+  musicBrain.updatedAt = validatedAt;
+  saveMusicBrain();
+
+  return res.json({
+    ok: true,
+    category,
+    mode,
+    validated: selected.length,
+    message:
+      `${selected.length} morceau(x) validé(s) dans « ${musicBrainManualReviewCategoryLabel(
+        category as MusicBrainManualReviewCategory
+      )} ».`,
+  });
+});
+
 app.get("/partybrain/musicbrain-publication/status", (_req, res) => {
   return res.json(musicBrainPublicationSummary());
 });
