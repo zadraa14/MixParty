@@ -2152,19 +2152,64 @@ async function removeSong(index: number, song: Song) {
 
   const mobileTabs = ["playback", "add", "karaoke", "queue", "guests"] as const;
 
-  const karaokeArtistGroups = Object.entries(
-    (karaokeCatalog?.items || []).reduce<Record<string, KaraokeCatalogSong[]>>((groups, song) => {
-      const artist =
+  function karaokeArtistFolderKey(value: unknown) {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[’'`´]/g, "")
+      .replace(/&/g, " et ")
+      .replace(/[^a-z0-9]+/g, "")
+      .trim();
+  }
+
+  function karaokeArtistDisplayScore(value: string) {
+    let score = 0;
+
+    // On préfère les écritures "officielles" plutôt que leur version simplifiée :
+    // Diam's > Diams, M. Pokora > M Pokora, etc.
+    if (/[’']/.test(value)) score += 5;
+    if (/[.\-]/.test(value)) score += 2;
+    if (/[À-ÿ]/.test(value)) score += 2;
+    if (/[A-Z]/.test(value) && /[a-z]/.test(value)) score += 1;
+
+    return score;
+  }
+
+  const karaokeArtistGroups = Array.from(
+    (karaokeCatalog?.items || []).reduce<
+      Map<string, { artist: string; songs: KaraokeCatalogSong[] }>
+    >((groups, song) => {
+      const rawArtist =
         String(song.artistName || song.matchedArtistName || "Artiste inconnu").trim() ||
         "Artiste inconnu";
 
-      if (!groups[artist]) groups[artist] = [];
-      groups[artist].push(song);
+      const key = karaokeArtistFolderKey(rawArtist) || "artisteinconnu";
+      const existing = groups.get(key);
+
+      if (!existing) {
+        groups.set(key, { artist: rawArtist, songs: [song] });
+        return groups;
+      }
+
+      existing.songs.push(song);
+
+      // Si plusieurs écritures correspondent au même artiste, on garde le nom
+      // le plus propre pour le titre du dossier.
+      if (
+        karaokeArtistDisplayScore(rawArtist) >
+        karaokeArtistDisplayScore(existing.artist)
+      ) {
+        existing.artist = rawArtist;
+      }
+
       return groups;
-    }, {})
-  ).sort(([artistA], [artistB]) =>
-    artistA.localeCompare(artistB, "fr", { sensitivity: "base" })
-  );
+    }, new Map()).values()
+  )
+    .map(({ artist, songs }) => [artist, songs] as [string, KaraokeCatalogSong[]])
+    .sort(([artistA], [artistB]) =>
+      artistA.localeCompare(artistB, "fr", { sensitivity: "base" })
+    );
 
   function switchMobileTab(nextTab: typeof mobileTabs[number]) {
     setActiveMobileTab(nextTab);
