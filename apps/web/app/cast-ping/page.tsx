@@ -14,6 +14,7 @@ export default function CastPingPage() {
   const [sdkReady, setSdkReady] = useState(false);
   const [senderConnected, setSenderConnected] = useState(false);
   const [pingReceived, setPingReceived] = useState(false);
+  const [senderCount, setSenderCount] = useState(0);
   const [lastPayload, setLastPayload] = useState("");
   const [error, setError] = useState("");
 
@@ -61,13 +62,18 @@ export default function CastPingPage() {
           }
         );
 
+        const refreshSenders = () => {
+          const senders = context.getSenders?.() || [];
+          setSenderCount(senders.length);
+          setSenderConnected(senders.length > 0);
+        };
+
         context.addEventListener(system.EventType.SENDER_CONNECTED, () => {
-          setSenderConnected(true);
+          refreshSenders();
         });
 
         context.addEventListener(system.EventType.SENDER_DISCONNECTED, () => {
-          const senders = context.getSenders?.() || [];
-          setSenderConnected(senders.length > 0);
+          refreshSenders();
         });
 
         context.start({
@@ -81,8 +87,7 @@ export default function CastPingPage() {
         setSdkReady(true);
 
         const probe = window.setInterval(() => {
-          const senders = context.getSenders?.() || [];
-          setSenderConnected(senders.length > 0);
+          refreshSenders();
         }, 500);
 
         window.setTimeout(() => window.clearInterval(probe), 15000);
@@ -173,6 +178,7 @@ export default function CastPingPage() {
           {[
             ["SDK Receiver", sdkReady ? "OK" : "EN ATTENTE"],
             ["Sender connecté", senderConnected ? "OK" : "EN ATTENTE"],
+            ["Nombre de senders", String(senderCount)],
             ["Ping reçu", pingReceived ? "OUI" : "NON"],
           ].map(([label, value]) => (
             <div

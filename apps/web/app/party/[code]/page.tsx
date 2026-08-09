@@ -299,6 +299,7 @@ export default function PartyPage() {
   const [castConnecting, setCastConnecting] = useState(false);
   const [castStateLabel, setCastStateLabel] = useState("INITIALISATION");
   const [castReceiverStatus, setCastReceiverStatus] = useState("Ping non envoyé");
+  const [castSessionDebug, setCastSessionDebug] = useState("Session non ouverte");
   const [castDeviceName, setCastDeviceName] = useState("");
   const [castDisplayMode, setCastDisplayMode] = useState<"tv" | "karaoke">("tv");
   const [tvPlayback, setTvPlayback] = useState({ time: 0, duration: 0, state: 2 });
@@ -612,6 +613,85 @@ export default function PartyPage() {
     }
   }
 
+  function describeCastSession(session: any) {
+    try {
+      const state = String(session?.getSessionState?.() || "UNKNOWN");
+      const sessionId = String(session?.getSessionId?.() || "—");
+      const metadata = session?.getApplicationMetadata?.();
+      const appId = String(metadata?.applicationId || "—");
+      const namespaces = Array.isArray(metadata?.namespaces)
+        ? metadata.namespaces.map((item: any) => String(item?.name || item || "")).filter(Boolean)
+        : [];
+      const legacy = session?.getSessionObj?.();
+      const legacyStatus = String(legacy?.status || "—");
+
+      const summary =
+        `state=${state} | app=${appId} | session=${sessionId.slice(0, 8)} | ` +
+        `legacy=${legacyStatus} | namespaces=${namespaces.join(",") || "aucun"}`;
+
+      setCastSessionDebug(summary);
+      console.log("📺 Cast session diagnostic", {
+        state,
+        sessionId,
+        appId,
+        namespaces,
+        legacyStatus,
+        metadata,
+        legacy,
+      });
+
+      return { namespaces, legacy };
+    } catch (error) {
+      console.warn("Diagnostic session Cast impossible", error);
+      setCastSessionDebug("Diagnostic session impossible");
+      return { namespaces: [], legacy: null };
+    }
+  }
+
+  async function sendDiagnosticPing(session: any) {
+    const payload = {
+      type: "mixparty_ping",
+      sentAt: Date.now(),
+      partyCode: code,
+      source: "caf",
+    };
+
+    describeCastSession(session);
+
+    try {
+      const result = await session.sendMessage(MIXPARTY_CAST_NAMESPACE, payload);
+      console.log("📺 CAF sendMessage résolu", result);
+      setCastReceiverStatus("PING CAF envoyé");
+    } catch (error: any) {
+      console.warn("📺 CAF sendMessage erreur", error);
+      setCastReceiverStatus(`PING CAF erreur: ${String(error?.code || error)}`);
+    }
+
+    const legacy = session?.getSessionObj?.();
+    if (legacy?.sendMessage) {
+      try {
+        legacy.sendMessage(
+          MIXPARTY_CAST_NAMESPACE,
+          { ...payload, source: "legacy" },
+          () => {
+            console.log("📺 Legacy sendMessage envoyé");
+            setCastReceiverStatus((current) =>
+              current.includes("PONG") ? current : "PING legacy envoyé"
+            );
+          },
+          (error: any) => {
+            console.warn("📺 Legacy sendMessage erreur", error);
+            setCastReceiverStatus(
+              `PING legacy erreur: ${String(error?.code || error?.description || "unknown")}`
+            );
+          }
+        );
+      } catch (error) {
+        console.warn("Legacy sendMessage exception", error);
+      }
+    }
+  }
+
   async function startMixPartyCast(mode: "tv" | "karaoke" = "tv") {
     const framework = (window as any).cast?.framework;
     const context =
@@ -642,25 +722,13 @@ export default function PartyPage() {
 
       // Le Receiver vient d’être lancé : on lui transmet la soirée et
       // l’affichage demandé. Un second envoi sécurise les appareils plus lents.
-      const sendPing = async () => {
-        try {
-          await session.sendMessage(MIXPARTY_CAST_NAMESPACE, {
-            type: "mixparty_ping",
-            sentAt: Date.now(),
-            partyCode: code,
-          });
-          setCastReceiverStatus("PING envoyé");
-          console.log("📺 PING envoyé au Receiver");
-        } catch (error) {
-          setCastReceiverStatus("PING en erreur");
-          console.warn("PING Cast non envoyé", error);
-        }
-      };
-
-      await sendPing();
+      await sendDiagnosticPing(session);
       [700, 1600, 3000, 5000].forEach((delay) => {
         window.setTimeout(() => {
-          void sendPing();
+          const activeSession =
+            castContextRef.current?.getCurrentSession?.() ||
+            (window as any).cast?.framework?.CastContext?.getInstance?.()?.getCurrentSession?.();
+          if (activeSession) void sendDiagnosticPing(activeSession);
         }, delay);
       });
     } catch (error: any) {
@@ -3708,6 +3776,12 @@ const canRemove =
                       </span>
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-300/15 bg-cyan-500/[0.08] px-2.5 py-1.5 text-[10px] font-black text-cyan-100/80">
                         {castReceiverStatus}
+                      </span>
+                      <span
+                        className="max-w-[420px] truncate rounded-full border border-white/10 bg-black/20 px-2.5 py-1.5 text-[9px] font-bold text-white/45"
+                        title={castSessionDebug}
+                      >
+                        {castSessionDebug}
                       </span>
 
                       <button
