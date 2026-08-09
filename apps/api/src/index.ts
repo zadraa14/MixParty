@@ -7335,44 +7335,149 @@ type MusicBrainAutomaticActionDecision = {
   signals: MusicBrainConsensusSignal[];
 };
 
+type MusicBrainManualReviewCategory =
+  | "aggregator_channel"
+  | "query_fallback"
+  | "featuring_conflict"
+  | "lrclib_conflict"
+  | "short_artist"
+  | "weak_identity"
+  | "metadata_conflict"
+  | "other";
+
+function musicBrainManualReviewCategory(song: MusicBrainSong) {
+  const publication = musicBrainPublicationDecision(song);
+  const currentArtist = cleanArtistName(song.artistName || "");
+  const currentKey = normalizeMusicQuery(currentArtist);
+  const channelKey = normalizeMusicQuery(song.channelTitle || "");
+  const rawTitle = song.rawTitle || song.title || "";
+  const titleArtist = cleanArtistName(artistFromTitlePrefix(rawTitle));
+  const karaokeEntry = karaokeLyricsAudit.entries[song.videoId];
+  const lrclibArtist =
+    karaokeEntry?.kind === "synced"
+      ? cleanArtistName(karaokeEntry.matchedArtistName || "")
+      : "";
+
+  const compactArtist = currentKey.replace(/\s+/g, "");
+
+  if (
+    /^(7clouds?|clouds?|lyrics?|lyricsmusic|music|musique|official|officiel|topic|audio|video|records?|recordings?|channel|youtube)$/i.test(
+      compactArtist
+    )
+  ) {
+    return "aggregator_channel" as const;
+  }
+
+  if (
+    publication.reason === "manual_metadata_review" ||
+    song.metadataSource === "QUERY_FALLBACK"
+  ) {
+    return "query_fallback" as const;
+  }
+
+  if (
+    repairArtistLooksMulti(currentArtist) ||
+    /\b(feat\.?|ft\.?|featuring|avec)\b/i.test(currentArtist) ||
+    /\s\/\s/.test(currentArtist)
+  ) {
+    return "featuring_conflict" as const;
+  }
+
+  if (
+    lrclibArtist &&
+    currentArtist &&
+    !sameMusicBrainArtist(lrclibArtist, currentArtist) &&
+    !artistParticipantMatch(lrclibArtist, currentArtist)
+  ) {
+    return "lrclib_conflict" as const;
+  }
+
+  if (currentKey.length <= 2) {
+    return "short_artist" as const;
+  }
+
+  if (
+    titleArtist &&
+    currentArtist &&
+    !sameMusicBrainArtist(titleArtist, currentArtist) &&
+    channelKey &&
+    channelKey.includes(currentKey)
+  ) {
+    return "metadata_conflict" as const;
+  }
+
+  if (
+    Number(song.metadataConfidence || 0) < 40 ||
+    publication.consensusConfidence < 65
+  ) {
+    return "weak_identity" as const;
+  }
+
+  return "other" as const;
+}
+
+function musicBrainManualReviewCategoryLabel(
+  category: MusicBrainManualReviewCategory
+) {
+  switch (category) {
+    case "aggregator_channel":
+      return "Chaîne / agrégateur";
+    case "query_fallback":
+      return "Artiste déduit de la recherche";
+    case "featuring_conflict":
+      return "Featuring / artistes multiples";
+    case "lrclib_conflict":
+      return "Conflit LRCLIB";
+    case "short_artist":
+      return "Nom artiste très court";
+    case "weak_identity":
+      return "Identité trop faible";
+    case "metadata_conflict":
+      return "Conflit titre / chaîne";
+    default:
+      return "Autre cas ambigu";
+  }
+}
+
 function musicBrainAutomaticActionDecision(
   song: MusicBrainSong
 ): MusicBrainAutomaticActionDecision {
   const publication = musicBrainPublicationDecision(song);
+  const thirdPass = musicBrainThirdPassDecision(song);
 
-  // Déjà validé par consensus : aucune écriture nécessaire.
-  if (publication.consensusResolution === "auto_validated") {
+  // Déjà validé par consensus ou sauvé par la 3e passe : aucune écriture nécessaire.
+  if (thirdPass.resolution === "auto_validated") {
     return {
       action: "validate",
-      reason: publication.reason,
-      confidence: publication.consensusConfidence,
-      signals: publication.consensusSignals,
+      reason: thirdPass.reason,
+      confidence: thirdPass.confidence,
+      signals: thirdPass.signals,
     };
   }
 
   // V3.2 : si l'interface sait déjà afficher "Auto-corrigeable",
   // le backend utilise EXACTEMENT cette même décision pour agir.
   if (
-    publication.consensusResolution === "auto_fixable" &&
-    publication.proposedArtistName &&
-    publication.consensusConfidence >= 90 &&
-    publication.consensusSignals.length >= 2
+    thirdPass.resolution === "auto_fixable" &&
+    thirdPass.proposedArtistName &&
+    thirdPass.confidence >= 90 &&
+    thirdPass.signals.length >= 2
   ) {
     return {
       action: "correct",
-      reason: publication.reason,
-      proposedArtistName: publication.proposedArtistName,
-      confidence: publication.consensusConfidence,
-      signals: publication.consensusSignals,
+      reason: thirdPass.reason,
+      proposedArtistName: thirdPass.proposedArtistName,
+      confidence: thirdPass.confidence,
+      signals: thirdPass.signals,
     };
   }
 
   return {
     action: "none",
-    reason: publication.reason,
-    proposedArtistName: publication.proposedArtistName,
-    confidence: publication.consensusConfidence,
-    signals: publication.consensusSignals,
+    reason: thirdPass.reason,
+    proposedArtistName: thirdPass.proposedArtistName,
+    confidence: thirdPass.confidence,
+    signals: thirdPass.signals,
   };
 }
 
@@ -7497,6 +7602,100 @@ function musicBrainPublicationDecision(song: MusicBrainSong): MusicBrainPublicat
   };
 }
 
+function musicBrainThirdPassDecision(song: MusicBrainSong) {
+  const publication = musicBrainPublicationDecision(song);
+
+  if (publication.consensusResolution !== "manual_review") {
+    return {
+      resolution: publication.consensusResolution,
+      proposedArtistName: publication.proposedArtistName,
+      confidence: publication.consensusConfidence,
+      signals: publication.consensusSignals,
+      category: null as MusicBrainManualReviewCategory | null,
+      reason: publication.reason,
+    };
+  }
+
+  const category = musicBrainManualReviewCategory(song);
+  const currentArtist = cleanArtistName(song.artistName || "");
+  const titleArtist = cleanArtistName(
+    artistFromTitlePrefix(song.rawTitle || song.title || "")
+  );
+  const karaokeEntry = karaokeLyricsAudit.entries[song.videoId];
+  const lrclibArtist =
+    karaokeEntry?.kind === "synced"
+      ? cleanArtistName(karaokeEntry.matchedArtistName || "")
+      : "";
+  const topicArtist = cleanArtistName(
+    artistFromTopicChannel(song.channelTitle || "")
+  );
+
+  // 3e passe sûre :
+  // agrégateur (ex. 7clouds) + titre + LRCLIB parfaitement concordants.
+  if (
+    category === "aggregator_channel" &&
+    validConsensusArtist(titleArtist) &&
+    validConsensusArtist(lrclibArtist) &&
+    sameMusicBrainArtist(titleArtist, lrclibArtist)
+  ) {
+    return {
+      resolution: "auto_fixable" as const,
+      proposedArtistName: titleArtist,
+      confidence: 97,
+      signals: ["TITLE", "LRCLIB"] as MusicBrainConsensusSignal[],
+      category,
+      reason: "third_pass_aggregator_title_lrclib_consensus",
+    };
+  }
+
+  // Topic + LRCLIB concordants vers le même artiste.
+  if (
+    validConsensusArtist(topicArtist) &&
+    validConsensusArtist(lrclibArtist) &&
+    sameMusicBrainArtist(topicArtist, lrclibArtist) &&
+    !sameMusicBrainArtist(topicArtist, currentArtist)
+  ) {
+    return {
+      resolution: "auto_fixable" as const,
+      proposedArtistName: topicArtist,
+      confidence: 98,
+      signals: ["TOPIC", "LRCLIB"] as MusicBrainConsensusSignal[],
+      category,
+      reason: "third_pass_topic_lrclib_consensus",
+    };
+  }
+
+  // QUERY_FALLBACK : on valide seulement si le titre brut contient l'artiste
+  // actuel ET LRCLIB confirme exactement le même artiste.
+  if (
+    category === "query_fallback" &&
+    validConsensusArtist(currentArtist) &&
+    normalizeMusicQuery(song.rawTitle || song.title || "").includes(
+      normalizeMusicQuery(currentArtist)
+    ) &&
+    validConsensusArtist(lrclibArtist) &&
+    sameMusicBrainArtist(lrclibArtist, currentArtist)
+  ) {
+    return {
+      resolution: "auto_validated" as const,
+      proposedArtistName: undefined,
+      confidence: 95,
+      signals: ["TITLE_CURRENT", "LRCLIB"] as MusicBrainConsensusSignal[],
+      category,
+      reason: "third_pass_query_fallback_confirmed",
+    };
+  }
+
+  return {
+    resolution: "manual_review" as const,
+    proposedArtistName: publication.proposedArtistName,
+    confidence: publication.consensusConfidence,
+    signals: publication.consensusSignals,
+    category,
+    reason: publication.reason,
+  };
+}
+
 function musicBrainPublicationSummary() {
   const summary = {
     ready: 0,
@@ -7506,6 +7705,7 @@ function musicBrainPublicationSummary() {
     autoFixable: 0,
     manualReview: 0,
     secondPassValidated: 0,
+    thirdPassResolved: 0,
     karaokeSyncedReady: 0,
     karaokeSyncedReview: 0,
     karaokeSyncedBlocked: 0,
@@ -7520,9 +7720,12 @@ function musicBrainPublicationSummary() {
     if (decision.consensusResolution === "auto_validated") {
       summary.autoValidated += 1;
       if (
-        decision.consensusSignals.includes("KNOWN_ALIAS") ||
-        decision.consensusSignals.includes("LRCLIB_PARTICIPANT") ||
-        decision.consensusSignals.includes("TITLE_CURRENT")
+        decision.reason === "autovalidated_consensus" &&
+        (
+          decision.consensusSignals.includes("KNOWN_ALIAS") ||
+          decision.consensusSignals.includes("LRCLIB_PARTICIPANT") ||
+          decision.consensusSignals.includes("TITLE_CURRENT")
+        )
       ) {
         summary.secondPassValidated += 1;
       }
@@ -8282,6 +8485,77 @@ function musicBrainAutoFixPreview() {
   };
 }
 
+app.get("/partybrain/musicbrain-quality/diagnostic", (_req, res) => {
+  const categoryCounts: Record<string, number> = {};
+  const examples: Record<string, any[]> = {};
+  let thirdPassAutoFixable = 0;
+  let thirdPassAutoValidated = 0;
+  let stillManual = 0;
+
+  for (const song of Object.values(musicBrain.songs)) {
+    const publication = musicBrainPublicationDecision(song);
+    if (publication.consensusResolution !== "manual_review") continue;
+
+    const thirdPass = musicBrainThirdPassDecision(song);
+
+    if (thirdPass.resolution === "auto_fixable") {
+      thirdPassAutoFixable += 1;
+      continue;
+    }
+
+    if (thirdPass.resolution === "auto_validated") {
+      thirdPassAutoValidated += 1;
+      continue;
+    }
+
+    stillManual += 1;
+    const category = thirdPass.category || "other";
+    categoryCounts[category] = (categoryCounts[category] || 0) + 1;
+
+    if (!examples[category]) examples[category] = [];
+    if (examples[category].length < 12) {
+      const karaokeEntry = karaokeLyricsAudit.entries[song.videoId];
+      examples[category].push({
+        videoId: song.videoId,
+        title: song.title,
+        artistName: song.artistName,
+        channelTitle: song.channelTitle || "",
+        metadataSource: song.metadataSource || "",
+        metadataConfidence: Number(song.metadataConfidence || 0),
+        proposedArtistName: thirdPass.proposedArtistName || "",
+        confidence: thirdPass.confidence,
+        karaokeSynced: karaokeEntry?.kind === "synced",
+        lrclibArtistName:
+          karaokeEntry?.kind === "synced"
+            ? karaokeEntry.matchedArtistName || ""
+            : "",
+      });
+    }
+  }
+
+  const categories = Object.entries(categoryCounts)
+    .map(([key, count]) => ({
+      key,
+      label: musicBrainManualReviewCategoryLabel(
+        key as MusicBrainManualReviewCategory
+      ),
+      count,
+      examples: examples[key] || [],
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  return res.json({
+    generatedAt: Date.now(),
+    thirdPassAutoFixable,
+    thirdPassAutoValidated,
+    thirdPassResolved: thirdPassAutoFixable + thirdPassAutoValidated,
+    stillManual,
+    categories,
+    note:
+      "Le diagnostic groupe uniquement les cas encore ambigus après les trois passes. Aucune règle n'abaisse le seuil de sécurité.",
+  });
+});
+
 app.get("/partybrain/musicbrain-second-pass/preview", (_req, res) => {
   const summary = musicBrainPublicationSummary();
   const remaining = Object.values(musicBrain.songs)
@@ -8438,6 +8712,11 @@ app.get("/partybrain/musicbrain-publication/items", (req, res) => {
         consensusConfidence: publication.consensusConfidence,
         consensusSignals: publication.consensusSignals,
         automaticAction: musicBrainAutomaticActionDecision(song).action,
+        manualReviewCategory:
+          publication.consensusResolution === "manual_review"
+            ? musicBrainManualReviewCategory(song)
+            : null,
+        thirdPassResolution: musicBrainThirdPassDecision(song).resolution,
         karaokeSynced: karaokeEntry?.kind === "synced",
         lrclibArtistName: karaokeEntry?.matchedArtistName || "",
         lrclibTrackName: karaokeEntry?.matchedTrackName || "",

@@ -143,6 +143,7 @@ type PublicationQualitySummary = {
   autoFixable: number;
   manualReview: number;
   secondPassValidated: number;
+  thirdPassResolved: number;
   karaokeAutoFixable: number;
   karaokeManualReview: number;
 };
@@ -167,6 +168,8 @@ type PublicationQualityItem = {
   consensusConfidence: number;
   consensusSignals: string[];
   automaticAction?: "none" | "validate" | "correct";
+  manualReviewCategory?: string | null;
+  thirdPassResolution?: "auto_validated" | "auto_fixable" | "manual_review" | "blocked";
   karaokeSynced: boolean;
   lrclibArtistName?: string;
   lrclibTrackName?: string;
@@ -184,6 +187,31 @@ type PublicationQualityResponse = {
   nextOffset?: number | null;
   summary: PublicationQualitySummary;
   items: PublicationQualityItem[];
+};
+
+type MusicBrainDiagnosticData = {
+  generatedAt: number;
+  thirdPassAutoFixable: number;
+  thirdPassAutoValidated: number;
+  thirdPassResolved: number;
+  stillManual: number;
+  categories: Array<{
+    key: string;
+    label: string;
+    count: number;
+    examples: Array<{
+      videoId: string;
+      title: string;
+      artistName: string;
+      channelTitle: string;
+      metadataSource: string;
+      metadataConfidence: number;
+      proposedArtistName?: string;
+      confidence: number;
+      karaokeSynced: boolean;
+      lrclibArtistName?: string;
+    }>;
+  }>;
 };
 
 type LiveUsersData = {
@@ -433,6 +461,11 @@ export default function MusicBrainAdminPage() {
     useState<"review" | "ready" | "blocked" | "all">("review");
   const [publicationQualitySearch, setPublicationQualitySearch] = useState("");
 
+  const [qualityDiagnostic, setQualityDiagnostic] =
+    useState<MusicBrainDiagnosticData | null>(null);
+  const [qualityDiagnosticLoading, setQualityDiagnosticLoading] = useState(false);
+  const [qualityDiagnosticError, setQualityDiagnosticError] = useState("");
+
   const [autoFixLoading, setAutoFixLoading] = useState(false);
   const [autoFixMessage, setAutoFixMessage] = useState("");
   const [autoFixError, setAutoFixError] = useState("");
@@ -449,6 +482,31 @@ export default function MusicBrainAdminPage() {
   >("overview");
 
 
+
+  async function loadMusicBrainQualityDiagnostic() {
+    setQualityDiagnosticLoading(true);
+    setQualityDiagnosticError("");
+
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/musicbrain-quality/diagnostic`,
+        { cache: "no-store" }
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Diagnostic MusicBrain indisponible");
+      }
+
+      setQualityDiagnostic(data);
+    } catch (err) {
+      setQualityDiagnosticError(
+        err instanceof Error ? err.message : "Diagnostic MusicBrain indisponible"
+      );
+    } finally {
+      setQualityDiagnosticLoading(false);
+    }
+  }
 
   async function runMusicBrainAutoFix() {
     if (!adminToken.trim()) {
@@ -490,6 +548,7 @@ export default function MusicBrainAdminPage() {
 
       setAutoFixMessage(data?.message || "Auto-Fix terminé.");
       await loadPublicationQuality("review", "");
+      await loadMusicBrainQualityDiagnostic();
       await loadStats();
       await loadKaraokeReadySongs("");
     } catch (err) {
@@ -1255,6 +1314,7 @@ export default function MusicBrainAdminPage() {
   useEffect(() => {
     if (activeAdminTab === "quality") {
       void loadPublicationQuality(publicationQualityFilter, publicationQualitySearch);
+      void loadMusicBrainQualityDiagnostic();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAdminTab, publicationQualityFilter]);
@@ -1781,6 +1841,61 @@ export default function MusicBrainAdminPage() {
                   </p>
                 </div>
               ) : stats.academy.lastSession ? (
+                <div className="mt-5 rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/[0.045] p-4 sm:p-5">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[.16em] text-fuchsia-200">
+                        Diagnostic des cas restants
+                      </p>
+                      <p className="mt-1 text-sm font-black">
+                        MusicBrain classe les morceaux encore ambigus avant de créer de nouvelles règles.
+                      </p>
+                      <p className="mt-1 text-xs text-white/40">
+                        3e passe sûre : {number.format(qualityDiagnostic?.thirdPassResolved || 0)} cas supplémentaire(s) résolu(s) automatiquement • {number.format(qualityDiagnostic?.stillManual || 0)} restent réellement ambigus.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void loadMusicBrainQualityDiagnostic()}
+                      disabled={qualityDiagnosticLoading}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-4 py-2.5 text-xs font-black text-fuchsia-100 disabled:opacity-40"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${qualityDiagnosticLoading ? "animate-spin" : ""}`} />
+                      Analyser les cas restants
+                    </button>
+                  </div>
+
+                  {qualityDiagnosticError ? (
+                    <p className="mt-3 rounded-xl border border-red-300/15 bg-red-500/[0.08] p-3 text-xs font-bold text-red-200">
+                      {qualityDiagnosticError}
+                    </p>
+                  ) : null}
+
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    {(qualityDiagnostic?.categories || []).map((category) => (
+                      <article
+                        key={category.key}
+                        className="rounded-xl border border-white/8 bg-black/20 p-3"
+                      >
+                        <p className="text-[10px] font-black uppercase tracking-[.13em] text-white/40">
+                          {category.label}
+                        </p>
+                        <p className="mt-2 text-2xl font-black">
+                          {number.format(category.count)}
+                        </p>
+                      </article>
+                    ))}
+
+                    {!qualityDiagnosticLoading &&
+                    !(qualityDiagnostic?.categories || []).length ? (
+                      <p className="text-xs text-white/35">
+                        Aucun diagnostic chargé.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+
                 <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
@@ -2411,7 +2526,7 @@ export default function MusicBrainAdminPage() {
                       </div>
                       <div>
                         <p className="text-xs font-black uppercase tracking-[.22em] text-violet-300">
-                          MusicBrain Quality V3.2
+                          MusicBrain Quality V3.3
                         </p>
                         <h2 className="mt-1 text-2xl font-black">
                           MusicBrain applique ses décisions sûres, toi seulement en dernier
@@ -2452,7 +2567,7 @@ export default function MusicBrainAdminPage() {
                       {number.format(publicationQuality?.summary.autoValidated || 0)}
                     </p>
                     <p className="mt-1 text-xs text-emerald-100/45">
-                      dont {number.format(publicationQuality?.summary.secondPassValidated || 0)} sauvés par la 2e passe
+                      {number.format(publicationQuality?.summary.secondPassValidated || 0)} validé(s) spécifiquement par la 2e passe
                     </p>
                   </article>
 
