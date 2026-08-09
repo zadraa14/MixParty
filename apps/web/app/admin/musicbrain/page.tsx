@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, BarChart3, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Clock3, Database, KeyRound, Mic2, Music2, Network, RefreshCw, Search, ShieldCheck, Sparkles, ThumbsUp, Timer, Trash2, UsersRound, Wifi, type LucideIcon } from "lucide-react";
+import { Activity, AlertTriangle, BarChart3, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Clock3, Database, KeyRound, Mic2, Music2, Network, RefreshCw, Search, ShieldCheck, Sparkles, ThumbsUp, Timer, Trash2, Upload, UsersRound, Wifi, type LucideIcon } from "lucide-react";
 import { getApiBaseUrl } from "../../../lib/config";
 
 type Stats = {
@@ -438,6 +438,11 @@ export default function MusicBrainAdminPage() {
   const [academyTestLoading, setAcademyTestLoading] = useState(false);
   const [academyTestMessage, setAcademyTestMessage] = useState("");
   const [academyTestError, setAcademyTestError] = useState("");
+  const [syncEngineTestVideoId, setSyncEngineTestVideoId] = useState("");
+  const [syncEngineTestMessage, setSyncEngineTestMessage] = useState("");
+  const [syncEngineTestError, setSyncEngineTestError] = useState("");
+  const [syncEngineResults, setSyncEngineResults] = useState<Record<string, any>>({});
+
 
 
   const [maintenanceError, setMaintenanceError] = useState("");
@@ -845,6 +850,72 @@ export default function MusicBrainAdminPage() {
       setAttendanceHistoryError(
         err instanceof Error ? err.message : "Historique des soirées indisponible"
       );
+    }
+  }
+
+  async function testKaraokeSyncEngineWithFile(song: KaraokeReadySong, file: File) {
+    if (!adminToken.trim()) {
+      setSyncEngineTestError("Entre le code administrateur Railway avant le test.");
+      return;
+    }
+
+    setSyncEngineTestVideoId(song.videoId);
+    setSyncEngineTestError("");
+    setSyncEngineTestMessage(
+      `WhisperX analyse ${song.artistName} — ${song.title}… Cela peut prendre plusieurs minutes sur CPU.`
+    );
+
+    try {
+      const contentType =
+        file.type ||
+        (file.name.toLowerCase().endsWith(".mp3")
+          ? "audio/mpeg"
+          : "application/octet-stream");
+
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/karaoke-sync-engine/test-upload/${encodeURIComponent(song.videoId)}`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": contentType,
+            "x-partybrain-admin-token": adminToken.trim(),
+            "x-mixparty-audio-filename": encodeURIComponent(file.name),
+          },
+          body: file,
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Analyse Sync Engine impossible.");
+      }
+
+      const entry = data?.entry;
+      setSyncEngineResults((current) => ({
+        ...current,
+        [song.videoId]: entry,
+      }));
+
+      const label =
+        entry?.status === "certified"
+          ? "🟢 CERTIFIÉ"
+          : entry?.status === "needs_review"
+            ? "🟠 À vérifier"
+            : "🔴 Échec";
+
+      setSyncEngineTestMessage(
+        `${song.artistName} — ${song.title} : ${label}` +
+        (Number.isFinite(Number(entry?.confidence))
+          ? ` • confiance ${Math.round(Number(entry.confidence))}%`
+          : "") +
+        (entry?.reason ? ` • ${entry.reason}` : "")
+      );
+    } catch (err) {
+      setSyncEngineTestError(
+        err instanceof Error ? err.message : "Analyse Sync Engine impossible."
+      );
+    } finally {
+      setSyncEngineTestVideoId("");
     }
   }
 
@@ -2536,6 +2607,17 @@ export default function MusicBrainAdminPage() {
                 ) : null}
               </div>
 
+              {syncEngineTestMessage ? (
+                <div className="mt-4 rounded-2xl border border-cyan-300/15 bg-cyan-500/[0.07] px-4 py-3 text-xs font-bold leading-5 text-cyan-100/85">
+                  {syncEngineTestMessage}
+                </div>
+              ) : null}
+              {syncEngineTestError ? (
+                <div className="mt-4 rounded-2xl border border-rose-300/15 bg-rose-500/[0.07] px-4 py-3 text-xs font-bold leading-5 text-rose-100/85">
+                  {syncEngineTestError}
+                </div>
+              ) : null}
+
               <div className="mt-3 max-h-[560px] space-y-2 overflow-y-auto pr-1">
                 {(karaokeReadySongs?.items || []).map((song) => (
                   <article
@@ -2573,8 +2655,38 @@ export default function MusicBrainAdminPage() {
                           </span>
                         ) : null}
                         {song.lrclibId ? <span>LRCLIB #{song.lrclibId}</span> : null}
+                        {syncEngineResults[song.videoId] ? (
+                          <span className="rounded-full border border-cyan-300/15 bg-cyan-500/10 px-2 py-0.5 text-cyan-200">
+                            Sync Engine : {syncEngineResults[song.videoId]?.status}
+                            {Number.isFinite(Number(syncEngineResults[song.videoId]?.confidence))
+                              ? ` • ${Math.round(Number(syncEngineResults[song.videoId].confidence))}%`
+                              : ""}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
+
+                    <label
+                      className={`inline-flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl border px-3 py-2 text-[10px] font-black transition ${
+                        syncEngineTestVideoId === song.videoId
+                          ? "pointer-events-none border-cyan-300/20 bg-cyan-500/10 text-cyan-100 opacity-60"
+                          : "border-cyan-300/15 bg-cyan-500/[0.08] text-cyan-100 hover:bg-cyan-500/15"
+                      }`}
+                    >
+                      <Upload className="h-3.5 w-3.5" />
+                      {syncEngineTestVideoId === song.videoId ? "Analyse…" : "Tester Sync Engine"}
+                      <input
+                        type="file"
+                        accept="audio/*,.mp3,.wav,.flac,.m4a,.aac"
+                        className="hidden"
+                        disabled={Boolean(syncEngineTestVideoId)}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          event.currentTarget.value = "";
+                          if (file) void testKaraokeSyncEngineWithFile(song, file);
+                        }}
+                      />
+                    </label>
                   </article>
                 ))}
 

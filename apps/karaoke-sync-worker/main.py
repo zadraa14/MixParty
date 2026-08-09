@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import httpx
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 app = FastAPI(title="MixParty Karaoke Sync Worker", version="1.0.0")
@@ -206,48 +206,33 @@ def health() -> dict[str, Any]:
     }
 
 
-@app.post("/align", response_model=AlignResponse)
-async def align(req: AlignRequest, authorization: Optional[str] = Header(default=None)) -> AlignResponse:
-    require_token(authorization)
 
-    if not req.audioUrl:
-        return AlignResponse(
-            status="needs_review",
-            confidence=0,
-            engine="whisperx-v1",
-            reason="audioUrl manquant : le worker doit analyser exactement l'audio utilisé par MixParty.",
-            diagnostics={"videoId": req.videoId, "missing": "audioUrl"},
-        )
-
+async def run_alignment_with_local_audio(req: AlignRequest, audio_path: Path) -> AlignResponse:
     transcript = plain_lyrics(req)
     if not transcript:
         return AlignResponse(
             status="failed",
             confidence=0,
-            engine="whisperx-v1",
+            engine="whisperx-v1.2",
             reason="Aucun texte de paroles exploitable.",
         )
 
-    with tempfile.TemporaryDirectory(prefix="mixparty-karaoke-") as tmp:
-        audio_path = Path(tmp) / "source.audio"
-        await download_authorized_audio(req.audioUrl, audio_path)
-
-        try:
-            lines, confidence, diagnostics = align_with_whisperx(audio_path, transcript)
-        except Exception as exc:
-            return AlignResponse(
-                status="failed",
-                confidence=0,
-                engine="whisperx-v1",
-                reason=f"Erreur alignement: {exc}",
-            )
+    try:
+        lines, confidence, diagnostics = align_with_whisperx(audio_path, transcript)
+    except Exception as exc:
+        return AlignResponse(
+            status="failed",
+            confidence=0,
+            engine="whisperx-v1.2",
+            reason=f"Erreur alignement: {exc}",
+        )
 
     if len(lines) < 5:
         return AlignResponse(
             status="failed",
             confidence=confidence,
             lines=lines,
-            engine="whisperx-v1",
+            engine="whisperx-v1.2",
             reason="Pas assez de lignes réalignées.",
             diagnostics=diagnostics,
         )
@@ -258,11 +243,66 @@ async def align(req: AlignRequest, authorization: Optional[str] = Header(default
         confidence=round(confidence, 2),
         offsetSeconds=0,
         lines=lines,
-        engine=f"whisperx-v1/{WHISPER_MODEL}",
+        engine="whisperx-v1.2",
         reason=(
-            "Alignement sur l'audio réel validé automatiquement."
+            "Alignement audio certifié."
             if status == "certified"
-            else "Alignement obtenu mais confiance insuffisante pour publication automatique."
+            else "Alignement calculé mais confiance insuffisante pour certification automatique."
         ),
         diagnostics=diagnostics,
     )
+
+
+@app.post("/align-upload", response_model=AlignResponse)
+async def align_upload(
+    payload: str = Form(...),
+    audio: UploadFile = File(...),
+    authorization: Optional[str] = Header(default=None),
+) -> AlignResponse:
+    require_token(authorization)
+
+    try:
+        req = AlignRequest.model_validate_json(payload)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Payload invalide: {exc}")
+
+    max_bytes = MAX_AUDIO_MB * 1024 * 1024
+    total = 0
+    suffix = Path(audio.filename or "source.audio").suffix or ".audio"
+
+    with tempfile.TemporaryDirectory(prefix="mixparty-karaoke-upload-") as tmp:
+        audio_path = Path(tmp) / f"source{suffix}"
+
+        with audio_path.open("wb") as out:
+            while True:
+                chunk = await audio.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > max_bytes:
+                    raise HTTPException(status_code=413, detail="Audio file too large")
+                out.write(chunk)
+
+        if total <= 0:
+            raise HTTPException(status_code=400, detail="Fichier audio vide")
+
+        return await run_alignment_with_local_audio(req, audio_path)
+
+
+@app.post("/align", response_model=AlignResponse)
+async def align(req: AlignRequest, authorization: Optional[str] = Header(default=None)) -> AlignResponse:
+    require_token(authorization)
+
+    if not req.audioUrl:
+        return AlignResponse(
+            status="needs_review",
+            confidence=0,
+            engine="whisperx-v1.2",
+            reason="audioUrl manquant : le worker doit analyser exactement l'audio utilisé par MixParty.",
+            diagnostics={"videoId": req.videoId, "missing": "audioUrl"},
+        )
+
+    with tempfile.TemporaryDirectory(prefix="mixparty-karaoke-") as tmp:
+        audio_path = Path(tmp) / "source.audio"
+        await download_authorized_audio(req.audioUrl, audio_path)
+        return await run_alignment_with_local_audio(req, audio_path)

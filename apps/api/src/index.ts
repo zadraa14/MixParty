@@ -6511,6 +6511,119 @@ async function requestKaraokeSyncAlignment(
   }
 }
 
+
+async function requestKaraokeSyncAlignmentUpload(
+  song: MusicBrainSong,
+  audit: KaraokeLyricsAuditEntry,
+  audioBuffer: Buffer,
+  fileName: string,
+  mimeType: string
+) {
+  const endpoint = karaokeSyncEngineUrl();
+  if (!endpoint) throw new Error("KARAOKE_SYNC_ENGINE_NOT_CONFIGURED");
+
+  const record = await fetchLrclibLyricsById(Number(audit.lrclibId));
+
+  const payload = {
+    version: 1,
+    videoId: song.videoId,
+    title: song.title,
+    rawTitle: song.rawTitle,
+    artistName: song.artistName,
+    durationSeconds: song.durationSeconds,
+    youtube: {
+      videoId: song.videoId,
+      channelTitle: song.channelTitle,
+      metadataSource: song.metadataSource,
+    },
+    lyrics: {
+      lrclibId: audit.lrclibId,
+      trackName: record?.trackName || audit.matchedTrackName,
+      artistName: record?.artistName || audit.matchedArtistName,
+      duration: Number(record?.duration || audit.matchedDuration || 0) || undefined,
+      syncedLyrics: String(record?.syncedLyrics || ""),
+      plainLyrics: String(record?.plainLyrics || ""),
+    },
+  };
+
+  const form = new FormData();
+  form.append("payload", JSON.stringify(payload));
+  form.append(
+    "audio",
+    new Blob([audioBuffer], { type: mimeType || "application/octet-stream" }),
+    fileName || "source.audio"
+  );
+
+  const base = endpoint.endsWith("/align")
+    ? endpoint.slice(0, -6)
+    : endpoint.replace(/\/+$/, "");
+  const uploadEndpoint = `${base}/align-upload`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 180_000);
+
+  try {
+    const response = await fetch(uploadEndpoint, {
+      method: "POST",
+      headers: process.env.KARAOKE_SYNC_ENGINE_TOKEN
+        ? { Authorization: `Bearer ${process.env.KARAOKE_SYNC_ENGINE_TOKEN}` }
+        : {},
+      body: form,
+      signal: controller.signal,
+    });
+
+    const data: any = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(
+        data?.detail || data?.error || data?.message ||
+        `Karaoke Sync Worker HTTP ${response.status}`
+      );
+    }
+    return data;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function applyKaraokeSyncEngineResult(entry: KaraokeSyncEngineEntry, result: any) {
+  const resultStatus = String(result?.status || "").toLowerCase();
+  const confidence = Math.max(0, Math.min(100, Number(result?.confidence || 0)));
+  const offsetSeconds = Number(result?.offsetSeconds || 0);
+  const alignedLines = karaokeSyncEngineSanitizeLines(result?.lines);
+
+  entry.engine = String(result?.engine || "external-aligner");
+  entry.confidence = confidence;
+  entry.offsetSeconds = Number.isFinite(offsetSeconds)
+    ? Math.round(offsetSeconds * 1000) / 1000
+    : undefined;
+  entry.diagnostics =
+    result?.diagnostics && typeof result.diagnostics === "object"
+      ? result.diagnostics
+      : undefined;
+
+  const offsetSafe =
+    Number.isFinite(offsetSeconds) &&
+    Math.abs(offsetSeconds) <= KARAOKE_SYNC_ENGINE_MAX_ABS_OFFSET_SECONDS;
+
+  if (
+    resultStatus === "certified" &&
+    confidence >= KARAOKE_SYNC_ENGINE_MIN_CONFIDENCE &&
+    offsetSafe &&
+    alignedLines.length >= KARAOKE_STRICT_MIN_TIMED_LINES
+  ) {
+    entry.status = "certified";
+    entry.alignedLines = alignedLines;
+  } else if (resultStatus === "needs_review" || resultStatus === "certified") {
+    entry.status = "needs_review";
+    entry.alignedLines = alignedLines.length ? alignedLines : undefined;
+  } else {
+    entry.status = "failed";
+    entry.alignedLines = alignedLines.length ? alignedLines : undefined;
+  }
+
+  entry.reason = String(result?.reason || "").trim() || entry.reason;
+}
+
 async function runKaraokeSyncEngineWorker() {
   if (karaokeSyncEngineWorkerRunning) return;
   karaokeSyncEngineWorkerRunning = true;
@@ -6797,6 +6910,111 @@ app.post("/partybrain/karaoke-sync-engine/queue", (req, res) => {
   });
 });
 
+
+
+app.post(
+  "/partybrain/karaoke-sync-engine/test-upload/:videoId",
+  express.raw({
+    type: [
+      "audio/mpeg",
+      "audio/mp3",
+      "audio/wav",
+      "audio/x-wav",
+      "audio/flac",
+      "audio/x-flac",
+      "audio/mp4",
+      "audio/aac",
+      "application/octet-stream",
+    ],
+    limit: "45mb",
+  }),
+  async (req, res) => {
+    if (!requirePartyBrainAdmin(req, res)) return;
+
+    const videoId = String(req.params.videoId || "").trim();
+    const candidate = karaokeSyncEngineCandidate(videoId);
+
+    if (!candidate) {
+      return res.status(409).json({
+        error:
+          "Ce morceau doit déjà être synchronisé LRCLIB et validé V5 avant le test Sync Engine.",
+      });
+    }
+
+    const audioBuffer = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.from(req.body || []);
+
+    if (!audioBuffer.length) {
+      return res.status(400).json({ error: "Fichier audio vide ou non reçu." });
+    }
+
+    const fileName = decodeURIComponent(
+      String(req.headers["x-mixparty-audio-filename"] || "source.mp3")
+    ).slice(0, 180);
+
+    const mimeType = String(
+      req.headers["content-type"] || "application/octet-stream"
+    );
+
+    const now = Date.now();
+    const previous = karaokeSyncEngineState.entries[videoId];
+
+    const entry: KaraokeSyncEngineEntry = {
+      videoId,
+      status: "analyzing",
+      queuedAt: previous?.queuedAt || now,
+      startedAt: now,
+      updatedAt: now,
+      source: {
+        title: candidate.song.title || candidate.song.rawTitle || "",
+        artistName: candidate.song.artistName || "",
+        durationSeconds: candidate.song.durationSeconds,
+        lrclibId: candidate.audit.lrclibId,
+        lrclibTrackName: candidate.audit.matchedTrackName,
+        lrclibArtistName: candidate.audit.matchedArtistName,
+        lrclibDuration: candidate.audit.matchedDuration,
+      },
+      attempts: Number(previous?.attempts || 0) + 1,
+      reason: "Analyse du fichier audio envoyé depuis MusicBrain.",
+    };
+
+    karaokeSyncEngineState.entries[videoId] = entry;
+    saveKaraokeSyncEngineState();
+
+    try {
+      const result = await requestKaraokeSyncAlignmentUpload(
+        candidate.song,
+        candidate.audit,
+        audioBuffer,
+        fileName,
+        mimeType
+      );
+
+      applyKaraokeSyncEngineResult(entry, result);
+      entry.finishedAt = Date.now();
+      entry.updatedAt = Date.now();
+      saveKaraokeSyncEngineState();
+
+      return res.json({
+        ok: true,
+        entry,
+        shadowMode: true,
+      });
+    } catch (error: any) {
+      entry.status = "failed";
+      entry.finishedAt = Date.now();
+      entry.updatedAt = Date.now();
+      entry.reason = error?.message || "Erreur pendant l'analyse WhisperX.";
+      saveKaraokeSyncEngineState();
+
+      return res.status(500).json({
+        error: entry.reason,
+        entry,
+      });
+    }
+  }
+);
 
 app.post("/partybrain/karaoke-sync-engine/test/:videoId", (req, res) => {
   if (!requirePartyBrainAdmin(req, res)) return;
