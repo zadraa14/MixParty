@@ -6821,6 +6821,341 @@ function karaokeSyncEngineSummary() {
   };
 }
 
+
+type KaraokeBenchmarkTrackResult = {
+  jamendoId: string;
+  title: string;
+  artistName: string;
+  durationSeconds: number;
+  image?: string;
+  language?: string;
+  licenseUrl?: string;
+  status: "pending" | "analyzing" | "passed" | "failed" | "error";
+  benchmarkScore?: number;
+  coverage?: number;
+  similarity?: number;
+  timingContinuity?: number;
+  wordProbability?: number;
+  reason?: string;
+};
+
+type KaraokeBenchmarkCampaign = {
+  id: string;
+  createdAt: number;
+  startedAt?: number;
+  finishedAt?: number;
+  status: "preparing" | "running" | "finished" | "failed";
+  requested: number;
+  total: number;
+  completed: number;
+  passed: number;
+  failed: number;
+  errors: number;
+  currentTrack?: string;
+  error?: string;
+  tracks: KaraokeBenchmarkTrackResult[];
+};
+
+const karaokeBenchmarkCampaigns = new Map<string, KaraokeBenchmarkCampaign>();
+
+function jamendoClientId() {
+  return String(process.env.JAMENDO_CLIENT_ID || "").trim();
+}
+
+function karaokeBenchmarkWorkerUrl() {
+  const alignUrl = karaokeSyncEngineUrl();
+  if (!alignUrl) return "";
+  return alignUrl.endsWith("/align")
+    ? `${alignUrl.slice(0, -"/align".length)}/benchmark-upload`
+    : `${alignUrl.replace(/\/+$/, "")}/benchmark-upload`;
+}
+
+function benchmarkPlainLyrics(value: unknown) {
+  const raw = String(value || "").replace(/\r/g, "").trim();
+  if (!raw) return "";
+  const lines = raw
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.length >= 5 ? lines.join("\n") : "";
+}
+
+async function fetchJamendoBenchmarkTracks(limit: number) {
+  const clientId = jamendoClientId();
+  if (!clientId) throw new Error("JAMENDO_CLIENT_ID_NOT_CONFIGURED");
+
+  const wanted = Math.max(1, Math.min(50, Math.floor(limit || 50)));
+  const selected: any[] = [];
+  const seenArtists = new Set<string>();
+
+  for (let offset = 0; offset < 1000 && selected.length < wanted; offset += 200) {
+    const url = new URL("https://api.jamendo.com/v3.0/tracks/");
+    url.searchParams.set("client_id", clientId);
+    url.searchParams.set("format", "json");
+    url.searchParams.set("limit", "200");
+    url.searchParams.set("offset", String(offset));
+    url.searchParams.set("include", "lyrics musicinfo licenses");
+    url.searchParams.set("audioformat", "mp32");
+    url.searchParams.set("audiodlformat", "mp32");
+    url.searchParams.set("vocalinstrumental", "vocal");
+    url.searchParams.set("durationbetween", "90_420");
+    url.searchParams.set("order", "popularity_total");
+
+    const response = await fetch(url.toString(), {
+      headers: { Accept: "application/json" },
+    });
+
+    if (!response.ok) throw new Error(`JAMENDO_HTTP_${response.status}`);
+
+    const payload: any = await response.json();
+    const results = Array.isArray(payload?.results) ? payload.results : [];
+
+    for (const track of results) {
+      if (selected.length >= wanted) break;
+
+      const artistId = String(track?.artist_id || track?.artist_name || "");
+      if (!artistId || seenArtists.has(artistId)) continue;
+
+      const lyrics = benchmarkPlainLyrics(track?.lyrics);
+      if (!lyrics) continue;
+
+      if (track?.audiodownload_allowed !== true) continue;
+      const audioUrl = String(track?.audiodownload || "").trim();
+      if (!audioUrl.startsWith("http")) continue;
+
+      seenArtists.add(artistId);
+      selected.push({
+        id: String(track?.id || ""),
+        title: String(track?.name || "Sans titre"),
+        artistName: String(track?.artist_name || "Artiste inconnu"),
+        durationSeconds: Number(track?.duration || 0),
+        image: String(track?.image || track?.album_image || ""),
+        audioUrl,
+        lyrics,
+        language: String(track?.musicinfo?.lang || ""),
+        licenseUrl: String(track?.license_ccurl || ""),
+      });
+    }
+
+    if (!results.length) break;
+  }
+
+  return selected;
+}
+
+async function downloadBenchmarkAudio(url: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 90_000);
+
+  try {
+    const response = await fetch(url, {
+      redirect: "follow",
+      signal: controller.signal,
+      headers: { "User-Agent": "MixParty-Karaoke-Benchmark/1.0" },
+    });
+
+    if (!response.ok) throw new Error(`AUDIO_HTTP_${response.status}`);
+
+    const arrayBuffer = await response.arrayBuffer();
+    if (arrayBuffer.byteLength > 45 * 1024 * 1024) {
+      throw new Error("AUDIO_TOO_LARGE");
+    }
+
+    return {
+      buffer: Buffer.from(arrayBuffer),
+      contentType: response.headers.get("content-type") || "audio/mpeg",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function runJamendoBenchmarkCampaign(campaignId: string) {
+  const campaign = karaokeBenchmarkCampaigns.get(campaignId);
+  if (!campaign) return;
+
+  try {
+    campaign.status = "preparing";
+    const tracks = await fetchJamendoBenchmarkTracks(campaign.requested);
+
+    campaign.total = tracks.length;
+    campaign.tracks = tracks.map((track) => ({
+      jamendoId: track.id,
+      title: track.title,
+      artistName: track.artistName,
+      durationSeconds: track.durationSeconds,
+      image: track.image,
+      language: track.language,
+      licenseUrl: track.licenseUrl,
+      status: "pending",
+    }));
+
+    if (!tracks.length) {
+      throw new Error(
+        "Aucune piste Jamendo avec audio téléchargeable + paroles n'a été trouvée."
+      );
+    }
+
+    campaign.status = "running";
+    campaign.startedAt = Date.now();
+
+    const workerUrl = karaokeBenchmarkWorkerUrl();
+    if (!workerUrl) throw new Error("KARAOKE_SYNC_ENGINE_NOT_CONFIGURED");
+
+    for (let index = 0; index < tracks.length; index += 1) {
+      const source = tracks[index];
+      const resultEntry = campaign.tracks[index];
+
+      resultEntry.status = "analyzing";
+      campaign.currentTrack = `${source.artistName} — ${source.title}`;
+
+      try {
+        const audio = await downloadBenchmarkAudio(source.audioUrl);
+
+        const form = new FormData();
+        form.append(
+          "payload",
+          JSON.stringify({
+            id: source.id,
+            title: source.title,
+            artistName: source.artistName,
+            durationSeconds: source.durationSeconds,
+            lyrics: { plainLyrics: source.lyrics },
+          })
+        );
+        form.append(
+          "audio",
+          new Blob([audio.buffer], { type: audio.contentType }),
+          `jamendo-${source.id}.mp3`
+        );
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 240_000);
+
+        try {
+          const workerResponse = await fetch(workerUrl, {
+            method: "POST",
+            headers: process.env.KARAOKE_SYNC_ENGINE_TOKEN
+              ? {
+                  Authorization:
+                    `Bearer ${process.env.KARAOKE_SYNC_ENGINE_TOKEN}`,
+                }
+              : {},
+            body: form,
+            signal: controller.signal,
+          });
+
+          const workerData: any = await workerResponse.json().catch(() => ({}));
+
+          if (!workerResponse.ok) {
+            throw new Error(
+              workerData?.detail ||
+              workerData?.error ||
+              `WORKER_HTTP_${workerResponse.status}`
+            );
+          }
+
+          const score = Number(workerData?.benchmarkScore || 0);
+          const diag = workerData?.diagnostics || {};
+
+          resultEntry.benchmarkScore = score;
+          resultEntry.coverage = Number(diag?.coverage || 0);
+          resultEntry.similarity = Number(diag?.averageSimilarity || 0);
+          resultEntry.timingContinuity = Number(diag?.timingContinuity || 0);
+          resultEntry.wordProbability = Number(
+            diag?.averageWordProbability || 0
+          );
+          resultEntry.status =
+            workerData?.benchmarkPass === true ? "passed" : "failed";
+
+          if (resultEntry.status === "passed") campaign.passed += 1;
+          else campaign.failed += 1;
+        } finally {
+          clearTimeout(timeout);
+        }
+      } catch (error: any) {
+        resultEntry.status = "error";
+        resultEntry.reason =
+          error?.message || "Erreur inconnue pendant le benchmark.";
+        campaign.errors += 1;
+      }
+
+      campaign.completed += 1;
+      await new Promise((resolve) => setTimeout(resolve, 800));
+    }
+
+    campaign.currentTrack = undefined;
+    campaign.finishedAt = Date.now();
+    campaign.status = "finished";
+  } catch (error: any) {
+    campaign.status = "failed";
+    campaign.error = error?.message || "Benchmark impossible.";
+    campaign.finishedAt = Date.now();
+    campaign.currentTrack = undefined;
+  }
+}
+
+app.get("/partybrain/karaoke-benchmark/config", (_req, res) => {
+  return res.json({
+    jamendoConfigured: Boolean(jamendoClientId()),
+    workerConfigured: Boolean(karaokeBenchmarkWorkerUrl()),
+    maxTracks: 50,
+    mode: "technical-benchmark",
+    note:
+      "Jamendo fournit l'audio et les paroles, mais pas des timestamps karaoké de référence.",
+  });
+});
+
+app.post("/partybrain/karaoke-benchmark/start", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  if (!jamendoClientId()) {
+    return res.status(503).json({
+      error: "JAMENDO_CLIENT_ID n'est pas configuré sur l'API MixParty.",
+    });
+  }
+
+  const requested = Math.max(1, Math.min(50, Number(req.body?.limit || 50)));
+  const id = `bench-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  const campaign: KaraokeBenchmarkCampaign = {
+    id,
+    createdAt: Date.now(),
+    status: "preparing",
+    requested,
+    total: 0,
+    completed: 0,
+    passed: 0,
+    failed: 0,
+    errors: 0,
+    tracks: [],
+  };
+
+  karaokeBenchmarkCampaigns.set(id, campaign);
+
+  setTimeout(() => {
+    void runJamendoBenchmarkCampaign(id);
+  }, 50);
+
+  return res.status(202).json({
+    ok: true,
+    campaignId: id,
+    campaign,
+  });
+});
+
+app.get("/partybrain/karaoke-benchmark/:campaignId", (req, res) => {
+  const campaign = karaokeBenchmarkCampaigns.get(
+    String(req.params.campaignId || "")
+  );
+
+  if (!campaign) {
+    return res.status(404).json({ error: "Campagne benchmark introuvable." });
+  }
+
+  return res.json({ campaign });
+});
+
 app.get("/partybrain/karaoke-sync-engine/config", (_req, res) => {
   const configured = String(
     process.env.KARAOKE_SYNC_ENGINE_URL ||

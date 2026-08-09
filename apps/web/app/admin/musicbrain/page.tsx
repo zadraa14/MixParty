@@ -443,6 +443,12 @@ export default function MusicBrainAdminPage() {
   const [syncEngineTestError, setSyncEngineTestError] = useState("");
   const [syncEngineResults, setSyncEngineResults] = useState<Record<string, any>>({});
   const [syncEngineDiagnosticOpen, setSyncEngineDiagnosticOpen] = useState<Record<string, boolean>>({});
+  const [benchmarkConfig, setBenchmarkConfig] = useState<any>(null);
+  const [benchmarkCampaign, setBenchmarkCampaign] = useState<any>(null);
+  const [benchmarkCampaignId, setBenchmarkCampaignId] = useState("");
+  const [benchmarkBusy, setBenchmarkBusy] = useState(false);
+  const [benchmarkError, setBenchmarkError] = useState("");
+
 
 
 
@@ -851,6 +857,58 @@ export default function MusicBrainAdminPage() {
       setAttendanceHistoryError(
         err instanceof Error ? err.message : "Historique des soirées indisponible"
       );
+    }
+  }
+
+
+  async function loadKaraokeBenchmarkConfig() {
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/karaoke-benchmark/config`,
+        { cache: "no-store" }
+      );
+      const data = await response.json();
+      setBenchmarkConfig(data);
+    } catch {
+      setBenchmarkConfig(null);
+    }
+  }
+
+  async function startKaraokeBenchmark() {
+    if (!adminToken.trim()) {
+      setBenchmarkError("Entre d'abord le code administrateur.");
+      return;
+    }
+
+    setBenchmarkBusy(true);
+    setBenchmarkError("");
+
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/karaoke-benchmark/start`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-partybrain-admin-token": adminToken.trim(),
+          },
+          body: JSON.stringify({ limit: 50 }),
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Impossible de lancer le benchmark.");
+      }
+
+      setBenchmarkCampaignId(String(data?.campaignId || ""));
+      setBenchmarkCampaign(data?.campaign || null);
+    } catch (err) {
+      setBenchmarkError(
+        err instanceof Error ? err.message : "Benchmark impossible."
+      );
+    } finally {
+      setBenchmarkBusy(false);
     }
   }
 
@@ -1702,6 +1760,42 @@ export default function MusicBrainAdminPage() {
       .toLowerCase()
       .includes(query);
   });
+
+  useEffect(() => {
+    void loadKaraokeBenchmarkConfig();
+  }, []);
+
+  useEffect(() => {
+    if (!benchmarkCampaignId) return;
+
+    let cancelled = false;
+
+    const poll = async () => {
+      try {
+        const response = await fetch(
+          `${getApiBaseUrl()}/partybrain/karaoke-benchmark/${encodeURIComponent(benchmarkCampaignId)}`,
+          { cache: "no-store" }
+        );
+        const data = await response.json();
+
+        if (!cancelled && response.ok) {
+          setBenchmarkCampaign(data?.campaign || null);
+
+          const status = String(data?.campaign?.status || "");
+          if (status === "finished" || status === "failed") return;
+        }
+      } catch {}
+
+      if (!cancelled) window.setTimeout(poll, 2500);
+    };
+
+    void poll();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [benchmarkCampaignId]);
+
 
   return (
     <main className="min-h-screen bg-[#07040f] px-4 py-6 text-white sm:px-8 lg:px-12">
@@ -2618,6 +2712,135 @@ export default function MusicBrainAdminPage() {
                   {syncEngineTestError}
                 </div>
               ) : null}
+
+
+              <div className="mt-4 rounded-3xl border border-violet-300/15 bg-violet-500/[0.06] p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[.18em] text-violet-200/70">
+                      Benchmark Sync Engine
+                    </p>
+                    <h3 className="mt-1 text-lg font-black text-white">
+                      Test automatique sur 50 morceaux
+                    </h3>
+                    <p className="mt-1 max-w-2xl text-[11px] font-bold leading-5 text-white/40">
+                      MusicBrain récupère automatiquement 50 morceaux Jamendo avec audio
+                      téléchargeable et paroles, puis les teste un par un. Aucun MP3 à fournir.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void startKaraokeBenchmark()}
+                    disabled={
+                      benchmarkBusy ||
+                      benchmarkCampaign?.status === "running" ||
+                      benchmarkCampaign?.status === "preparing" ||
+                      benchmarkConfig?.jamendoConfigured === false
+                    }
+                    className="rounded-2xl border border-violet-300/20 bg-violet-500/15 px-4 py-2.5 text-xs font-black text-violet-100 transition hover:bg-violet-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    {benchmarkBusy
+                      ? "Préparation…"
+                      : benchmarkCampaign?.status === "running" ||
+                          benchmarkCampaign?.status === "preparing"
+                        ? "Benchmark en cours…"
+                        : "Lancer 50 morceaux"}
+                  </button>
+                </div>
+
+                {benchmarkConfig?.jamendoConfigured === false ? (
+                  <div className="mt-3 rounded-2xl border border-amber-300/15 bg-amber-500/[0.08] px-3 py-2 text-[11px] font-bold text-amber-100/80">
+                    Il manque la variable Railway <b>JAMENDO_CLIENT_ID</b>.
+                  </div>
+                ) : null}
+
+                {benchmarkError ? (
+                  <div className="mt-3 rounded-2xl border border-rose-300/15 bg-rose-500/[0.08] px-3 py-2 text-[11px] font-bold text-rose-100/80">
+                    {benchmarkError}
+                  </div>
+                ) : null}
+
+                {benchmarkCampaign ? (
+                  <div className="mt-4">
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                      {[
+                        ["Progression", `${benchmarkCampaign.completed || 0} / ${benchmarkCampaign.total || benchmarkCampaign.requested || 50}`],
+                        ["Passés", String(benchmarkCampaign.passed || 0)],
+                        ["Refusés", String(benchmarkCampaign.failed || 0)],
+                        ["Erreurs", String(benchmarkCampaign.errors || 0)],
+                        [
+                          "Taux",
+                          benchmarkCampaign.completed
+                            ? `${Math.round(((benchmarkCampaign.passed || 0) / benchmarkCampaign.completed) * 100)}%`
+                            : "—",
+                        ],
+                      ].map(([label, value]) => (
+                        <div
+                          key={label}
+                          className="rounded-2xl border border-white/8 bg-black/20 px-3 py-2"
+                        >
+                          <p className="text-[9px] font-black uppercase tracking-[.14em] text-white/30">
+                            {label}
+                          </p>
+                          <p className="mt-1 text-sm font-black text-white/85">
+                            {value}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    {benchmarkCampaign.currentTrack ? (
+                      <p className="mt-3 text-[11px] font-bold text-violet-100/65">
+                        Analyse : {benchmarkCampaign.currentTrack}
+                      </p>
+                    ) : null}
+
+                    {Array.isArray(benchmarkCampaign.tracks) &&
+                    benchmarkCampaign.tracks.length ? (
+                      <div className="mt-3 max-h-72 space-y-1.5 overflow-y-auto pr-1">
+                        {benchmarkCampaign.tracks.map((track: any) => (
+                          <div
+                            key={track.jamendoId}
+                            className="flex items-center gap-3 rounded-xl border border-white/7 bg-black/20 px-3 py-2"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-[11px] font-black text-white/80">
+                                {track.artistName} — {track.title}
+                              </p>
+                              <p className="mt-0.5 text-[9px] font-bold text-white/30">
+                                {Number.isFinite(Number(track.benchmarkScore))
+                                  ? `Score ${Math.round(Number(track.benchmarkScore) * 10) / 10}%`
+                                  : track.status}
+                                {Number.isFinite(Number(track.coverage))
+                                  ? ` • couverture ${Math.round(Number(track.coverage) * 1000) / 10}%`
+                                  : ""}
+                              </p>
+                            </div>
+                            <span className="text-xs">
+                              {track.status === "passed"
+                                ? "✅"
+                                : track.status === "failed"
+                                  ? "❌"
+                                  : track.status === "error"
+                                    ? "⚠️"
+                                    : track.status === "analyzing"
+                                      ? "⏳"
+                                      : "•"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+
+                    <p className="mt-3 text-[9px] leading-4 text-white/25">
+                      Benchmark technique : Jamendo fournit l'audio et les paroles,
+                      mais pas un minutage karaoké de référence. Ce test sert à mesurer
+                      la robustesse générale du moteur.
+                    </p>
+                  </div>
+                ) : null}
+              </div>
 
               <div className="mt-3 max-h-[560px] space-y-2 overflow-y-auto pr-1">
                 {(karaokeReadySongs?.items || []).map((song) => (

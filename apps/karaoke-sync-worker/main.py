@@ -2090,13 +2090,120 @@ def process_audio(audio_path: Path, transcript: str, synced_lyrics: str = "") ->
     )
 
 
+
+def process_benchmark_audio(audio_path: Path, transcript: str) -> dict[str, Any]:
+    normalized = audio_path.with_suffix(".16k.wav")
+    normalize_audio(audio_path, normalized)
+
+    duration = probe_duration(normalized)
+    if duration and duration > MAX_AUDIO_MINUTES * 60:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Audio too long: {duration:.0f}s; limit={MAX_AUDIO_MINUTES:.0f} min"
+        )
+
+    model = get_model()
+    segments, info = model.transcribe(
+        str(normalized),
+        language=None,
+        beam_size=1,
+        best_of=1,
+        temperature=0,
+        vad_filter=False,
+        word_timestamps=True,
+        condition_on_previous_text=False,
+    )
+
+    words: list[dict[str, Any]] = []
+    segment_count = 0
+
+    for segment in segments:
+        segment_count += 1
+        for word in segment.words or []:
+            if word.start is None or not (word.word or "").strip():
+                continue
+            words.append({
+                "word": word.word.strip(),
+                "start": float(word.start),
+                "end": float(word.end or word.start),
+                "probability": float(word.probability or 0),
+            })
+
+    lines, _legacy_confidence, diag = align_lyrics(words, transcript)
+
+    probabilities = [w["probability"] for w in words if w["probability"] > 0]
+    avg_word_probability = (
+        sum(probabilities) / len(probabilities) if probabilities else 0.0
+    )
+
+    coverage = float(diag.get("coverage") or 0)
+    continuity = float(diag.get("timingContinuity") or 0)
+    progression = float(diag.get("cursorProgression") or 0)
+    anchor_quality = float(diag.get("anchorQuality") or 0)
+    similarity = float(diag.get("averageSimilarity") or 0)
+
+    benchmark_score = (
+        coverage * 0.35
+        + continuity * 0.20
+        + progression * 0.15
+        + anchor_quality * 0.15
+        + similarity * 0.10
+        + avg_word_probability * 0.05
+    ) * 100.0
+
+    duplicates = detect_duplicate_aligned_lines(lines)
+    if duplicates.get("suspect"):
+        benchmark_score -= min(
+            8.0,
+            2.0 * int(duplicates.get("count") or 0),
+        )
+
+    benchmark_score = max(0.0, min(100.0, benchmark_score))
+
+    result = {
+        "ok": True,
+        "engine": "faster-whisper-v2.3-benchmark",
+        "benchmarkOnly": True,
+        "benchmarkScore": round(benchmark_score, 2),
+        "benchmarkPass": benchmark_score >= 85.0,
+        "lines": [line.model_dump() for line in lines],
+        "diagnostics": {
+            **diag,
+            "durationSeconds": round(duration, 2),
+            "language": getattr(info, "language", None),
+            "languageProbability": round(
+                float(getattr(info, "language_probability", 0) or 0),
+                4,
+            ),
+            "segmentCount": segment_count,
+            "wordCount": len(words),
+            "averageWordProbability": round(avg_word_probability, 4),
+            "duplicateLines": duplicates,
+            "scoreWeights": {
+                "coverage": 0.35,
+                "timingContinuity": 0.20,
+                "cursorProgression": 0.15,
+                "anchorQuality": 0.15,
+                "textSimilarity": 0.10,
+                "averageWordProbability": 0.05,
+            },
+            "warning":
+                "Benchmark technique sans timestamps de référence externes : "
+                "ce score ne constitue pas une certification karaoké.",
+        },
+    }
+
+    del words, segments
+    gc.collect()
+    return result
+
 @app.get("/")
 def root():
     return {
         "ok": True,
         "service": "mixparty-karaoke-sync-worker",
         "engine": "faster-whisper",
-        "version": "2.2",
+        "version": "2.3",
     }
 
 
@@ -2113,6 +2220,69 @@ def health():
         "pyannote": False,
         "whisperx": False,
     }
+
+
+
+@app.post("/benchmark-upload")
+async def benchmark_upload(
+    audio: UploadFile = File(...),
+    payload: Optional[str] = Form(default=None),
+    transcript: Optional[str] = Form(default=None),
+    authorization: Optional[str] = Header(default=None),
+):
+    require_token(authorization)
+
+    resolved_transcript = (transcript or "").strip()
+    payload_data: dict[str, Any] = {}
+
+    if payload:
+        try:
+            payload_data = json.loads(payload)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Payload JSON invalide: {exc}",
+            )
+
+        lyrics = payload_data.get("lyrics") or {}
+        resolved_transcript = str(
+            lyrics.get("plainLyrics")
+            or payload_data.get("lyricsText")
+            or resolved_transcript
+            or ""
+        ).strip()
+
+    if not resolved_transcript:
+        raise HTTPException(
+            status_code=400,
+            detail="Aucune parole exploitable reçue.",
+        )
+
+    suffix = Path(audio.filename or "audio.mp3").suffix or ".mp3"
+    with tempfile.TemporaryDirectory(prefix="mixparty-benchmark-") as td:
+        source = Path(td) / f"source{suffix}"
+        total = 0
+
+        with source.open("wb") as f:
+            while True:
+                chunk = await audio.read(1024 * 1024)
+                if not chunk:
+                    break
+                total += len(chunk)
+                if total > MAX_AUDIO_MB * 1024 * 1024:
+                    raise HTTPException(status_code=413, detail="Audio file too large")
+                f.write(chunk)
+
+        result = process_benchmark_audio(source, resolved_transcript)
+
+        if payload_data:
+            result["track"] = {
+                "id": payload_data.get("id"),
+                "title": payload_data.get("title"),
+                "artistName": payload_data.get("artistName"),
+            }
+
+        return result
 
 
 @app.post("/align-upload", response_model=AlignResponse)
