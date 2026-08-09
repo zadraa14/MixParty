@@ -2296,7 +2296,7 @@ async function removeSong(index: number, song: Song) {
               </div>
 
               {queue.length > 0 ? (
-                <div className="v53-queue-list">
+                <div className="v53-queue-list w-full min-w-0 max-w-full overflow-x-hidden">
 
                   {queue.map((song, index) => {
                     const originalIndex = songs.findIndex(
@@ -2333,7 +2333,7 @@ const canRemove =
                           className="v53-queue-cover"
                         />
 
-                        <div className="min-w-0">
+                        <div className="min-w-0 overflow-hidden">
 
                           {index === 0 && (
                             <p className="mb-1 text-[10px] font-black uppercase tracking-[0.18em] text-purple-300">
@@ -2341,23 +2341,50 @@ const canRemove =
                             </p>
                           )}
 
-                          <p className="v53-queue-title truncate">{song.title}</p>
-                          <p className="v53-queue-artist">{song.artistName || "Artiste MixParty"}</p>
+                          <p className="v53-queue-title line-clamp-2 min-w-0 max-w-full break-words [overflow-wrap:anywhere]">{song.title}</p>
+                          <p className="v53-queue-artist min-w-0 max-w-full truncate">{song.artistName || "Artiste MixParty"}</p>
 
-                          <div className="v53-queue-added"><span className="v53-queue-avatar"><img src={party.participants.find((participant) => participant.name === song.addedBy)?.avatar || defaultAvatarForParticipant(song.addedBy)} alt="" /></span><span>Ajouté par <strong>{song.addedBy}</strong></span></div>
-{canRemove && (
-  <button
-    type="button"
-    onClick={() => removeSong(originalIndex, song)}
-    className="mt-2 inline-flex items-center gap-1.5 rounded-xl border border-red-400/20 bg-red-500/10 px-3 py-2 text-xs font-black text-red-200 transition hover:border-red-400/35 hover:bg-red-500/15 sm:hidden"
-  >
-    <Trash2 className="h-3.5 w-3.5" />
-    Supprimer
-  </button>
-)}
+                          <div className="v53-queue-added min-w-0 max-w-full overflow-hidden">
+                            <span className="v53-queue-avatar shrink-0">
+                              <img
+                                src={party.participants.find((participant) => participant.name === song.addedBy)?.avatar || defaultAvatarForParticipant(song.addedBy)}
+                                alt=""
+                              />
+                            </span>
+                            <span className="min-w-0 truncate">
+                              Ajouté par <strong className="truncate">{song.addedBy}</strong>
+                            </span>
+                          </div>
+
+                          <div className={`mt-3 grid w-full min-w-0 gap-2 sm:hidden ${canRemove ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-1"}`}>
+                            <button
+                              type="button"
+                              onClick={() => vote(originalIndex)}
+                              className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""} flex min-w-0 w-full items-center justify-center`}
+                            >
+                              <span className="vote-button__glow" aria-hidden="true" />
+                              <span className="vote-button__plus">+1</span>
+                              <span className="relative z-10 flex min-w-0 items-center justify-center gap-1.5">
+                                <ArrowBigUp className="h-4 w-4 shrink-0" />
+                                <span className="truncate">Voter · {song.votes}</span>
+                              </span>
+                            </button>
+
+                            {canRemove && (
+                              <button
+                                type="button"
+                                onClick={() => removeSong(originalIndex, song)}
+                                className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-400/20 bg-red-500/10 text-red-200 transition active:scale-95"
+                                aria-label={`Supprimer ${song.title}`}
+                                title="Supprimer cette musique"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
+                          </div>
                         </div>
 
-                        <div className="v53-queue-actions hidden sm:flex">
+                        <div className="v53-queue-actions hidden min-w-0 shrink-0 sm:flex">
 
                           <div className="v53-vote-score">
 
@@ -3636,6 +3663,63 @@ const canRemove =
         @keyframes desktopLiveWave {
           0%, 100% { transform: scaleY(.45); opacity: .45; }
           50% { transform: scaleY(1); opacity: 1; }
+        }
+
+        /* File d'attente : sécurité anti-débordement mobile.
+           Même un titre extrêmement long ne peut plus élargir la page ni pousser le vote hors écran. */
+        .v53-queue-panel,
+        .v53-queue-list,
+        .v53-queue-item {
+          width: 100%;
+          min-width: 0;
+          max-width: 100%;
+        }
+
+        .v53-queue-list,
+        .v53-queue-item {
+          overflow-x: hidden;
+        }
+
+        .v53-queue-item > * {
+          min-width: 0;
+          max-width: 100%;
+        }
+
+        .v53-queue-title {
+          max-width: 100%;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }
+
+        .v53-queue-artist,
+        .v53-queue-added {
+          max-width: 100%;
+          overflow: hidden;
+        }
+
+        .v53-queue-actions {
+          flex-shrink: 0;
+        }
+
+        @media (max-width: 639px) {
+          .v53-queue-item {
+            grid-template-columns: auto auto minmax(0, 1fr) !important;
+            column-gap: .65rem !important;
+            align-items: start !important;
+          }
+
+          .v53-queue-rank,
+          .v53-queue-cover {
+            flex-shrink: 0;
+          }
+
+          .v53-queue-title {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            white-space: normal !important;
+          }
         }
 
         @media (min-width: 768px) {
