@@ -1,32 +1,27 @@
-# MixParty Karaoke Sync Worker V1.5 — Timing Confidence
+# MixParty Karaoke Sync Worker V1.6 — LRCLIB Delta Validation
 
-Cette version garde faster-whisper mais change le score de certification.
+Cette version ajoute une vraie validation temporelle croisée.
 
-## Pourquoi
-ABCD avait :
-- couverture : 93,6 %
-- timestamps croissants
-- 29 / 31 lignes alignées
-- similarité moyenne : 74,4 %
-- score final : 88,8 %
+Pour chaque ligne alignée par Faster-Whisper :
+- timestamp LRCLIB d'origine
+- timestamp recalculé
+- delta signé
+- delta absolu
+- qualité du matching texte
 
-La V1.4 donnait encore trop de poids à la transcription textuelle brute.
+Diagnostics agrégés :
+- médiane absolue
+- moyenne absolue
+- biais médian (avance/retard)
+- % de lignes à ±0,25 s
+- % à ±0,50 s
+- % à ±0,75 s
+- % à ±1,00 s
+- détection de doublons temporels suspects
 
-## Nouveau score
-Le V1.5 privilégie la qualité temporelle :
+Important :
+LRCLIB n'est pas traité comme une vérité absolue.
+Le score principal reste basé sur Faster-Whisper + cohérence temporelle.
+LRCLIB sert de validation croisée et de diagnostic.
 
-- 42 % couverture des lignes
-- 20 % continuité temporelle
-- 14 % progression monotone dans les mots
-- 14 % qualité des mots-ancres
-- 10 % similarité textuelle brute
-
-## Certification
-Le seuil reste volontairement strict :
-- confiance >= 92 %
-- couverture >= 90 %
-- continuité temporelle >= 90 %
-- progression >= 85 %
-- timestamps strictement croissants
-
-Aucun morceau n'est publié automatiquement : le Shadow Mode de MixParty reste inchangé.
+Le seuil de certification reste à 92 %.

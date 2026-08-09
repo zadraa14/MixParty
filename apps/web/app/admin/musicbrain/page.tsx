@@ -2747,6 +2747,14 @@ export default function MusicBrainAdminPage() {
                               ) / 10
                             : null;
 
+                          const lrclibDelta = diagnostics.lrclibDelta || {};
+                          const duplicateLines = diagnostics.duplicateLines || {};
+
+                          const formatPercent01 = (value: unknown) =>
+                            Number.isFinite(Number(value))
+                              ? `${Math.round(Number(value) * 1000) / 10}%`
+                              : "—";
+
                           const cards = [
                             [
                               "Confiance",
@@ -2790,6 +2798,30 @@ export default function MusicBrainAdminPage() {
                               wordProbabilityPercent !== null
                                 ? `${wordProbabilityPercent}%`
                                 : "—",
+                            ],
+                            [
+                              "Delta médian LRCLIB",
+                              Number.isFinite(
+                                Number(lrclibDelta.medianAbsoluteDeltaSeconds)
+                              )
+                                ? `${Number(lrclibDelta.medianAbsoluteDeltaSeconds).toFixed(2)} s`
+                                : "—",
+                            ],
+                            [
+                              "À ±0,50 s",
+                              formatPercent01(lrclibDelta.within050),
+                            ],
+                            [
+                              "À ±0,75 s",
+                              formatPercent01(lrclibDelta.within075),
+                            ],
+                            [
+                              "Doublons suspects",
+                              duplicateLines.suspect
+                                ? `⚠️ ${Number(duplicateLines.count || 0)}`
+                                : duplicateLines.suspect === false
+                                  ? "✅ Aucun"
+                                  : "—",
                             ],
                             [
                               "Moteur",
@@ -2868,6 +2900,85 @@ export default function MusicBrainAdminPage() {
                                       + {alignedLines.length - 8} ligne(s) alignée(s)
                                     </p>
                                   ) : null}
+                                </div>
+                              ) : null}
+
+                              {Array.isArray(lrclibDelta.comparisons) &&
+                              lrclibDelta.comparisons.length ? (
+                                <div className="mt-3 rounded-xl border border-violet-300/10 bg-violet-500/[0.04] p-3">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-[9px] font-black uppercase tracking-[.16em] text-violet-200/65">
+                                      Comparaison LRCLIB ↔ Engine
+                                    </p>
+                                    <div className="flex flex-wrap gap-2 text-[9px] font-bold text-white/35">
+                                      <span>
+                                        ±0,25s : {formatPercent01(lrclibDelta.within025)}
+                                      </span>
+                                      <span>
+                                        ±0,50s : {formatPercent01(lrclibDelta.within050)}
+                                      </span>
+                                      <span>
+                                        ±0,75s : {formatPercent01(lrclibDelta.within075)}
+                                      </span>
+                                      <span>
+                                        ±1,00s : {formatPercent01(lrclibDelta.within100)}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="mt-2 max-h-56 space-y-1 overflow-y-auto pr-1">
+                                    {lrclibDelta.comparisons
+                                      .slice(0, 24)
+                                      .map((item: any, index: number) => {
+                                        const delta = Number(item?.deltaSeconds);
+                                        const absDelta = Math.abs(delta);
+                                        const status =
+                                          absDelta <= 0.25
+                                            ? "✅"
+                                            : absDelta <= 0.5
+                                              ? "🟢"
+                                              : absDelta <= 0.75
+                                                ? "🟠"
+                                                : "🔴";
+
+                                        return (
+                                          <div
+                                            key={`${item?.engineTime}-${index}`}
+                                            className="grid grid-cols-[48px_58px_58px_64px_minmax(0,1fr)] items-center gap-2 rounded-lg bg-black/20 px-2 py-1.5 text-[9px]"
+                                          >
+                                            <span>{status}</span>
+                                            <span className="font-mono text-white/45">
+                                              L {Number(item?.lrclibTime).toFixed(2)}s
+                                            </span>
+                                            <span className="font-mono text-cyan-200/65">
+                                              E {Number(item?.engineTime).toFixed(2)}s
+                                            </span>
+                                            <span
+                                              className={`font-mono font-black ${
+                                                absDelta <= 0.5
+                                                  ? "text-emerald-200/75"
+                                                  : absDelta <= 0.75
+                                                    ? "text-amber-200/75"
+                                                    : "text-rose-200/75"
+                                              }`}
+                                            >
+                                              {delta >= 0 ? "+" : ""}
+                                              {Number.isFinite(delta)
+                                                ? delta.toFixed(2)
+                                                : "—"}s
+                                            </span>
+                                            <span className="truncate text-white/45">
+                                              {String(item?.text || "")}
+                                            </span>
+                                          </div>
+                                        );
+                                      })}
+                                  </div>
+
+                                  <p className="mt-2 text-[9px] leading-4 text-white/25">
+                                    LRCLIB sert ici de référence comparative, pas de vérité absolue.
+                                    Un écart peut aussi venir d'un timestamp LRCLIB imparfait.
+                                  </p>
                                 </div>
                               ) : null}
 

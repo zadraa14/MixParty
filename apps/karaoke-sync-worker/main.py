@@ -33,7 +33,7 @@ class AlignedLine(BaseModel):
 
 class AlignResponse(BaseModel):
     ok: bool = True
-    engine: str = "faster-whisper-v1.5"
+    engine: str = "faster-whisper-v1.6"
     publishable: bool
     confidence: float
     lines: list[AlignedLine]
@@ -314,7 +314,198 @@ def align_lyrics(words: list[dict[str, Any]], transcript: str):
     return output, confidence, diagnostics
 
 
-def process_audio(audio_path: Path, transcript: str) -> AlignResponse:
+def parse_lrc_reference(synced_lyrics: str) -> list[dict[str, Any]]:
+    """
+    Parse les timestamps LRCLIB d'origine.
+    Format attendu : [mm:ss.xx] texte
+    """
+    output: list[dict[str, Any]] = []
+
+    for raw_line in (synced_lyrics or "").splitlines():
+        match = re.match(
+            r"^\s*\[(\d{1,3}):(\d{2})(?:\.(\d{1,3}))?\]\s*(.*?)\s*$",
+            raw_line,
+        )
+        if not match:
+            continue
+
+        minutes = int(match.group(1))
+        seconds = int(match.group(2))
+        fraction_raw = match.group(3) or "0"
+        fraction = int(fraction_raw) / (10 ** len(fraction_raw))
+        text = (match.group(4) or "").strip()
+
+        if not text:
+            continue
+
+        output.append({
+            "time": round(minutes * 60 + seconds + fraction, 3),
+            "text": text,
+            "normalized": normalize_text(text),
+        })
+
+    return output
+
+
+def detect_duplicate_aligned_lines(lines: list[AlignedLine]) -> dict[str, Any]:
+    """
+    Détecte les répétitions suspectes de la même ligne dans une fenêtre courte.
+    Une vraie répétition de chanson n'est pas automatiquement une erreur :
+    on ne marque 'suspect' que si la répétition est très rapprochée.
+    """
+    seen: dict[str, list[float]] = {}
+    duplicate_pairs = []
+
+    for line in lines:
+        key = normalize_text(line.text)
+        if not key:
+            continue
+
+        previous_times = seen.setdefault(key, [])
+        for previous in previous_times:
+            gap = line.time - previous
+            if 0 < gap < 8.0:
+                duplicate_pairs.append({
+                    "text": line.text,
+                    "firstTime": round(previous, 3),
+                    "secondTime": round(line.time, 3),
+                    "gapSeconds": round(gap, 3),
+                })
+        previous_times.append(line.time)
+
+    return {
+        "count": len(duplicate_pairs),
+        "pairs": duplicate_pairs[:12],
+        "suspect": len(duplicate_pairs) > 0,
+    }
+
+
+def compare_with_lrclib(
+    aligned_lines: list[AlignedLine],
+    reference_lines: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """
+    Compare, ligne par ligne, les timings recalculés à LRCLIB.
+    Le matching se fait séquentiellement par texte normalisé, puis fuzzy fallback.
+    """
+    import difflib
+    import statistics
+
+    if not aligned_lines or not reference_lines:
+        return {
+            "available": False,
+            "matchedLineCount": 0,
+            "comparisons": [],
+        }
+
+    comparisons = []
+    ref_cursor = 0
+
+    for aligned in aligned_lines:
+        target = normalize_text(aligned.text)
+        if not target:
+            continue
+
+        best = None
+        search_end = min(len(reference_lines), ref_cursor + 8)
+
+        # Exact normalized match first.
+        for idx in range(ref_cursor, search_end):
+            ref = reference_lines[idx]
+            if ref["normalized"] == target:
+                best = (1.0, idx, ref)
+                break
+
+        # Fuzzy fallback when wording differs slightly.
+        if best is None:
+            for idx in range(ref_cursor, search_end):
+                ref = reference_lines[idx]
+                score = difflib.SequenceMatcher(
+                    None,
+                    target,
+                    ref["normalized"],
+                ).ratio()
+                if best is None or score > best[0]:
+                    best = (score, idx, ref)
+
+        if best is None or best[0] < 0.58:
+            continue
+
+        score, idx, ref = best
+        delta = float(aligned.time) - float(ref["time"])
+
+        comparisons.append({
+            "text": aligned.text,
+            "lrclibTime": round(float(ref["time"]), 3),
+            "engineTime": round(float(aligned.time), 3),
+            "deltaSeconds": round(delta, 3),
+            "absoluteDeltaSeconds": round(abs(delta), 3),
+            "textMatch": round(float(score), 4),
+        })
+
+        ref_cursor = max(ref_cursor, idx + 1)
+
+    abs_deltas = [x["absoluteDeltaSeconds"] for x in comparisons]
+    signed_deltas = [x["deltaSeconds"] for x in comparisons]
+
+    if not abs_deltas:
+        return {
+            "available": True,
+            "matchedLineCount": 0,
+            "comparisons": [],
+        }
+
+    within_025 = sum(1 for x in abs_deltas if x <= 0.25) / len(abs_deltas)
+    within_050 = sum(1 for x in abs_deltas if x <= 0.50) / len(abs_deltas)
+    within_075 = sum(1 for x in abs_deltas if x <= 0.75) / len(abs_deltas)
+    within_100 = sum(1 for x in abs_deltas if x <= 1.00) / len(abs_deltas)
+
+    median_abs = statistics.median(abs_deltas)
+    mean_abs = sum(abs_deltas) / len(abs_deltas)
+    median_signed = statistics.median(signed_deltas)
+
+    return {
+        "available": True,
+        "matchedLineCount": len(comparisons),
+        "referenceLineCount": len(reference_lines),
+        "comparisonCoverage": round(len(comparisons) / max(1, len(reference_lines)), 4),
+        "medianAbsoluteDeltaSeconds": round(float(median_abs), 3),
+        "meanAbsoluteDeltaSeconds": round(float(mean_abs), 3),
+        "medianSignedDeltaSeconds": round(float(median_signed), 3),
+        "within025": round(within_025, 4),
+        "within050": round(within_050, 4),
+        "within075": round(within_075, 4),
+        "within100": round(within_100, 4),
+        "comparisons": comparisons[:80],
+    }
+
+
+def lrclib_timing_score(delta_diag: dict[str, Any]) -> float:
+    """
+    Score 0..1, utilisé comme indicateur de proximité LRCLIB.
+    Ce n'est PAS une vérité absolue : LRCLIB peut lui-même être décalé.
+    """
+    if not delta_diag.get("available") or not delta_diag.get("matchedLineCount"):
+        return 0.0
+
+    within_025 = float(delta_diag.get("within025") or 0)
+    within_050 = float(delta_diag.get("within050") or 0)
+    within_075 = float(delta_diag.get("within075") or 0)
+    coverage = float(delta_diag.get("comparisonCoverage") or 0)
+
+    return max(
+        0.0,
+        min(
+            1.0,
+            within_025 * 0.35
+            + within_050 * 0.30
+            + within_075 * 0.20
+            + coverage * 0.15,
+        ),
+    )
+
+
+def process_audio(audio_path: Path, transcript: str, synced_lyrics: str = "") -> AlignResponse:
     normalized = audio_path.with_suffix(".16k.wav")
     normalize_audio(audio_path, normalized)
 
@@ -354,12 +545,27 @@ def process_audio(audio_path: Path, transcript: str) -> AlignResponse:
             })
 
     lines, confidence, diag = align_lyrics(words, transcript)
+
+    lrclib_reference = parse_lrc_reference(synced_lyrics)
+    lrclib_delta = compare_with_lrclib(lines, lrclib_reference)
+    duplicates = detect_duplicate_aligned_lines(lines)
+    lrclib_score = lrclib_timing_score(lrclib_delta)
+
+    # V1.6 : le score principal reste indépendant de LRCLIB.
+    # LRCLIB sert de validation croisée et de diagnostic, pas de vérité absolue.
+    # Si la comparaison LRCLIB est très bonne, on ajoute un petit bonus plafonné.
+    # Si elle est très mauvaise, on ne force PAS le score vers le bas :
+    # on signale simplement le désaccord.
+    if lrclib_delta.get("available") and lrclib_delta.get("matchedLineCount"):
+        confidence = min(100.0, confidence + max(0.0, lrclib_score - 0.72) * 10.0)
+
     publishable = (
         confidence >= MIN_CONFIDENCE
         and diag["coverage"] >= 0.90
         and diag["timingContinuity"] >= 0.90
         and diag["cursorProgression"] >= 0.85
         and diag["monotonic"]
+        and not duplicates["suspect"]
         and len(lines) >= 2
     )
 
@@ -385,6 +591,10 @@ def process_audio(audio_path: Path, transcript: str) -> AlignResponse:
         "lowMemory": True,
         "pyannote": False,
         "whisperx": False,
+        "timingValidationVersion": "v1.6",
+        "lrclibTimingScore": round(lrclib_score, 4),
+        "lrclibDelta": lrclib_delta,
+        "duplicateLines": duplicates,
     }
 
     del words, segments
@@ -404,7 +614,7 @@ def root():
         "ok": True,
         "service": "mixparty-karaoke-sync-worker",
         "engine": "faster-whisper",
-        "version": "1.5",
+        "version": "1.6",
     }
 
 
@@ -442,6 +652,7 @@ async def align_upload(
     require_token(authorization)
 
     resolved_transcript = (transcript or "").strip()
+    synced_reference = ""
     payload_data: dict[str, Any] = {}
 
     if payload:
@@ -456,6 +667,7 @@ async def align_upload(
         lyrics = payload_data.get("lyrics") or {}
         plain = str(lyrics.get("plainLyrics") or "").strip()
         synced = str(lyrics.get("syncedLyrics") or "").strip()
+        synced_reference = synced
 
         if plain:
             resolved_transcript = plain
@@ -491,7 +703,7 @@ async def align_upload(
                     raise HTTPException(status_code=413, detail="Audio file too large")
                 f.write(chunk)
 
-        result = process_audio(source, resolved_transcript)
+        result = process_audio(source, resolved_transcript, synced_reference)
 
         # Ajoute quelques infos utiles de MixParty dans les diagnostics
         # sans modifier le contrat de sortie.
