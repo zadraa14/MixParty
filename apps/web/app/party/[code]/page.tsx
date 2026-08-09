@@ -2439,8 +2439,8 @@ async function removeSong(index: number, song: Song) {
     }
 
     return (
-      <div className="mt-5">
-        <div className="rounded-[24px] border border-white/[0.07] bg-black/20 p-3 sm:p-4">
+      <div className="mt-5 w-full min-w-0 max-w-full overflow-x-hidden">
+        <div className="w-full min-w-0 max-w-full overflow-hidden rounded-[24px] border border-white/[0.07] bg-black/20 p-3 sm:p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-300">
@@ -2462,7 +2462,7 @@ async function removeSong(index: number, song: Song) {
             ) : null}
           </div>
 
-          <div className="mt-4 flex gap-1.5 overflow-x-auto pb-1">
+          <div className="mt-4 flex w-full min-w-0 max-w-full gap-1.5 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <button
               type="button"
               onClick={() => setKaraokeLetterFilter("ALL")}
@@ -2500,7 +2500,7 @@ async function removeSong(index: number, song: Song) {
             Aucun artiste dans cette lettre.
           </div>
         ) : (
-          <div className="mt-4 max-h-[760px] space-y-3 overflow-y-auto pr-1">
+          <div className="mt-4 w-full min-w-0 max-w-full space-y-3 overflow-x-hidden md:max-h-[760px] md:overflow-y-auto md:pr-1">
             {visibleKaraokeArtistGroups.map((group) => {
               const artist = group.artist;
               const artistSongs = group.songs;
@@ -2510,22 +2510,22 @@ async function removeSong(index: number, song: Song) {
                 <details
                   key={karaokeArtistFolderKey(artist)}
                   open={Boolean(karaokeCatalogSearch.trim())}
-                  className="group overflow-hidden rounded-[24px] border border-white/[0.07] bg-gradient-to-br from-white/[0.04] to-black/20 shadow-[0_14px_40px_rgba(0,0,0,.14)] open:border-fuchsia-300/20 open:bg-fuchsia-500/[0.035]"
+                  className="group w-full min-w-0 max-w-full overflow-hidden rounded-[24px] border border-white/[0.07] bg-gradient-to-br from-white/[0.04] to-black/20 shadow-[0_14px_40px_rgba(0,0,0,.14)] open:border-fuchsia-300/20 open:bg-fuchsia-500/[0.035]"
                 >
-                  <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3.5 sm:px-4 sm:py-4 [&::-webkit-details-marker]:hidden">
+                  <summary className="flex w-full min-w-0 max-w-full cursor-pointer list-none items-center gap-3 overflow-hidden px-3 py-3.5 sm:px-4 sm:py-4 [&::-webkit-details-marker]:hidden">
                     <div className="grid h-12 w-12 shrink-0 place-items-center rounded-[17px] border border-fuchsia-300/15 bg-gradient-to-br from-fuchsia-500/15 via-purple-500/10 to-cyan-500/[0.06] text-lg font-black text-fuchsia-100">
                       {normalizeKaraokeText(artist).charAt(0).toUpperCase() || "?"}
                     </div>
 
                     <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 overflow-hidden">
                         <p className="truncate text-[15px] font-black text-white sm:text-base">
                           {artist}
                         </p>
 
                         {mergedVariantCount > 1 ? (
                           <span
-                            className="shrink-0 rounded-full border border-emerald-300/15 bg-emerald-500/[0.08] px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] text-emerald-200"
+                            className="hidden shrink-0 rounded-full border border-emerald-300/15 bg-emerald-500/[0.08] px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] text-emerald-200 sm:inline-flex"
                             title={`Variantes fusionnées : ${group.variants.join(", ")}`}
                           >
                             {mergedVariantCount} variantes fusionnées
@@ -2543,8 +2543,8 @@ async function removeSong(index: number, song: Song) {
                     </span>
                   </summary>
 
-                  <div className="border-t border-white/[0.06] bg-black/15 p-2.5 sm:p-3">
-                    <div className="grid gap-2.5 lg:grid-cols-2">
+                  <div className="w-full min-w-0 max-w-full overflow-hidden border-t border-white/[0.06] bg-black/15 p-2.5 sm:p-3">
+                    <div className="grid w-full min-w-0 max-w-full grid-cols-1 gap-2.5 lg:grid-cols-2">
                       {artistSongs.map((song) => {
                         const alreadyInPlaylist =
                           party?.currentSong?.videoId === song.videoId ||
@@ -2556,7 +2556,7 @@ async function removeSong(index: number, song: Song) {
                         return (
                           <article
                             key={`${karaokeSongIdentity(song)}-${song.videoId}`}
-                            className={`flex min-w-0 items-center gap-3 rounded-[18px] border p-2.5 transition ${
+                            className={`flex w-full min-w-0 max-w-full items-center gap-3 overflow-hidden rounded-[18px] border p-2.5 transition ${
                               alreadyInPlaylist
                                 ? "border-white/[0.05] bg-white/[0.025] opacity-65"
                                 : "border-white/[0.07] bg-white/[0.025] hover:border-fuchsia-300/15 hover:bg-fuchsia-500/[0.035]"
@@ -2574,7 +2574,7 @@ async function removeSong(index: number, song: Song) {
                             </div>
 
                             <div className="min-w-0 flex-1">
-                              <p className="line-clamp-2 text-sm font-black leading-snug text-white">
+                              <p className="line-clamp-2 max-w-full break-words text-sm font-black leading-snug text-white [overflow-wrap:anywhere]">
                                 {cleanKaraokeSongTitle(song.title)}
                               </p>
 
@@ -2594,7 +2594,7 @@ async function removeSong(index: number, song: Song) {
                                 type="button"
                                 onClick={() => addKaraokeCatalogSong(song)}
                                 disabled={alreadyInPlaylist || addingVideoId === song.videoId}
-                                className={`mt-2 inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[10px] font-black transition ${
+                                className={`mt-2 inline-flex min-h-9 max-w-full items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[10px] font-black transition ${
                                   alreadyInPlaylist
                                     ? "cursor-not-allowed border border-white/[0.08] bg-white/[0.05] text-white/35"
                                     : "border border-fuchsia-300/15 bg-gradient-to-r from-fuchsia-600/80 to-purple-600/80 text-white hover:brightness-110 disabled:opacity-50"
@@ -3067,7 +3067,7 @@ const canRemove =
                             </span>
                           </div>
 
-                          <div className={`mt-3 grid w-full min-w-0 gap-2 sm:hidden ${canRemove ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-1"}`}>
+                          <div className={`mt-3 grid w-full min-w-0 max-w-full gap-2 md:hidden ${canRemove ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-1"}`}>
                             <button
                               type="button"
                               onClick={() => vote(originalIndex)}
@@ -3095,7 +3095,7 @@ const canRemove =
                           </div>
                         </div>
 
-                        <div className="v53-queue-actions hidden min-w-0 shrink-0 sm:flex">
+                        <div className="v53-queue-actions hidden min-w-0 shrink-0 md:flex">
 
                           <div className="v53-vote-score">
 
@@ -3111,7 +3111,7 @@ const canRemove =
 
                           <button
   onClick={() => vote(originalIndex)}
-  className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""}`}
+  className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""} max-w-full`}
 >
   <span className="vote-button__glow" aria-hidden="true" />
   <span className="vote-button__plus">+1</span>
@@ -3460,7 +3460,7 @@ const canRemove =
 
 
             <section
-              className={`${activeMobileTab === "karaoke" ? "block" : "hidden"} premium-glass-card rounded-[24px] border border-fuchsia-300/15 bg-gradient-to-br from-fuchsia-500/[0.07] via-purple-500/[0.045] to-cyan-500/[0.035] p-3 backdrop-blur-xl md:hidden`}
+              className={`${activeMobileTab === "karaoke" ? "block" : "hidden"} premium-glass-card w-full min-w-0 max-w-full overflow-x-hidden rounded-[24px] border border-fuchsia-300/15 bg-gradient-to-br from-fuchsia-500/[0.07] via-purple-500/[0.045] to-cyan-500/[0.035] p-3 backdrop-blur-xl md:hidden`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -3491,8 +3491,8 @@ const canRemove =
                 Ouvrir l’écran paroles
               </button>
 
-              <div className="mt-4 rounded-[20px] border border-white/[0.07] bg-black/20 p-3">
-                <div className="relative">
+              <div className="mt-4 w-full min-w-0 max-w-full overflow-hidden rounded-[20px] border border-white/[0.07] bg-black/20 p-3">
+                <div className="relative w-full min-w-0 max-w-full">
                   <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
                   <input
                     value={karaokeCatalogSearch}
@@ -3503,11 +3503,11 @@ const canRemove =
                       }
                     }}
                     placeholder="Rechercher un artiste ou un titre..."
-                    className="w-full rounded-2xl border border-white/10 bg-black/25 py-3.5 pl-11 pr-4 text-sm outline-none transition placeholder:text-white/25 focus:border-fuchsia-400/50"
+                    className="block w-full min-w-0 max-w-full rounded-2xl border border-white/10 bg-black/25 py-3.5 pl-11 pr-4 text-sm outline-none transition placeholder:text-white/25 focus:border-fuchsia-400/50"
                   />
                 </div>
 
-                <div className="mt-2 grid grid-cols-[1fr_auto] gap-2">
+                <div className="mt-2 grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_auto] gap-2">
                   <button
                     type="button"
                     onClick={() => void loadKaraokeCatalog(karaokeCatalogSearch)}
@@ -4492,6 +4492,40 @@ const canRemove =
 
         .v53-queue-actions {
           flex-shrink: 0;
+        }
+
+        @media (max-width: 767px) {
+          .v54-mobile-app,
+          .v54-mobile-content,
+          .desktop-party-grid,
+          .desktop-main-column,
+          .desktop-side-column,
+          .premium-glass-card {
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
+          }
+
+          .v54-mobile-app,
+          .v54-mobile-content {
+            overflow-x: clip;
+          }
+
+          .v53-queue-item {
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
+          }
+
+          .v53-queue-item button,
+          .v53-queue-item img,
+          .v53-queue-item div {
+            min-width: 0;
+          }
+
+          .vote-button {
+            max-width: 100%;
+          }
         }
 
         @media (max-width: 639px) {
