@@ -2611,7 +2611,7 @@ export default function MusicBrainAdminPage() {
                   {(publicationQuality?.total || 0) >
                   (publicationQuality?.returned || 0) ? (
                     <p className="mt-3 text-xs text-white/30">
-                      Les {number.format(publicationQuality.returned)} premières entrées sont affichées. Utilise la recherche pour cibler un artiste ou une chaîne précise.
+                      Les {number.format(publicationQuality?.returned ?? 0)} premières entrées sont affichées. Utilise la recherche pour cibler un artiste ou une chaîne précise.
                     </p>
                   ) : null}
                 </div>
