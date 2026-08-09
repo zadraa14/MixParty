@@ -6224,32 +6224,47 @@ app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
   const rawLimit = Number(req.query?.limit || 500);
   const rawOffset = Number(req.query?.offset || 0);
 
-  // On garde des pages raisonnables pour éviter une réponse JSON énorme,
-  // mais le front peut maintenant parcourir TOUT le catalogue.
-  const limit = Math.max(1, Math.min(1000, Number.isFinite(rawLimit) ? rawLimit : 500));
-  const offset = Math.max(0, Number.isFinite(rawOffset) ? Math.floor(rawOffset) : 0);
+  const limit = Math.max(
+    1,
+    Math.min(1000, Number.isFinite(rawLimit) ? rawLimit : 500)
+  );
+  const offset = Math.max(
+    0,
+    Number.isFinite(rawOffset) ? Math.floor(rawOffset) : 0
+  );
 
-  const items = Object.values(karaokeLyricsAudit.entries)
+  const syncedEntries = Object.values(karaokeLyricsAudit.entries)
     .filter((entry) => entry.kind === "synced")
+    .filter((entry) => Boolean(musicBrain.songs[entry.videoId]));
+
+  let heldForReview = 0;
+  let blockedByMusicBrain = 0;
+
+  const items = syncedEntries
     .map((entry) => {
       const song = musicBrain.songs[entry.videoId];
       if (!song) return null;
 
-      const resolvedArtistName = resolveKaraokeArtistName(song, entry);
+      const publication = musicBrainPublicationDecision(song);
 
+      if (publication.status === "review") {
+        heldForReview += 1;
+        return null;
+      }
+
+      if (publication.status === "blocked") {
+        blockedByMusicBrain += 1;
+        return null;
+      }
+
+      // IMPORTANT :
+      // À partir d'ici MixParty ne "répare" plus rien.
+      // Le nom d'artiste et le titre viennent du MusicBrain nettoyé.
       return {
         videoId: entry.videoId,
-
-        // On privilégie aussi le titre validé par LRCLIB pour éviter
-        // les titres pollués par des chaînes ou descriptions YouTube.
-        title:
-          entry.matchedTrackName ||
-          song.title ||
-          song.rawTitle ||
-          "Titre inconnu",
-
+        title: song.title || song.rawTitle || entry.matchedTrackName || "Titre inconnu",
         rawTitle: song.rawTitle || song.title || "",
-        artistName: resolvedArtistName,
+        artistName: song.artistName || "Artiste inconnu",
         thumbnail: song.thumbnail || "",
         durationSeconds: Number(song.durationSeconds || entry.matchedDuration || 0),
         lrclibId: entry.lrclibId || null,
@@ -6257,16 +6272,7 @@ app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
         matchedTrackName: entry.matchedTrackName || "",
         matchedArtistName: entry.matchedArtistName || "",
         matchedAlbumName: entry.matchedAlbumName || "",
-
-        // Diagnostic utile pour vérifier d'où vient l'artiste.
-        karaokeArtistSource:
-          resolvedArtistName === String(entry.matchedArtistName || "").trim()
-            ? "LRCLIB"
-            : resolvedArtistName === inferKaraokeArtistFromRawTitle(song)
-              ? "RAW_TITLE"
-              : resolvedArtistName === String(song.artistName || "").trim()
-                ? "MUSICBRAIN"
-                : "UNCLASSIFIED",
+        musicBrainPublicationStatus: publication.status,
       };
     })
     .filter(Boolean)
@@ -6293,9 +6299,14 @@ app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
   const pageItems = items.slice(offset, offset + limit);
 
   return res.json({
-    totalReady: Object.values(karaokeLyricsAudit.entries).filter(
-      (entry) => entry.kind === "synced" && Boolean(musicBrain.songs[entry.videoId])
-    ).length,
+    // Nombre LRCLIB brut : utile pour l'admin.
+    totalSynced: syncedEntries.length,
+
+    // Nombre réellement publié dans MixParty après validation MusicBrain.
+    totalReady: items.length,
+    heldForReview,
+    blockedByMusicBrain,
+
     matched: items.length,
     returned: pageItems.length,
     offset,
@@ -6775,6 +6786,7 @@ type MusicBrainArtistRepairProposal = {
 function isSuspiciousArtistName(value: unknown) {
   const artist = cleanArtistName(String(value || ""));
   const key = normalizeMusicQuery(artist);
+  const compact = key.replace(/\s+/g, "");
 
   if (!key) return true;
   if (/^(unknown|inconnu|artiste inconnu|unknown artist)$/i.test(artist)) return true;
@@ -6785,7 +6797,17 @@ function isSuspiciousArtistName(value: unknown) {
   // Les noms très courts sont seulement suspects, jamais supprimés automatiquement.
   if (key.length <= 2) return true;
 
-  return /^(music|musique|official|officiel|topic|audio|video|records?|recordings?|channel|youtube)$/i.test(artist);
+  // Chaînes / agrégateurs de paroles et de repost déjà rencontrés dans MusicBrain.
+  // Ils sont conservés pour contrôle : ils ne sont PAS supprimés automatiquement.
+  if (
+    /^(7clouds?|clouds?|lyrics?|lyricsmusic|music|musique|official|officiel|topic|audio|video|records?|recordings?|channel|youtube)$/i.test(
+      compact
+    )
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 function validRepairArtist(value: unknown) {
@@ -7009,6 +7031,130 @@ function musicBrainArtistRepairReport() {
     unresolved: unresolved.slice(0, 1000),
     note:
       "Aucun appel YouTube. Seules les réparations avec preuve forte peuvent être appliquées automatiquement. Les propositions basées sur le titre seul restent manuelles.",
+  };
+}
+
+type MusicBrainPublicationStatus =
+  | "ready"
+  | "review"
+  | "blocked";
+
+type MusicBrainPublicationDecision = {
+  status: MusicBrainPublicationStatus;
+  reason: string;
+  proposedArtistName?: string;
+};
+
+function musicBrainPublicationDecision(song: MusicBrainSong): MusicBrainPublicationDecision {
+  const learning = musicBrainLearningDecision({
+    artistName: song.artistName,
+    channelTitle: song.channelTitle,
+    title: song.title,
+    rawTitle: song.rawTitle,
+    metadataSource: song.metadataSource,
+    metadataConfidence: song.metadataConfidence,
+  });
+
+  // Erreur évidente déjà reconnue par le moteur MusicBrain.
+  if (!learning.learn) {
+    return {
+      status: "blocked",
+      reason: learning.reason || "musicbrain_rejected",
+    };
+  }
+
+  const currentArtist = cleanArtistName(song.artistName || "");
+  const currentArtistKey = normalizeMusicQuery(currentArtist);
+  const titleArtist = artistFromTitlePrefix(song.rawTitle || song.title || "");
+  const titleArtistKey = normalizeMusicQuery(titleArtist);
+  const channelKey = normalizeMusicQuery(song.channelTitle || "");
+
+  // Cas typique 7clouds / chaîne de paroles :
+  // MusicBrain a pris la chaîne comme artiste alors que le titre YouTube
+  // commence clairement par un autre artiste.
+  const channelLooksLikeCurrentArtist =
+    Boolean(
+      currentArtistKey &&
+      channelKey &&
+      (channelKey.includes(currentArtistKey) || currentArtistKey.includes(channelKey))
+    );
+
+  const titlePointsToAnotherArtist =
+    Boolean(
+      titleArtistKey &&
+      currentArtistKey &&
+      titleArtistKey !== currentArtistKey &&
+      validRepairArtist(titleArtist) &&
+      !repairArtistLooksMulti(titleArtist)
+    );
+
+  if (
+    isSuspiciousArtistName(currentArtist) ||
+    (channelLooksLikeCurrentArtist && titlePointsToAnotherArtist)
+  ) {
+    const repair = proposeMusicBrainArtistRepair(song);
+
+    if (repair?.level === "safe") {
+      return {
+        status: "review",
+        reason: "safe_repair_available",
+        proposedArtistName: repair.proposedArtistName,
+      };
+    }
+
+    if (repair?.level === "review") {
+      return {
+        status: "review",
+        reason: "artist_repair_requires_validation",
+        proposedArtistName: repair.proposedArtistName,
+      };
+    }
+
+    if (titlePointsToAnotherArtist) {
+      return {
+        status: "review",
+        reason: "artist_conflicts_with_youtube_title",
+        proposedArtistName: titleArtist,
+      };
+    }
+
+    return {
+      status: "review",
+      reason: "suspicious_artist_identity",
+    };
+  }
+
+  // Le système existant considère déjà QUERY_FALLBACK et les métadonnées
+  // insuffisamment confirmées comme "fiable_a_verifier".
+  if (learning.reason === "fiable_a_verifier") {
+    return {
+      status: "review",
+      reason: "musicbrain_requires_review",
+    };
+  }
+
+  return {
+    status: "ready",
+    reason: "musicbrain_validated",
+  };
+}
+
+function musicBrainPublicationSummary() {
+  const summary = {
+    ready: 0,
+    review: 0,
+    blocked: 0,
+  };
+
+  for (const song of Object.values(musicBrain.songs)) {
+    const decision = musicBrainPublicationDecision(song);
+    summary[decision.status] += 1;
+  }
+
+  return {
+    generatedAt: Date.now(),
+    ...summary,
+    total: summary.ready + summary.review + summary.blocked,
   };
 }
 
@@ -7574,6 +7720,11 @@ function cleanMusicBrainDatabase() {
     remainingArtists: Object.keys(musicBrain.artists).length,
   };
 }
+
+
+app.get("/partybrain/musicbrain-publication/status", (_req, res) => {
+  return res.json(musicBrainPublicationSummary());
+});
 
 
 app.post("/partybrain/maintenance/musicbrain-artist-repair/apply-selected", (req, res) => {
