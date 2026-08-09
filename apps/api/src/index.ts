@@ -127,6 +127,8 @@ type MusicBrainSong = {
   coverAttempts?: number;
   manualValidatedAt?: number;
   manualValidationCategory?: string;
+  autoAcceptedAt?: number;
+  autoAcceptReason?: string;
 };
 
 type MusicBrainArtistLink = {
@@ -7516,6 +7518,16 @@ function musicBrainPublicationDecision(song: MusicBrainSong): MusicBrainPublicat
     };
   }
 
+  if (song.autoAcceptedAt) {
+    return {
+      status: "ready",
+      reason: song.autoAcceptReason || "auto_accept_v35",
+      consensusResolution: "auto_validated",
+      consensusConfidence: 98,
+      consensusSignals: ["CURRENT"],
+    };
+  }
+
   const consensus = musicBrainArtistConsensus(song);
 
   if (consensus.resolution === "auto_fixable") {
@@ -7711,6 +7723,252 @@ function musicBrainThirdPassDecision(song: MusicBrainSong) {
   };
 }
 
+
+type MusicBrainAutoAcceptV35Action = "validate_current" | "correct_artist" | "manual";
+
+type MusicBrainAutoAcceptV35Decision = {
+  action: MusicBrainAutoAcceptV35Action;
+  confidence: number;
+  reason: string;
+  proposedArtistName?: string;
+  category: MusicBrainManualReviewCategory;
+};
+
+function musicBrainAutoAcceptV35Decision(
+  song: MusicBrainSong
+): MusicBrainAutoAcceptV35Decision {
+  const publication = musicBrainPublicationDecision(song);
+
+  if (publication.consensusResolution !== "manual_review") {
+    return {
+      action: "manual",
+      confidence: publication.consensusConfidence,
+      reason: "already_resolved",
+      category: "other",
+    };
+  }
+
+  const category = musicBrainManualReviewCategory(song);
+  const currentArtist = cleanArtistName(song.artistName || "");
+  const currentKey = normalizeMusicQuery(currentArtist);
+  const rawTitle = String(song.rawTitle || song.title || "");
+  const rawKey = normalizeMusicQuery(rawTitle);
+  const lrclibEntry = karaokeLyricsAudit.entries[song.videoId];
+  const lrclibArtist =
+    lrclibEntry?.kind === "synced"
+      ? cleanArtistName(lrclibEntry.matchedArtistName || "")
+      : "";
+
+  const proposedArtist = cleanArtistName(publication.proposedArtistName || "");
+  const proposedValid =
+    Boolean(proposedArtist) &&
+    validConsensusArtist(proposedArtist) &&
+    !repairArtistLooksMulti(proposedArtist);
+
+  const lrclibSupportsProposed =
+    proposedValid &&
+    Boolean(lrclibArtist) &&
+    (
+      sameMusicBrainArtist(lrclibArtist, proposedArtist) ||
+      artistParticipantMatch(lrclibArtist, proposedArtist)
+    );
+
+  const lrclibSupportsCurrent =
+    Boolean(lrclibArtist) &&
+    Boolean(currentArtist) &&
+    (
+      sameMusicBrainArtist(lrclibArtist, currentArtist) ||
+      artistParticipantMatch(lrclibArtist, currentArtist)
+    );
+
+  const lrclibContradictsCurrent =
+    Boolean(lrclibArtist) &&
+    Boolean(currentArtist) &&
+    !lrclibSupportsCurrent;
+
+  const lrclibContradictsProposed =
+    Boolean(lrclibArtist) &&
+    proposedValid &&
+    !lrclibSupportsProposed;
+
+  // 1) Une correction déjà proposée par MusicBrain devient automatique
+  // dès qu'elle est assez confiante ET qu'aucune source forte ne la contredit.
+  if (
+    proposedValid &&
+    publication.consensusConfidence >= 80 &&
+    !lrclibContradictsProposed
+  ) {
+    const enoughEvidence =
+      publication.consensusSignals.length >= 2 ||
+      lrclibSupportsProposed ||
+      category === "metadata_conflict" ||
+      category === "aggregator_channel";
+
+    if (enoughEvidence) {
+      return {
+        action: "correct_artist",
+        proposedArtistName: proposedArtist,
+        confidence: Math.max(90, publication.consensusConfidence),
+        reason: lrclibSupportsProposed
+          ? "v35_proposal_confirmed_by_lrclib"
+          : "v35_high_confidence_proposal_no_contradiction",
+        category,
+      };
+    }
+  }
+
+  // 2) QUERY_FALLBACK : si l'artiste actuel est réellement écrit dans le titre
+  // et qu'aucun LRCLIB ne le contredit, on arrête de demander une validation humaine.
+  if (
+    category === "query_fallback" &&
+    currentKey &&
+    rawKey.includes(currentKey) &&
+    !lrclibContradictsCurrent &&
+    publication.consensusConfidence >= 70
+  ) {
+    return {
+      action: "validate_current",
+      confidence: Math.max(90, publication.consensusConfidence),
+      reason: lrclibSupportsCurrent
+        ? "v35_query_fallback_title_lrclib_confirmed"
+        : "v35_query_fallback_title_confirmed_no_contradiction",
+      category,
+    };
+  }
+
+  // 3) LRCLIB confirme exactement l'artiste actuel : validation automatique,
+  // même si la source initiale était faible.
+  if (
+    lrclibSupportsCurrent &&
+    publication.consensusConfidence >= 60
+  ) {
+    return {
+      action: "validate_current",
+      confidence: Math.max(92, publication.consensusConfidence),
+      reason: "v35_current_artist_confirmed_by_lrclib",
+      category,
+    };
+  }
+
+  // 4) Les cas réellement contradictoires restent manuels :
+  // exemple MHD vs Black Eyed Peas/Shakira.
+  return {
+    action: "manual",
+    confidence: publication.consensusConfidence,
+    reason: lrclibContradictsCurrent
+      ? "v35_strong_lrclib_conflict"
+      : "v35_not_enough_evidence",
+    proposedArtistName: publication.proposedArtistName,
+    category,
+  };
+}
+
+function applyMusicBrainAutoAcceptV35Correction(
+  song: MusicBrainSong,
+  proposedArtistName: string,
+  reason: string
+) {
+  const newArtistName = cleanArtistName(proposedArtistName);
+  const newArtistKey = normalizeMusicQuery(newArtistName);
+
+  if (!newArtistKey || !validConsensusArtist(newArtistName)) return false;
+
+  const oldArtistKey = song.artistKey;
+
+  if (oldArtistKey !== newArtistKey) {
+    const oldArtist = musicBrain.artists[oldArtistKey];
+    if (oldArtist?.songs?.[song.videoId]) {
+      delete oldArtist.songs[song.videoId];
+    }
+
+    song.artistName = newArtistName;
+    song.artistKey = newArtistKey;
+    song.title = cleanTrackTitle(song.rawTitle || song.title, newArtistName);
+
+    const now = Date.now();
+    const targetArtist = musicBrain.artists[newArtistKey] || {
+      key: newArtistKey,
+      name: newArtistName,
+      aliases: [],
+      collaborators: {},
+      firstSeenAt: song.firstSeenAt || now,
+      lastSeenAt: now,
+      searchCount: 0,
+      songs: {},
+    };
+
+    targetArtist.name = newArtistName;
+    targetArtist.lastSeenAt = now;
+    targetArtist.songs[song.videoId] = song;
+    musicBrain.artists[newArtistKey] = targetArtist;
+    removeEmptyMusicBrainArtist(oldArtistKey);
+  }
+
+  song.manualValidatedAt = undefined;
+  song.manualValidationCategory = undefined;
+  song.autoAcceptedAt = Date.now();
+  song.autoAcceptReason = reason;
+  song.metadataConfidence = Math.max(Number(song.metadataConfidence || 0), 95);
+  song.lastSeenAt = Date.now();
+
+  const karaokeEntry = karaokeAudit.entries[song.videoId];
+  if (karaokeEntry) karaokeEntry.sourceArtistName = newArtistName;
+
+  return true;
+}
+
+function musicBrainAutoAcceptV35Preview() {
+  let validateCurrent = 0;
+  let correctArtist = 0;
+  let stillManual = 0;
+
+  const examples: any[] = [];
+
+  for (const song of Object.values(musicBrain.songs)) {
+    const publication = musicBrainPublicationDecision(song);
+    if (publication.consensusResolution !== "manual_review") continue;
+
+    const decision = musicBrainAutoAcceptV35Decision(song);
+
+    if (decision.action === "validate_current") validateCurrent += 1;
+    else if (decision.action === "correct_artist") correctArtist += 1;
+    else stillManual += 1;
+
+    if (examples.length < 300) {
+      examples.push({
+        videoId: song.videoId,
+        title: song.title,
+        artistName: song.artistName,
+        channelTitle: song.channelTitle || "",
+        action: decision.action,
+        proposedArtistName: decision.proposedArtistName || "",
+        confidence: decision.confidence,
+        reason: decision.reason,
+        category: decision.category,
+        lrclibArtistName:
+          karaokeLyricsAudit.entries[song.videoId]?.kind === "synced"
+            ? karaokeLyricsAudit.entries[song.videoId]?.matchedArtistName || ""
+            : "",
+      });
+    }
+  }
+
+  return {
+    generatedAt: Date.now(),
+    validateCurrent,
+    correctArtist,
+    autoAcceptable: validateCurrent + correctArtist,
+    stillManual,
+    totalReviewed: validateCurrent + correctArtist + stillManual,
+    examples,
+    policy: {
+      minimumProposalConfidence: 80,
+      note:
+        "V3.5 accepte automatiquement les propositions cohérentes sans contradiction forte. Les conflits LRCLIB réels restent manuels.",
+    },
+  };
+}
+
 function musicBrainPublicationSummary() {
   const summary = {
     ready: 0,
@@ -7824,6 +8082,8 @@ function applyMusicBrainArtistRepair(proposal: MusicBrainArtistRepairProposal) {
   song.artistKey = newArtistKey;
   song.manualValidatedAt = undefined;
   song.manualValidationCategory = undefined;
+  song.autoAcceptedAt = undefined;
+  song.autoAcceptReason = undefined;
   song.title = cleanTrackTitle(song.rawTitle || song.title, newArtistName);
   song.metadataConfidence = Math.max(
     Number(song.metadataConfidence || 0),
@@ -8753,6 +9013,73 @@ app.post("/partybrain/maintenance/musicbrain-category-validation/apply", (req, r
         category as MusicBrainManualReviewCategory
       )} ». ${remainingInCategory} restent à vérifier dans cette catégorie.`,
     summary: musicBrainPublicationSummary(),
+  });
+});
+
+
+app.get("/partybrain/musicbrain-auto-accept-v35/preview", (_req, res) => {
+  return res.json(musicBrainAutoAcceptV35Preview());
+});
+
+app.post("/partybrain/maintenance/musicbrain-auto-accept-v35/run", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  const before = musicBrainAutoAcceptV35Preview();
+
+  let validatedCurrent = 0;
+  let correctedArtist = 0;
+
+  const candidates = Object.values(musicBrain.songs).filter((song) => {
+    const publication = musicBrainPublicationDecision(song);
+    return publication.consensusResolution === "manual_review";
+  });
+
+  for (const song of candidates) {
+    const decision = musicBrainAutoAcceptV35Decision(song);
+
+    if (decision.action === "validate_current") {
+      song.autoAcceptedAt = Date.now();
+      song.autoAcceptReason = decision.reason;
+      song.metadataConfidence = Math.max(
+        Number(song.metadataConfidence || 0),
+        decision.confidence,
+        90
+      );
+      song.lastSeenAt = Date.now();
+      validatedCurrent += 1;
+      continue;
+    }
+
+    if (
+      decision.action === "correct_artist" &&
+      decision.proposedArtistName &&
+      applyMusicBrainAutoAcceptV35Correction(
+        song,
+        decision.proposedArtistName,
+        decision.reason
+      )
+    ) {
+      correctedArtist += 1;
+    }
+  }
+
+  musicBrain.updatedAt = Date.now();
+  saveMusicBrain();
+  saveKaraokeAudit();
+
+  const after = musicBrainAutoAcceptV35Preview();
+
+  return res.json({
+    ok: true,
+    validatedCurrent,
+    correctedArtist,
+    processed: validatedCurrent + correctedArtist,
+    before,
+    after,
+    message:
+      `${validatedCurrent + correctedArtist} morceau(x) accepté(s) automatiquement par MusicBrain V3.5 : ` +
+      `${validatedCurrent} validation(s) directe(s), ${correctedArtist} correction(s) artiste. ` +
+      `${after.stillManual} cas restent réellement contradictoires.`,
   });
 });
 

@@ -214,6 +214,19 @@ type MusicBrainDiagnosticData = {
   }>;
 };
 
+type MusicBrainAutoAcceptV35Preview = {
+  generatedAt: number;
+  validateCurrent: number;
+  correctArtist: number;
+  autoAcceptable: number;
+  stillManual: number;
+  totalReviewed: number;
+  policy: {
+    minimumProposalConfidence: number;
+    note: string;
+  };
+};
+
 type LiveUsersData = {
   generatedAt: number;
   onlineWindowMs: number;
@@ -474,6 +487,10 @@ export default function MusicBrainAdminPage() {
   const [autoFixLoading, setAutoFixLoading] = useState(false);
   const [autoFixMessage, setAutoFixMessage] = useState("");
   const [autoFixError, setAutoFixError] = useState("");
+  const [autoAcceptV35, setAutoAcceptV35] = useState<MusicBrainAutoAcceptV35Preview | null>(null);
+  const [autoAcceptV35Loading, setAutoAcceptV35Loading] = useState(false);
+  const [autoAcceptV35Message, setAutoAcceptV35Message] = useState("");
+  const [autoAcceptV35Error, setAutoAcceptV35Error] = useState("");
 
   const [activeAdminTab, setActiveAdminTab] = useState<
     | "overview"
@@ -623,6 +640,82 @@ export default function MusicBrainAdminPage() {
       );
     } finally {
       setDiagnosticValidationLoading(false);
+    }
+  }
+
+  async function loadAutoAcceptV35Preview() {
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/musicbrain-auto-accept-v35/preview`,
+        { cache: "no-store" }
+      );
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Analyse Auto-Accept V3.5 indisponible");
+      }
+      setAutoAcceptV35(data);
+      setAutoAcceptV35Error("");
+    } catch (err) {
+      setAutoAcceptV35Error(
+        err instanceof Error
+          ? err.message
+          : "Analyse Auto-Accept V3.5 indisponible"
+      );
+    }
+  }
+
+  async function runAutoAcceptV35() {
+    if (!adminToken.trim()) {
+      setAutoAcceptV35Error(
+        "Entre le code administrateur Railway avant de lancer Auto-Accept."
+      );
+      return;
+    }
+
+    const count = Number(autoAcceptV35?.autoAcceptable || 0);
+    if (count <= 0) {
+      setAutoAcceptV35Error("Aucun cas supplémentaire n’est auto-acceptable.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Lancer Auto-Accept V3.5 sur ${count} morceau(x) ? Les conflits forts LRCLIB resteront volontairement manuels.`
+    );
+    if (!confirmed) return;
+
+    setAutoAcceptV35Loading(true);
+    setAutoAcceptV35Message("");
+    setAutoAcceptV35Error("");
+
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/maintenance/musicbrain-auto-accept-v35/run`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-partybrain-admin-token": adminToken.trim(),
+          },
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Auto-Accept V3.5 impossible");
+      }
+
+      setAutoAcceptV35Message(data?.message || "Auto-Accept V3.5 terminé.");
+      await loadAutoAcceptV35Preview();
+      await loadPublicationQuality("review", "", selectedDiagnosticCategory || "");
+      await loadMusicBrainQualityDiagnostic();
+      await loadStats();
+      await loadKaraokeReadySongs("");
+    } catch (err) {
+      setAutoAcceptV35Error(
+        err instanceof Error ? err.message : "Auto-Accept V3.5 impossible"
+      );
+    } finally {
+      setAutoAcceptV35Loading(false);
     }
   }
 
@@ -1435,6 +1528,7 @@ export default function MusicBrainAdminPage() {
     if (activeAdminTab === "quality") {
       void loadPublicationQuality(publicationQualityFilter, publicationQualitySearch);
       void loadMusicBrainQualityDiagnostic();
+      void loadAutoAcceptV35Preview();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeAdminTab, publicationQualityFilter, selectedDiagnosticCategory]);
@@ -2591,7 +2685,7 @@ export default function MusicBrainAdminPage() {
                       </div>
                       <div>
                         <p className="text-xs font-black uppercase tracking-[.22em] text-violet-300">
-                          MusicBrain Quality V3.4
+                          MusicBrain Quality V3.5
                         </p>
                         <h2 className="mt-1 text-2xl font-black">
                           MusicBrain applique ses décisions sûres, toi seulement en dernier
@@ -2733,7 +2827,55 @@ export default function MusicBrainAdminPage() {
                 </div>
 
                 
-                <div className="mt-5 rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/[0.045] p-4 sm:p-5">
+                                <div className="mt-5 rounded-2xl border border-emerald-300/15 bg-emerald-500/[0.055] p-4 sm:p-5">
+                  <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[.16em] text-emerald-200">
+                        Auto-Accept V3.5
+                      </p>
+                      <p className="mt-1 text-sm font-black">
+                        MusicBrain peut encore accepter automatiquement{" "}
+                        {number.format(autoAcceptV35?.autoAcceptable || 0)} cas.
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-white/40">
+                        {number.format(autoAcceptV35?.validateCurrent || 0)} identité(s) déjà cohérente(s) seront validées •{" "}
+                        {number.format(autoAcceptV35?.correctArtist || 0)} artiste(s) seront corrigé(s) •{" "}
+                        {number.format(autoAcceptV35?.stillManual || 0)} conflit(s) fort(s) resteront pour toi.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void runAutoAcceptV35()}
+                      disabled={
+                        autoAcceptV35Loading ||
+                        Number(autoAcceptV35?.autoAcceptable || 0) <= 0
+                      }
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-500/15 px-4 py-3 text-sm font-black text-emerald-100 disabled:opacity-40"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      {autoAcceptV35Loading
+                        ? "Auto-Accept en cours…"
+                        : `Accepter automatiquement ${number.format(
+                            autoAcceptV35?.autoAcceptable || 0
+                          )} cas`}
+                    </button>
+                  </div>
+
+                  {autoAcceptV35Message ? (
+                    <p className="mt-3 rounded-xl border border-emerald-300/20 bg-emerald-500/[0.08] p-3 text-xs font-bold text-emerald-200">
+                      {autoAcceptV35Message}
+                    </p>
+                  ) : null}
+
+                  {autoAcceptV35Error ? (
+                    <p className="mt-3 rounded-xl border border-red-300/20 bg-red-500/[0.08] p-3 text-xs font-bold text-red-200">
+                      {autoAcceptV35Error}
+                    </p>
+                  ) : null}
+                </div>
+
+<div className="mt-5 rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/[0.045] p-4 sm:p-5">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div>
                       <p className="text-xs font-black uppercase tracking-[.16em] text-fuchsia-200">
