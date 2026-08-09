@@ -1,41 +1,19 @@
-# MixParty Karaoke Sync Worker V1.1 — Railway Light
+# MixParty Karaoke Sync Worker V1.3 Low-Memory
 
-Cette variante vise à réduire fortement l'image Docker Railway.
+Cette version corrige le crash Railway `Killed` observé pendant le premier vrai test.
 
-## Pourquoi la V1 était lourde
+Optimisations :
+- Whisper `base`
+- CPU / int8
+- batch size 1
+- un seul thread
+- conversion préalable en mono 16 kHz
+- fenêtre d'alignement légèrement réduite
+- libération explicite de la mémoire après chaque morceau
 
-`pip install whisperx` peut résoudre la pile PyTorch Linux avec des dépendances
-CUDA/NVIDIA très volumineuses. La V1.1 installe explicitement les wheels
-**CPU-only** de PyTorch avant WhisperX.
+Les endpoints restent identiques :
+- `/health`
+- `/align`
+- `/align-upload`
 
-## Fichiers à remplacer
-
-Remplace entièrement le contenu de :
-
-`apps/karaoke-sync-worker`
-
-par les fichiers de ce dossier, puis :
-
-```powershell
-cd C:\Dev\MixParty
-git add apps/karaoke-sync-worker
-git commit -m "fix: lighten karaoke sync worker for Railway"
-git push
-```
-
-Railway garde le Root Directory :
-
-`/apps/karaoke-sync-worker`
-
-## Variables
-
-Aucune variable n'est obligatoire pour le simple démarrage.
-
-Valeurs conseillées :
-- `WHISPER_MODEL=small`
-- `WHISPER_DEVICE=cpu`
-- `WHISPER_COMPUTE_TYPE=int8`
-- `KARAOKE_MIN_CONFIDENCE=92`
-
-Le modèle Whisper n'est pas embarqué dans l'image Docker : il sera récupéré
-au premier véritable traitement si nécessaire.
+Aucune modification de l'API MixParty ou de la page MusicBrain n'est nécessaire.
