@@ -2440,11 +2440,27 @@ async function removeSong(index: number, song: Song) {
   }
 
   function handleMobileTouchStart(event: React.TouchEvent<HTMLElement>) {
+    const target = event.target as HTMLElement | null;
+
+    // Les zones de défilement horizontal (ex. alphabet Karaoké A-Z)
+    // doivent garder le geste pour elles-mêmes et ne jamais changer d'onglet.
+    if (target?.closest?.('[data-mixparty-horizontal-scroll="true"]')) {
+      mobileSwipeStartRef.current = null;
+      return;
+    }
+
     const touch = event.touches[0];
     mobileSwipeStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
   }
 
   function handleMobileTouchEnd(event: React.TouchEvent<HTMLElement>) {
+    const target = event.target as HTMLElement | null;
+
+    if (target?.closest?.('[data-mixparty-horizontal-scroll="true"]')) {
+      mobileSwipeStartRef.current = null;
+      return;
+    }
+
     const start = mobileSwipeStartRef.current;
     const touch = event.changedTouches[0];
     mobileSwipeStartRef.current = null;
@@ -2532,7 +2548,12 @@ async function removeSong(index: number, song: Song) {
             ) : null}
           </div>
 
-          <div className="mt-4 flex w-full min-w-0 max-w-full gap-1.5 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div
+            data-mixparty-horizontal-scroll="true"
+            onTouchStart={(event) => event.stopPropagation()}
+            onTouchEnd={(event) => event.stopPropagation()}
+            className="mt-4 flex w-full min-w-0 max-w-full touch-pan-x gap-1.5 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
             <button
               type="button"
               onClick={() => {
