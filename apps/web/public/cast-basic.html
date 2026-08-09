@@ -24,7 +24,7 @@
     html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#05050d;color:#fff;font-family:Arial,Helvetica,sans-serif}
     body{position:relative}
     .hidden{display:none!important}
-    .backdrop{position:fixed;inset:-3%;background-size:cover;background-position:center;filter:blur(28px) saturate(1.18);opacity:.22;transform:scale(1.06);transition:background-image .7s ease}
+    .backdrop{position:fixed;inset:-3%;background-size:cover;background-position:center;filter:blur(12px) saturate(1.08);opacity:.18;transform:scale(1.04);transition:background-image .7s ease}
     .veil{position:fixed;inset:0;background:
       radial-gradient(circle at 18% 20%,rgba(80,70,255,.22),transparent 30%),
       radial-gradient(circle at 64% 18%,rgba(236,72,153,.16),transparent 30%),
@@ -45,7 +45,7 @@
     .sync{font-size:clamp(9px,.64vw,11px);font-weight:900;color:#a7f3d0;white-space:nowrap}
 
     .main{min-height:0;display:grid;grid-template-columns:minmax(0,1.9fr) minmax(290px,.72fr);gap:1.3vw}
-    .stage,.queue-panel{min-height:0;border:1px solid var(--border);border-radius:1.55vw;background:rgba(7,5,17,.48);box-shadow:0 2.2vh 7vh rgba(0,0,0,.26);backdrop-filter:blur(18px)}
+    .stage,.queue-panel{min-height:0;border:1px solid var(--border);border-radius:1.55vw;background:rgba(7,5,17,.48);box-shadow:0 2.2vh 7vh rgba(0,0,0,.26);/* backdrop-filter removed for Cast performance */}
     .stage{position:relative;overflow:hidden;padding:1.3vw}
     .stage-bg{position:absolute;inset:0;background:
       linear-gradient(90deg,rgba(8,5,18,.82),rgba(8,5,18,.24) 46%,rgba(8,5,18,.54)),
@@ -58,8 +58,8 @@
     .track h1{margin:1.1vh 0 0;font-size:clamp(34px,3.9vw,72px);line-height:.97;letter-spacing:-.05em;max-height:1.95em;overflow:hidden;text-wrap:balance}
     .track .artist{margin-top:1vh;font-size:clamp(18px,1.65vw,30px);font-weight:800;color:rgba(255,255,255,.68);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .progress-row{margin-top:3vh;display:grid;grid-template-columns:4.3vw 1fr 4.3vw;gap:.7vw;align-items:center;font-size:clamp(9px,.62vw,12px);font-weight:900;color:rgba(255,255,255,.6)}
-    .progress{height:.48vh;min-height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#7c3aed,#ec4899,#fb923c);box-shadow:0 0 1.2vw rgba(236,72,153,.42);transition:width .18s linear}
-    .wave{height:8.2vh;margin-top:1.8vh;display:flex;align-items:center;gap:.22vw;overflow:hidden}.wave span{flex:1;min-width:2px;border-radius:999px;background:linear-gradient(to top,#7c3aed,#ec4899,#fb923c);opacity:.60;animation:wave 1.05s ease-in-out infinite;transform-origin:center}
+    .progress{height:.48vh;min-height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.progress i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left center;background:linear-gradient(90deg,#7c3aed,#ec4899,#fb923c);box-shadow:0 0 1.2vw rgba(236,72,153,.42);will-change:transform}
+    .wave{height:8.2vh;margin-top:1.8vh;display:flex;align-items:center;gap:.22vw;overflow:hidden}.wave span{flex:1;min-width:3px;border-radius:999px;background:linear-gradient(to top,#7c3aed,#ec4899,#fb923c);opacity:.58;animation:wave 1.55s cubic-bezier(.4,0,.2,1) infinite;transform-origin:center;will-change:transform;transform:translateZ(0) scaleY(.30)}
     @keyframes wave{0%,100%{transform:scaleY(.30);opacity:.34}50%{transform:scaleY(1);opacity:.92}}
     .meta{margin-top:1.4vh;display:flex;gap:.6vw;flex-wrap:wrap}.chip{padding:.72vh .75vw;border:1px solid var(--border);border-radius:999px;background:rgba(255,255,255,.045);font-size:clamp(8px,.58vw,11px);font-weight:900;color:rgba(255,255,255,.68)}
 
@@ -75,7 +75,7 @@
     .lyrics .prev{font-size:clamp(16px,1.45vw,26px);color:rgba(255,255,255,.16);font-weight:900;max-width:88vw}
     .lyrics .current{margin-top:2vh;font-size:clamp(42px,5.6vw,100px);line-height:1.02;font-weight:900;letter-spacing:-.045em;background:linear-gradient(90deg,#f0abfc,#fbcfe8,#fed7aa);-webkit-background-clip:text;background-clip:text;color:transparent;max-width:88vw;max-height:2.05em;overflow:hidden;text-wrap:balance}
     .lyrics .next{margin-top:2.6vh;font-size:clamp(26px,3vw,54px);line-height:1.05;font-weight:900;color:rgba(245,208,254,.38);max-width:84vw;max-height:2.1em;overflow:hidden;text-wrap:balance}
-    .lyric-progress{margin-top:2.2vh;width:min(62vw,900px);height:.48vh;min-height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.lyric-progress i{display:block;height:100%;background:linear-gradient(90deg,#7c3aed,#ec4899,#fb923c);width:0;transition:width .06s linear}
+    .lyric-progress{margin-top:2.2vh;width:min(62vw,900px);height:.48vh;min-height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.lyric-progress i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left center;background:linear-gradient(90deg,#7c3aed,#ec4899,#fb923c);will-change:transform}
     .kstatus{font-size:clamp(9px,.62vw,11px);font-weight:900;color:#a7f3d0}
 
     @media (max-aspect-ratio: 16/10){
@@ -174,8 +174,16 @@
     let lyricsVideoId = "";
     let playback = {videoId:"",time:0,duration:0,state:2,receivedAt:Date.now()};
     let displayClock = {time:0,lastAt:performance.now(),initialized:false};
+    let renderedLyricIndex = -999;
+    let lastUiTick = 0;
 
-    for(let i=0;i<56;i++){const s=document.createElement("span");s.style.height=(24+((i*23)%72))+"%";s.style.animationDelay=((i%14)*62)+"ms";$("wave").appendChild(s)}
+    for(let i=0;i<24;i++){
+      const s=document.createElement("span");
+      s.style.height=(28+((i*29)%68))+"%";
+      s.style.animationDelay=(-((i%12)*110))+"ms";
+      s.style.animationDuration=(1.35+((i%7)*0.07))+"s";
+      $("wave").appendChild(s);
+    }
 
     function esc(value){return String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
     function fmt(sec){sec=Math.max(0,Math.floor(Number(sec)||0));return Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0")}
@@ -264,22 +272,32 @@
       }
 
       const drift=target-displayClock.time;
+      const absDrift=Math.abs(drift);
 
-      if(Math.abs(drift)>1.4){
+      // Avoid visible micro-corrections on low-power Cast devices.
+      if(absDrift>2.0){
         displayClock.time=target;
-      }else{
-        displayClock.time+=drift*Math.min(.18,dt*4.2);
+      }else if(absDrift>0.22){
+        displayClock.time+=drift*Math.min(.055,dt*1.35);
       }
 
       return Math.max(0,displayClock.time);
     }
 
-    function renderPlayback(){
+    function renderPlayback(now){
       const t=currentPlaybackTime();
       const duration=Number(playback.duration||party?.currentSong?.durationSeconds||0);
-      $("time-current").textContent=fmt(t);
-      $("time-total").textContent=duration>0?fmt(duration):"LIVE";
-      $("progress").style.width=(duration>0?Math.min(100,Math.max(0,t/duration*100)):0)+"%";
+      const ratio=duration>0?Math.min(1,Math.max(0,t/duration)):0;
+
+      // Compositor-only animation: much smoother on Chromecast / Mi Box.
+      $("progress").style.transform=`scaleX(${ratio})`;
+
+      if(!lastUiTick || now-lastUiTick>240){
+        lastUiTick=now;
+        $("time-current").textContent=fmt(t);
+        $("time-total").textContent=duration>0?fmt(duration):"LIVE";
+      }
+
       renderLyrics(t);
       requestAnimationFrame(renderPlayback);
     }
@@ -287,7 +305,7 @@
     async function ensureLyrics(){
       const videoId=String(party?.currentSong?.videoId||"");
       if(!videoId||videoId===lyricsVideoId)return;
-      lyricsVideoId=videoId;lyrics=null;
+      lyricsVideoId=videoId;lyrics=null;renderedLyricIndex=-999;
       $("lyric-current").textContent="Chargement des paroles…";$("lyric-next").innerHTML="&nbsp;";
       try{
         const r=await fetch(`/mixparty-api/partybrain/karaoke/lyrics/${encodeURIComponent(videoId)}`,{cache:"no-store"});
@@ -300,13 +318,33 @@
     function renderLyrics(t){
       if(displayMode!=="karaoke"||!lyrics?.available)return;
       const lines=Array.isArray(lyrics.lines)?lyrics.lines:[];
-      let idx=-1;for(let i=0;i<lines.length;i++){if(Number(lines[i].time)<=t+.08)idx=i;else break}
-      const prev=idx>0?lines[idx-1]:null, cur=idx>=0?lines[idx]:null, next=lines[idx+1]||null;
-      $("lyric-prev").textContent=prev?.text||"\u00A0";
-      $("lyric-current").textContent=cur?.text||(next?"♪":"…");
-      $("lyric-next").textContent=next?.text||"\u00A0";
-      let p=0;if(cur&&next){const d=Math.max(.2,Number(next.time)-Number(cur.time));p=Math.min(1,Math.max(0,(t-Number(cur.time))/d))}else if(cur)p=1;
-      $("lyric-bar").style.width=Math.round(p*100)+"%";
+      let idx=-1;
+      for(let i=0;i<lines.length;i++){
+        if(Number(lines[i].time)<=t+.055)idx=i;
+        else break;
+      }
+
+      const prev=idx>0?lines[idx-1]:null;
+      const cur=idx>=0?lines[idx]:null;
+      const next=lines[idx+1]||null;
+
+      // Text layout is expensive on Android TV. Update only when the line changes.
+      if(idx!==renderedLyricIndex){
+        renderedLyricIndex=idx;
+        $("lyric-prev").textContent=prev?.text||"\u00A0";
+        $("lyric-current").textContent=cur?.text||(next?"♪":"…");
+        $("lyric-next").textContent=next?.text||"\u00A0";
+      }
+
+      let p=0;
+      if(cur&&next){
+        const d=Math.max(.2,Number(next.time)-Number(cur.time));
+        p=Math.min(1,Math.max(0,(t-Number(cur.time))/d));
+      }else if(cur){
+        p=1;
+      }
+
+      $("lyric-bar").style.transform=`scaleX(${p})`;
     }
 
     function startParty(code,mode){
