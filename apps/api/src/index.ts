@@ -6126,6 +6126,65 @@ app.get("/partybrain/karaoke/lyrics/:videoId", async (req, res) => {
 
 
 
+function normalizeKaraokeArtistCandidate(value: unknown) {
+  return normalizeMusicQuery(
+    String(value || "")
+      .replace(/[-–—_]+topic$/i, "")
+      .replace(/\b(?:official|lyrics?|paroles|karaok[eé]|music|audio|video|channel)\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+  );
+}
+
+function isGenericKaraokeArtistName(value: unknown) {
+  const normalized = normalizeKaraokeArtistCandidate(value);
+  if (!normalized) return true;
+
+  const compact = normalized.replace(/\s+/g, "");
+
+  const genericPatterns = [
+    /^7clouds?$/,
+    /^clouds?$/,
+    /^cloudmusic$/,
+    /^lyrics?$/,
+    /^lyricsmusic$/,
+    /^music$/,
+    /^musicchannel$/,
+    /^officialmusic$/,
+    /^karaoke$/,
+    /^vevo$/,
+    /^topic$/,
+    /^youtube$/,
+    /^unknown$/,
+    /^artisteinconnu$/,
+  ];
+
+  if (genericPatterns.some((pattern) => pattern.test(compact))) return true;
+
+  return (
+    compact.includes("lyricschannel") ||
+    compact.includes("musicchannel") ||
+    compact.includes("karaokechannel")
+  );
+}
+
+function resolveKaraokeArtistName(song: MusicBrainSong, entry: KaraokeLyricsAuditEntry) {
+  const lrclibArtist = String(entry?.matchedArtistName || "").trim();
+  const musicBrainArtist = String(song?.artistName || "").trim();
+
+  // Pour le catalogue Karaoké, LRCLIB est prioritaire :
+  // il a déjà validé la correspondance titre + artiste + durée.
+  if (lrclibArtist && !isGenericKaraokeArtistName(lrclibArtist)) {
+    return lrclibArtist;
+  }
+
+  if (musicBrainArtist && !isGenericKaraokeArtistName(musicBrainArtist)) {
+    return musicBrainArtist;
+  }
+
+  return lrclibArtist || musicBrainArtist || "Artiste inconnu";
+}
+
 app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
   const q = normalizeMusicQuery(String(req.query?.q || ""));
   const rawLimit = Number(req.query?.limit || 300);
@@ -6137,11 +6196,21 @@ app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
       const song = musicBrain.songs[entry.videoId];
       if (!song) return null;
 
+      const resolvedArtistName = resolveKaraokeArtistName(song, entry);
+
       return {
         videoId: entry.videoId,
-        title: song.title || song.rawTitle || entry.matchedTrackName || "Titre inconnu",
+
+        // On privilégie aussi le titre validé par LRCLIB pour éviter
+        // les titres pollués par des chaînes ou descriptions YouTube.
+        title:
+          entry.matchedTrackName ||
+          song.title ||
+          song.rawTitle ||
+          "Titre inconnu",
+
         rawTitle: song.rawTitle || song.title || "",
-        artistName: song.artistName || entry.matchedArtistName || "Artiste inconnu",
+        artistName: resolvedArtistName,
         thumbnail: song.thumbnail || "",
         durationSeconds: Number(song.durationSeconds || entry.matchedDuration || 0),
         lrclibId: entry.lrclibId || null,
@@ -6149,6 +6218,14 @@ app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
         matchedTrackName: entry.matchedTrackName || "",
         matchedArtistName: entry.matchedArtistName || "",
         matchedAlbumName: entry.matchedAlbumName || "",
+
+        // Diagnostic utile pour vérifier d'où vient l'artiste.
+        karaokeArtistSource:
+          resolvedArtistName === String(entry.matchedArtistName || "").trim()
+            ? "LRCLIB"
+            : resolvedArtistName === String(song.artistName || "").trim()
+              ? "MUSICBRAIN"
+              : "FALLBACK",
       };
     })
     .filter(Boolean)
