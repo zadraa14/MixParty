@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { QRCodeCanvas } from "qrcode.react";
 import { io } from "socket.io-client";
@@ -2323,7 +2323,7 @@ async function removeSong(index: number, song: Song) {
     return score;
   }
 
-  const karaokeArtistGroups = useMemo(() => Array.from(
+  const karaokeArtistGroups = Array.from(
     (karaokeCatalog?.items || []).reduce<
       Map<
         string,
@@ -2396,7 +2396,7 @@ async function removeSong(index: number, song: Song) {
         sensitivity: "base",
         numeric: true,
       })
-    ), [karaokeCatalog?.items]);
+    );
 
   const karaokeUsedLetters = new Set(
     karaokeArtistGroups.map((group) => {
@@ -2412,21 +2412,18 @@ async function removeSong(index: number, song: Song) {
     ...(karaokeUsedLetters.has("#") ? ["#"] : []),
   ];
 
-  const visibleKaraokeArtistGroups = useMemo(
-    () =>
-      karaokeLetterFilter === "ALL"
-        ? karaokeArtistGroups
-        : karaokeArtistGroups.filter((group) => {
-            const first = normalizeKaraokeText(group.artist).charAt(0).toUpperCase();
-            const bucket = /[A-Z]/.test(first) ? first : "#";
-            return bucket === karaokeLetterFilter;
-          }),
-    [karaokeArtistGroups, karaokeLetterFilter]
-  );
+  const visibleKaraokeArtistGroups =
+    karaokeLetterFilter === "ALL"
+      ? karaokeArtistGroups
+      : karaokeArtistGroups.filter((group) => {
+          const first = normalizeKaraokeText(group.artist).charAt(0).toUpperCase();
+          const bucket = /[A-Z]/.test(first) ? first : "#";
+          return bucket === karaokeLetterFilter;
+        });
 
-  const karaokeUniqueSongCount = useMemo(
-    () => karaokeArtistGroups.reduce((total, group) => total + group.songs.length, 0),
-    [karaokeArtistGroups]
+  const karaokeUniqueSongCount = karaokeArtistGroups.reduce(
+    (total, group) => total + group.songs.length,
+    0
   );
 
 
