@@ -4264,24 +4264,179 @@ function musicBrainResultsForQuery(query: string) {
     .sort((a, b) => scoreMusicResult(b, query) - scoreMusicResult(a, query));
 }
 
+type MusicBrainDirectSearchDecision = {
+  useMusicBrainOnly: boolean;
+  reason: "broad_artist_catalog" | "strong_artist_title_match" | null;
+  strongMatchIds: Set<string>;
+};
+
+function normalizedPhraseTokens(value: string) {
+  return normalizeMusicQuery(value).split(" ").filter(Boolean);
+}
+
+function tokensEqual(left: string[], right: string[]) {
+  if (left.length !== right.length) return false;
+  return left.every((token, index) => token === right[index]);
+}
+
+function removeArtistTokensFromQuery(query: string, artistName: string) {
+  const queryTokens = normalizedPhraseTokens(query);
+  const artistTokens = normalizedPhraseTokens(artistName);
+
+  if (!queryTokens.length || !artistTokens.length || queryTokens.length <= artistTokens.length) {
+    return null;
+  }
+
+  const startsWithArtist = artistTokens.every(
+    (token, index) => queryTokens[index] === token
+  );
+
+  if (startsWithArtist) {
+    return queryTokens.slice(artistTokens.length);
+  }
+
+  const startIndex = queryTokens.length - artistTokens.length;
+  const endsWithArtist = artistTokens.every(
+    (token, index) => queryTokens[startIndex + index] === token
+  );
+
+  if (endsWithArtist) {
+    return queryTokens.slice(0, startIndex);
+  }
+
+  return null;
+}
+
+function musicBrainStrongArtistTitleMatches(
+  query: string,
+  known: YoutubeSearchResult[]
+) {
+  const matches: YoutubeSearchResult[] = [];
+
+  for (const result of known) {
+    const artistName = String(result.artistName || "").trim();
+    const title = String(result.title || result.rawTitle || "").trim();
+    if (!artistName || !title) continue;
+
+    const remainingQueryTokens = removeArtistTokensFromQuery(query, artistName);
+    if (!remainingQueryTokens?.length) continue;
+
+    const titleTokens = normalizedPhraseTokens(title);
+    if (!titleTokens.length) continue;
+
+    // Règle volontairement stricte :
+    // on évite YouTube seulement si la recherche correspond réellement
+    // à "artiste + titre" (ou "titre + artiste").
+    // Une recherche approximative continue vers YouTube afin de ne jamais
+    // rendre le catalogue MixParty plus pauvre que YouTube.
+    if (tokensEqual(remainingQueryTokens, titleTokens)) {
+      matches.push(result);
+    }
+  }
+
+  return matches;
+}
+
+function musicBrainQueryIsBroadArtistSearch(
+  query: string,
+  known: YoutubeSearchResult[]
+) {
+  const normalizedQuery = normalizeMusicQuery(query);
+  const compactQuery = compactMusicQuery(query);
+  if (!normalizedQuery) return false;
+
+  return known.some((result) => {
+    const artist = normalizeMusicQuery(result.artistName || "");
+    const compactArtist = artist.replace(/\s+/g, "");
+    return artist === normalizedQuery || compactArtist === compactQuery;
+  });
+}
+
+function musicBrainDirectSearchDecision(
+  query: string,
+  known: YoutubeSearchResult[]
+): MusicBrainDirectSearchDecision {
+  const strongMatches = musicBrainStrongArtistTitleMatches(query, known);
+  const strongMatchIds = new Set(strongMatches.map((result) => result.id));
+
+  if (strongMatches.length > 0) {
+    return {
+      useMusicBrainOnly: true,
+      reason: "strong_artist_title_match",
+      strongMatchIds,
+    };
+  }
+
+  const broadArtistSearch = musicBrainQueryIsBroadArtistSearch(query, known);
+
+  if (broadArtistSearch && known.length > 20) {
+    return {
+      useMusicBrainOnly: true,
+      reason: "broad_artist_catalog",
+      strongMatchIds,
+    };
+  }
+
+  return {
+    useMusicBrainOnly: false,
+    reason: null,
+    strongMatchIds,
+  };
+}
+
+function rankMusicBrainDirectResults(
+  query: string,
+  known: YoutubeSearchResult[],
+  strongMatchIds: Set<string>
+) {
+  return deduplicateMusicResults(known)
+    .sort((a, b) => {
+      const aStrong = strongMatchIds.has(a.id) ? 1 : 0;
+      const bStrong = strongMatchIds.has(b.id) ? 1 : 0;
+      if (bStrong !== aStrong) return bStrong - aStrong;
+      return scoreMusicResult(b, query) - scoreMusicResult(a, query);
+    })
+    .slice(0, 40);
+}
+
 async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResult[]> {
   const known = musicBrainResultsForQuery(query);
+  const directDecision = musicBrainDirectSearchDecision(query, known);
 
-  // MusicBrain devient la source principale dès qu'il connaît plus de 20 titres
-  // pertinents pour la recherche. Dans ce cas, aucun appel YouTube n'est effectué.
-  // YouTube reste le secours pour les recherches qui ont 20 résultats connus ou moins,
-  // afin de ne jamais brider le catalogue et de continuer à enrichir MusicBrain.
-  if (known.length > 20) {
-    const results = deduplicateMusicResults(known)
-      .sort((a, b) => scoreMusicResult(b, query) - scoreMusicResult(a, query))
-      .slice(0, 40);
+  // Deux cas seulement permettent d'éviter complètement YouTube :
+  // 1) recherche large d'un artiste avec plus de 20 titres déjà connus ;
+  // 2) recherche précise "artiste + titre" avec correspondance exacte dans MusicBrain.
+  //
+  // Toute recherche précise non confirmée continue vers YouTube, même si MusicBrain
+  // connaît énormément de titres de l'artiste. C'est la garantie fondamentale :
+  // MusicBrain économise du quota, mais ne doit jamais masquer une musique trouvable
+  // sur YouTube.
+  if (directDecision.useMusicBrainOnly) {
+    const results = rankMusicBrainDirectResults(
+      query,
+      known,
+      directDecision.strongMatchIds
+    );
 
     youtubeSearchStats.quotaSaved += 1;
-    console.log(`🧠 MusicBrain "${query}" : ${known.length} titre(s) connu(s), YouTube évité.`);
+
+    if (directDecision.reason === "strong_artist_title_match") {
+      console.log(
+        `🧠 MusicBrain "${query}" : correspondance exacte artiste + titre, YouTube évité.`
+      );
+    } else {
+      console.log(
+        `🧠 MusicBrain "${query}" : ${known.length} titre(s) connu(s), YouTube évité.`
+      );
+    }
+
     return results;
   }
 
-  console.log(`🧠 MusicBrain "${query}" : ${known.length} titre(s) connu(s), complément YouTube.`);
+  console.log(
+    `🧠 MusicBrain "${query}" : ${known.length} résultat(s) local(aux), complément YouTube pour garantir le catalogue complet.`
+  );
+
   const primary = await requestYoutubeMusic(query, "user");
   let combined = [...known, ...primary];
 
@@ -7755,7 +7910,12 @@ app.get("/search/youtube", async (req, res) => {
   let inFlight = youtubeSearchesInFlight.get(normalizedQuery);
   const reusedInFlight = Boolean(inFlight);
   const knownBeforeSearch = musicBrainResultsForQuery(query);
-  const musicBrainOnly = !reusedInFlight && knownBeforeSearch.length > 20;
+  const directDecisionBeforeSearch = musicBrainDirectSearchDecision(
+    query,
+    knownBeforeSearch
+  );
+  const musicBrainOnly =
+    !reusedInFlight && directDecisionBeforeSearch.useMusicBrainOnly;
 
   if (!inFlight) {
     inFlight = smartYoutubeMusicSearch(query);
