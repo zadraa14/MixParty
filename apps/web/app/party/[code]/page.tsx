@@ -272,6 +272,7 @@ export default function PartyPage() {
   const [karaokeCatalogSearch, setKaraokeCatalogSearch] = useState("");
   const [karaokeCatalogLoading, setKaraokeCatalogLoading] = useState(false);
   const [karaokeCatalogError, setKaraokeCatalogError] = useState("");
+  const [karaokeLetterFilter, setKaraokeLetterFilter] = useState("ALL");
   const [searchInsight, setSearchInsight] = useState<null | {
     sampleSize: number;
     message: string;
@@ -1191,6 +1192,7 @@ export default function PartyPage() {
   function deactivateKaraokeMode() {
     setKaraokeMode(false);
     setKaraokeCatalogSearch("");
+    setKaraokeLetterFilter("ALL");
     setKaraokeScreenOpen(false);
   }
 
@@ -2152,64 +2154,169 @@ async function removeSong(index: number, song: Song) {
 
   const mobileTabs = ["playback", "add", "karaoke", "queue", "guests"] as const;
 
-  function karaokeArtistFolderKey(value: unknown) {
+  function normalizeKaraokeText(value: unknown) {
     return String(value || "")
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[’'`´]/g, "'")
+      .replace(/[‐‑‒–—]/g, "-")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function karaokeArtistFolderKey(value: unknown) {
+    return normalizeKaraokeText(value)
       .toLowerCase()
-      .replace(/[’'`´]/g, "")
       .replace(/&/g, " et ")
+      .replace(/[’'`´]/g, "")
       .replace(/[^a-z0-9]+/g, "")
       .trim();
   }
 
   function karaokeArtistDisplayScore(value: string) {
     let score = 0;
+    const normalized = String(value || "").trim();
 
-    // On préfère les écritures "officielles" plutôt que leur version simplifiée :
-    // Diam's > Diams, M. Pokora > M Pokora, etc.
-    if (/[’']/.test(value)) score += 5;
-    if (/[.\-]/.test(value)) score += 2;
-    if (/[À-ÿ]/.test(value)) score += 2;
-    if (/[A-Z]/.test(value) && /[a-z]/.test(value)) score += 1;
+    // Préfère l'écriture la plus naturelle/officielle pour le nom du dossier.
+    if (/[’']/.test(normalized)) score += 6;
+    if (/[.\-]/.test(normalized)) score += 2;
+    if (/[À-ÿ]/.test(normalized)) score += 3;
+    if (/[A-Z]/.test(normalized) && /[a-z]/.test(normalized)) score += 2;
+    if (normalized === normalized.toUpperCase() && normalized.length > 4) score -= 1;
 
+    return score;
+  }
+
+  function cleanKaraokeSongTitle(value: unknown) {
+    return String(value || "")
+      .replace(/\s*[\[(](?:official(?:\s+video|\s+audio)?|clip\s+officiel|audio\s+officiel|lyrics?|paroles|karaok[eé]|visuali[sz]er|hd|4k)[^\])]*[\])]\s*/gi, " ")
+      .replace(/\s*-\s*(?:official(?:\s+video|\s+audio)?|clip\s+officiel|audio\s+officiel|lyrics?|paroles|karaok[eé]|visuali[sz]er)\s*$/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function karaokeSongIdentity(song: KaraokeCatalogSong) {
+    const title = normalizeKaraokeText(
+      cleanKaraokeSongTitle(song.matchedTrackName || song.title || song.rawTitle || "")
+    )
+      .toLowerCase()
+      .replace(/&/g, " et ")
+      .replace(/[’'`´]/g, "")
+      .replace(/[^a-z0-9]+/g, "");
+
+    return title || String(song.videoId || "");
+  }
+
+  function karaokeSongQualityScore(song: KaraokeCatalogSong) {
+    let score = 0;
+    if (song.lrclibId) score += 10;
+    if (song.matchedTrackName) score += 5;
+    if (song.matchedArtistName) score += 4;
+    if (song.matchedAlbumName) score += 3;
+    if (song.thumbnail) score += 2;
+    if (song.durationSeconds) score += 1;
     return score;
   }
 
   const karaokeArtistGroups = Array.from(
     (karaokeCatalog?.items || []).reduce<
-      Map<string, { artist: string; songs: KaraokeCatalogSong[] }>
+      Map<
+        string,
+        {
+          artist: string;
+          variants: Set<string>;
+          songs: Map<string, KaraokeCatalogSong>;
+        }
+      >
     >((groups, song) => {
       const rawArtist =
-        String(song.artistName || song.matchedArtistName || "Artiste inconnu").trim() ||
+        String(song.matchedArtistName || song.artistName || "Artiste inconnu").trim() ||
         "Artiste inconnu";
 
       const key = karaokeArtistFolderKey(rawArtist) || "artisteinconnu";
-      const existing = groups.get(key);
+      const songKey = karaokeSongIdentity(song);
 
-      if (!existing) {
-        groups.set(key, { artist: rawArtist, songs: [song] });
-        return groups;
+      let group = groups.get(key);
+
+      if (!group) {
+        group = {
+          artist: rawArtist,
+          variants: new Set([rawArtist]),
+          songs: new Map(),
+        };
+        groups.set(key, group);
+      } else {
+        group.variants.add(rawArtist);
+
+        if (
+          karaokeArtistDisplayScore(rawArtist) >
+          karaokeArtistDisplayScore(group.artist)
+        ) {
+          group.artist = rawArtist;
+        }
       }
 
-      existing.songs.push(song);
-
-      // Si plusieurs écritures correspondent au même artiste, on garde le nom
-      // le plus propre pour le titre du dossier.
+      const existingSong = group.songs.get(songKey);
       if (
-        karaokeArtistDisplayScore(rawArtist) >
-        karaokeArtistDisplayScore(existing.artist)
+        !existingSong ||
+        karaokeSongQualityScore(song) > karaokeSongQualityScore(existingSong)
       ) {
-        existing.artist = rawArtist;
+        group.songs.set(songKey, {
+          ...song,
+          title: cleanKaraokeSongTitle(song.title || song.matchedTrackName || song.rawTitle),
+        });
       }
 
       return groups;
     }, new Map()).values()
   )
-    .map(({ artist, songs }) => [artist, songs] as [string, KaraokeCatalogSong[]])
-    .sort(([artistA], [artistB]) =>
-      artistA.localeCompare(artistB, "fr", { sensitivity: "base" })
+    .map((group) => ({
+      artist: group.artist,
+      variants: Array.from(group.variants).sort((a, b) =>
+        a.localeCompare(b, "fr", { sensitivity: "base" })
+      ),
+      songs: Array.from(group.songs.values()).sort((a, b) =>
+        cleanKaraokeSongTitle(a.title).localeCompare(
+          cleanKaraokeSongTitle(b.title),
+          "fr",
+          { sensitivity: "base", numeric: true }
+        )
+      ),
+    }))
+    .sort((a, b) =>
+      a.artist.localeCompare(b.artist, "fr", {
+        sensitivity: "base",
+        numeric: true,
+      })
     );
+
+  const karaokeAvailableLetters = Array.from(
+    new Set(
+      karaokeArtistGroups.map((group) => {
+        const first = normalizeKaraokeText(group.artist).charAt(0).toUpperCase();
+        return /[A-Z]/.test(first) ? first : "#";
+      })
+    )
+  ).sort((a, b) => {
+    if (a === "#") return 1;
+    if (b === "#") return -1;
+    return a.localeCompare(b, "fr");
+  });
+
+  const visibleKaraokeArtistGroups =
+    karaokeLetterFilter === "ALL"
+      ? karaokeArtistGroups
+      : karaokeArtistGroups.filter((group) => {
+          const first = normalizeKaraokeText(group.artist).charAt(0).toUpperCase();
+          const bucket = /[A-Z]/.test(first) ? first : "#";
+          return bucket === karaokeLetterFilter;
+        });
+
+  const karaokeUniqueSongCount = karaokeArtistGroups.reduce(
+    (total, group) => total + group.songs.length,
+    0
+  );
+
 
   function switchMobileTab(nextTab: typeof mobileTabs[number]) {
     setActiveMobileTab(nextTab);
@@ -2255,11 +2362,11 @@ async function removeSong(index: number, song: Song) {
 
     if (karaokeCatalogLoading && !karaokeCatalog) {
       return (
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {[0, 1, 2, 3, 4, 5].map((item) => (
             <div
               key={item}
-              className="h-24 animate-pulse rounded-[22px] border border-white/[0.06] bg-white/[0.035]"
+              className="h-28 animate-pulse rounded-[24px] border border-white/[0.06] bg-white/[0.035]"
             />
           ))}
         </div>
@@ -2268,11 +2375,11 @@ async function removeSong(index: number, song: Song) {
 
     if (!karaokeArtistGroups.length) {
       return (
-        <div className="mt-5 rounded-[22px] border border-dashed border-fuchsia-300/15 bg-black/20 px-5 py-10 text-center">
-          <Mic2 className="mx-auto h-7 w-7 text-fuchsia-300/60" />
+        <div className="mt-5 rounded-[24px] border border-dashed border-fuchsia-300/15 bg-black/20 px-5 py-12 text-center">
+          <Mic2 className="mx-auto h-8 w-8 text-fuchsia-300/60" />
           <p className="mt-3 font-black">
             {karaokeCatalogSearch.trim()
-              ? "Aucun morceau Karaoké ne correspond à ce filtre."
+              ? "Aucun résultat Karaoké pour cette recherche."
               : "Aucun morceau Karaoké validé pour le moment."}
           </p>
           <p className="mt-1 text-sm text-white/35">
@@ -2283,105 +2390,191 @@ async function removeSong(index: number, song: Song) {
     }
 
     return (
-      <div className="mt-5 max-h-[720px] space-y-3 overflow-y-auto pr-1">
-        {karaokeArtistGroups.map(([artist, artistSongs]) => (
-          <details
-            key={artist}
-            open={Boolean(karaokeCatalogSearch.trim())}
-            className="group overflow-hidden rounded-[22px] border border-fuchsia-300/[0.11] bg-black/20 open:border-fuchsia-300/25 open:bg-fuchsia-500/[0.035]"
-          >
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-4 [&::-webkit-details-marker]:hidden">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-fuchsia-300/15 bg-gradient-to-br from-fuchsia-500/15 to-purple-500/10 text-fuchsia-200">
-                  <Mic2 className="h-5 w-5" />
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-black text-white">{artist}</p>
-                  <p className="mt-0.5 text-xs font-bold text-white/35">
-                    {artistSongs.length} morceau{artistSongs.length > 1 ? "x" : ""}
-                  </p>
-                </div>
-              </div>
-
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-lg font-black text-fuchsia-200 transition group-open:rotate-45">
-                +
-              </span>
-            </summary>
-
-            <div className="grid gap-3 border-t border-white/[0.06] p-3 md:grid-cols-2">
-              {artistSongs.map((song) => {
-                const alreadyInPlaylist =
-                  party?.currentSong?.videoId === song.videoId ||
-                  (party?.songs || []).some(
-                    (queuedSong) =>
-                      !queuedSong.played && queuedSong.videoId === song.videoId
-                  );
-
-                return (
-                <article
-                  key={song.videoId}
-                  className={`flex min-w-0 gap-3 rounded-[18px] border p-3 transition ${
-                    alreadyInPlaylist
-                      ? "border-white/[0.05] bg-white/[0.025] opacity-70"
-                      : "border-white/[0.06] bg-black/25"
-                  }`}
-                >
-                  <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-2xl bg-white/[0.04]">
-                    <img
-                      src={song.thumbnail || MIXPARTY_DEFAULT_COVER}
-                      alt={song.title}
-                      className="h-full w-full object-cover"
-                    />
-                    <div className="absolute bottom-1.5 left-1.5 rounded-full border border-emerald-300/20 bg-emerald-950/85 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.06em] text-emerald-200">
-                      Synchro
-                    </div>
-                  </div>
-
-                  <div className="flex min-w-0 flex-1 flex-col justify-between">
-                    <div>
-                      <p className="line-clamp-2 text-sm font-black leading-snug text-white">
-                        {song.title}
-                      </p>
-                      {song.matchedAlbumName ? (
-                        <p className="mt-1 truncate text-[10px] font-bold text-white/30">
-                          {song.matchedAlbumName}
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => addKaraokeCatalogSong(song)}
-                      disabled={alreadyInPlaylist || addingVideoId === song.videoId}
-                      className={`mt-2 rounded-xl px-3 py-2 text-[11px] font-black transition ${
-                        alreadyInPlaylist
-                          ? "w-full cursor-not-allowed border border-white/[0.08] bg-white/[0.06] text-white/40"
-                          : "w-fit bg-gradient-to-r from-fuchsia-600/80 to-purple-600/80 text-white hover:from-fuchsia-500 hover:to-purple-500 disabled:opacity-50"
-                      }`}
-                    >
-                      <span className="flex items-center justify-center gap-1.5">
-                        {alreadyInPlaylist ? (
-                          <Check className="h-3.5 w-3.5" />
-                        ) : (
-                          <Plus className="h-3.5 w-3.5" />
-                        )}
-                        {alreadyInPlaylist
-                          ? "Déjà dans la liste de lecture"
-                          : addingVideoId === song.videoId
-                            ? "Ajout…"
-                            : "Ajouter"}
-                      </span>
-                    </button>
-                  </div>
-                </article>
-                );
-              })}
+      <div className="mt-5">
+        <div className="rounded-[24px] border border-white/[0.07] bg-black/20 p-3 sm:p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-300">
+                Bibliothèque Karaoké V2
+              </p>
+              <p className="mt-1 text-sm font-black text-white">
+                {karaokeArtistGroups.length} artiste{karaokeArtistGroups.length > 1 ? "s" : ""} ·{" "}
+                {karaokeUniqueSongCount} morceau{karaokeUniqueSongCount > 1 ? "x" : ""} unique{karaokeUniqueSongCount > 1 ? "s" : ""}
+              </p>
+              <p className="mt-1 text-xs font-semibold text-white/30">
+                Doublons regroupés automatiquement · titres triés de A à Z
+              </p>
             </div>
-          </details>
-        ))}
+
+            {karaokeCatalogSearch.trim() ? (
+              <span className="rounded-full border border-cyan-300/15 bg-cyan-500/[0.08] px-3 py-1.5 text-[10px] font-black text-cyan-100">
+                Recherche active
+              </span>
+            ) : null}
+          </div>
+
+          <div className="mt-4 flex gap-1.5 overflow-x-auto pb-1">
+            <button
+              type="button"
+              onClick={() => setKaraokeLetterFilter("ALL")}
+              className={`shrink-0 rounded-xl border px-3 py-2 text-[11px] font-black transition ${
+                karaokeLetterFilter === "ALL"
+                  ? "border-fuchsia-300/30 bg-fuchsia-500/20 text-fuchsia-100"
+                  : "border-white/10 bg-white/[0.04] text-white/45 hover:text-white/80"
+              }`}
+            >
+              Tous
+            </button>
+
+            {karaokeAvailableLetters.map((letter) => (
+              <button
+                key={letter}
+                type="button"
+                onClick={() => setKaraokeLetterFilter(letter)}
+                className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border text-[11px] font-black transition ${
+                  karaokeLetterFilter === letter
+                    ? "border-fuchsia-300/30 bg-fuchsia-500/20 text-fuchsia-100"
+                    : "border-white/10 bg-white/[0.04] text-white/45 hover:text-white/80"
+                }`}
+              >
+                {letter}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {!visibleKaraokeArtistGroups.length ? (
+          <div className="mt-4 rounded-[22px] border border-dashed border-white/10 bg-black/15 px-5 py-8 text-center text-sm font-bold text-white/35">
+            Aucun artiste dans cette lettre.
+          </div>
+        ) : (
+          <div className="mt-4 max-h-[760px] space-y-3 overflow-y-auto pr-1">
+            {visibleKaraokeArtistGroups.map((group) => {
+              const artist = group.artist;
+              const artistSongs = group.songs;
+              const mergedVariantCount = group.variants.length;
+
+              return (
+                <details
+                  key={karaokeArtistFolderKey(artist)}
+                  open={Boolean(karaokeCatalogSearch.trim())}
+                  className="group overflow-hidden rounded-[24px] border border-white/[0.07] bg-gradient-to-br from-white/[0.04] to-black/20 shadow-[0_14px_40px_rgba(0,0,0,.14)] open:border-fuchsia-300/20 open:bg-fuchsia-500/[0.035]"
+                >
+                  <summary className="flex cursor-pointer list-none items-center gap-3 px-3 py-3.5 sm:px-4 sm:py-4 [&::-webkit-details-marker]:hidden">
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-[17px] border border-fuchsia-300/15 bg-gradient-to-br from-fuchsia-500/15 via-purple-500/10 to-cyan-500/[0.06] text-lg font-black text-fuchsia-100">
+                      {normalizeKaraokeText(artist).charAt(0).toUpperCase() || "?"}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <p className="truncate text-[15px] font-black text-white sm:text-base">
+                          {artist}
+                        </p>
+
+                        {mergedVariantCount > 1 ? (
+                          <span
+                            className="shrink-0 rounded-full border border-emerald-300/15 bg-emerald-500/[0.08] px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] text-emerald-200"
+                            title={`Variantes fusionnées : ${group.variants.join(", ")}`}
+                          >
+                            {mergedVariantCount} variantes fusionnées
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <p className="mt-1 text-xs font-bold text-white/32">
+                        {artistSongs.length} titre{artistSongs.length > 1 ? "s" : ""} unique{artistSongs.length > 1 ? "s" : ""}
+                      </p>
+                    </div>
+
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.05] text-lg font-black text-fuchsia-200 transition duration-300 group-open:rotate-45">
+                      +
+                    </span>
+                  </summary>
+
+                  <div className="border-t border-white/[0.06] bg-black/15 p-2.5 sm:p-3">
+                    <div className="grid gap-2.5 lg:grid-cols-2">
+                      {artistSongs.map((song) => {
+                        const alreadyInPlaylist =
+                          party?.currentSong?.videoId === song.videoId ||
+                          (party?.songs || []).some(
+                            (queuedSong) =>
+                              !queuedSong.played && queuedSong.videoId === song.videoId
+                          );
+
+                        return (
+                          <article
+                            key={`${karaokeSongIdentity(song)}-${song.videoId}`}
+                            className={`flex min-w-0 items-center gap-3 rounded-[18px] border p-2.5 transition ${
+                              alreadyInPlaylist
+                                ? "border-white/[0.05] bg-white/[0.025] opacity-65"
+                                : "border-white/[0.07] bg-white/[0.025] hover:border-fuchsia-300/15 hover:bg-fuchsia-500/[0.035]"
+                            }`}
+                          >
+                            <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[14px] bg-white/[0.04] sm:h-[72px] sm:w-[72px]">
+                              <img
+                                src={song.thumbnail || MIXPARTY_DEFAULT_COVER}
+                                alt={song.title}
+                                className="h-full w-full object-cover"
+                              />
+                              <div className="absolute bottom-1 left-1 rounded-full border border-emerald-300/20 bg-emerald-950/90 px-1.5 py-0.5 text-[7px] font-black uppercase tracking-[0.06em] text-emerald-200">
+                                Synchro
+                              </div>
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <p className="line-clamp-2 text-sm font-black leading-snug text-white">
+                                {cleanKaraokeSongTitle(song.title)}
+                              </p>
+
+                              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[9px] font-bold text-white/28">
+                                {song.matchedAlbumName ? (
+                                  <span className="max-w-full truncate">{song.matchedAlbumName}</span>
+                                ) : null}
+                                {song.durationSeconds ? (
+                                  <span>
+                                    {Math.floor(song.durationSeconds / 60)}:
+                                    {String(song.durationSeconds % 60).padStart(2, "0")}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => addKaraokeCatalogSong(song)}
+                                disabled={alreadyInPlaylist || addingVideoId === song.videoId}
+                                className={`mt-2 inline-flex min-h-9 items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-[10px] font-black transition ${
+                                  alreadyInPlaylist
+                                    ? "cursor-not-allowed border border-white/[0.08] bg-white/[0.05] text-white/35"
+                                    : "border border-fuchsia-300/15 bg-gradient-to-r from-fuchsia-600/80 to-purple-600/80 text-white hover:brightness-110 disabled:opacity-50"
+                                }`}
+                              >
+                                {alreadyInPlaylist ? (
+                                  <Check className="h-3.5 w-3.5" />
+                                ) : (
+                                  <Plus className="h-3.5 w-3.5" />
+                                )}
+
+                                {alreadyInPlaylist
+                                  ? "Déjà dans la file"
+                                  : addingVideoId === song.videoId
+                                    ? "Ajout…"
+                                    : "Ajouter"}
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </details>
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   }
+
 
   return (
     <main
@@ -3097,7 +3290,7 @@ const canRemove =
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
                       <span className="text-fuchsia-100/70">
                         {karaokeCatalog
-                          ? `${karaokeCatalog.totalReady} morceau${karaokeCatalog.totalReady > 1 ? "x" : ""} prêts pour le karaoké`
+                          ? `${karaokeUniqueSongCount} morceau${karaokeUniqueSongCount > 1 ? "x" : ""} uniques prêts pour le karaoké`
                           : "Chargement du catalogue validé…"}
                       </span>
 
@@ -3106,6 +3299,7 @@ const canRemove =
                           type="button"
                           onClick={() => {
                             setKaraokeCatalogSearch("");
+                            setKaraokeLetterFilter("ALL");
                             void loadKaraokeCatalog("");
                           }}
                           className="text-white/40 transition hover:text-white/75"
@@ -3287,7 +3481,7 @@ const canRemove =
 
                 <p className="mt-3 text-xs font-bold text-fuchsia-100/60">
                   {karaokeCatalog
-                    ? `${karaokeArtistGroups.length} artiste${karaokeArtistGroups.length > 1 ? "s" : ""} · ${karaokeCatalog.totalReady} morceau${karaokeCatalog.totalReady > 1 ? "x" : ""} prêts`
+                    ? `${karaokeArtistGroups.length} artiste${karaokeArtistGroups.length > 1 ? "s" : ""} · ${karaokeUniqueSongCount} morceau${karaokeUniqueSongCount > 1 ? "x" : ""} uniques`
                     : "Chargement du catalogue…"}
                 </p>
               </div>
