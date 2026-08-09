@@ -465,6 +465,7 @@ export default function MusicBrainAdminPage() {
     useState<MusicBrainDiagnosticData | null>(null);
   const [qualityDiagnosticLoading, setQualityDiagnosticLoading] = useState(false);
   const [qualityDiagnosticError, setQualityDiagnosticError] = useState("");
+  const [selectedDiagnosticCategory, setSelectedDiagnosticCategory] = useState<string | null>(null);
 
   const [autoFixLoading, setAutoFixLoading] = useState(false);
   const [autoFixMessage, setAutoFixMessage] = useState("");
@@ -1416,6 +1417,13 @@ export default function MusicBrainAdminPage() {
       .toLowerCase()
       .includes(query);
   });
+
+  const visiblePublicationQualityItems = (publicationQuality?.items || []).filter(
+    (item) =>
+      !selectedDiagnosticCategory ||
+      item.manualReviewCategory === selectedDiagnosticCategory
+  );
+
 
   return (
     <main className="min-h-screen bg-[#07040f] px-4 py-6 text-white sm:px-8 lg:px-12">
@@ -2643,19 +2651,41 @@ export default function MusicBrainAdminPage() {
                   ) : null}
 
                   <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                    {(qualityDiagnostic?.categories || []).map((category) => (
-                      <article
-                        key={category.key}
-                        className="rounded-xl border border-white/8 bg-black/20 p-3"
-                      >
-                        <p className="text-[10px] font-black uppercase tracking-[.13em] text-white/40">
-                          {category.label}
-                        </p>
-                        <p className="mt-2 text-2xl font-black">
-                          {number.format(category.count)}
-                        </p>
-                      </article>
-                    ))}
+                    {(qualityDiagnostic?.categories || []).map((category) => {
+                      const selected = selectedDiagnosticCategory === category.key;
+                      return (
+                        <button
+                          key={category.key}
+                          type="button"
+                          onClick={() => {
+                            setSelectedDiagnosticCategory(selected ? null : category.key);
+                            setPublicationQualityFilter("review");
+                            setPublicationQualitySearch("");
+                          }}
+                          className={`rounded-xl border p-3 text-left transition ${
+                            selected
+                              ? "border-fuchsia-300/45 bg-fuchsia-500/15"
+                              : "border-white/8 bg-black/20 hover:border-fuchsia-300/25 hover:bg-fuchsia-500/[0.07]"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className={`text-[10px] font-black uppercase tracking-[.13em] ${
+                                selected ? "text-fuchsia-200" : "text-white/40"
+                              }`}>
+                                {category.label}
+                              </p>
+                              <p className="mt-2 text-2xl font-black">
+                                {number.format(category.count)}
+                              </p>
+                            </div>
+                            <span className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-[9px] font-black uppercase text-white/45">
+                              {selected ? "Affiché" : "Voir"}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
 
                     {!qualityDiagnosticLoading &&
                     !(qualityDiagnostic?.categories || []).length ? (
@@ -2667,6 +2697,28 @@ export default function MusicBrainAdminPage() {
                 </div>
 
                 
+                {selectedDiagnosticCategory ? (
+                  <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/[0.07] p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[.15em] text-fuchsia-200">
+                        Filtre diagnostic actif
+                      </p>
+                      <p className="mt-1 text-sm font-black">
+                        {qualityDiagnostic?.categories.find(
+                          (category) => category.key === selectedDiagnosticCategory
+                        )?.label || selectedDiagnosticCategory}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedDiagnosticCategory(null)}
+                      className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-black text-white/70"
+                    >
+                      Afficher tous les cas
+                    </button>
+                  </div>
+                ) : null}
+
 <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex flex-wrap gap-2">
@@ -2741,7 +2793,7 @@ export default function MusicBrainAdminPage() {
                   </div>
 
                   <div className="mt-3 max-h-[720px] space-y-2 overflow-y-auto pr-1">
-                    {(publicationQuality?.items || []).map((item) => (
+                    {visiblePublicationQualityItems.map((item) => (
                       <article
                         key={item.videoId}
                         className="rounded-2xl border border-white/8 bg-black/25 p-3 sm:p-4"
@@ -2857,7 +2909,7 @@ export default function MusicBrainAdminPage() {
                     ))}
 
                     {!publicationQualityLoading &&
-                    !(publicationQuality?.items || []).length ? (
+                    !visiblePublicationQualityItems.length ? (
                       <div className="rounded-2xl border border-white/8 bg-black/20 p-6 text-center text-sm text-white/35">
                         Rien à afficher dans ce filtre.
                       </div>
