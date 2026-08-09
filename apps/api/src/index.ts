@@ -125,6 +125,8 @@ type MusicBrainSong = {
   coverHeight?: number;
   coverLastCheckedAt?: number;
   coverAttempts?: number;
+  manualValidatedAt?: number;
+  manualValidationCategory?: string;
 };
 
 type MusicBrainArtistLink = {
@@ -7501,6 +7503,19 @@ function musicBrainPublicationDecision(song: MusicBrainSong): MusicBrainPublicat
     };
   }
 
+  // V3.4.1 — une validation humaine explicite est définitive pour cette
+  // identité tant que le morceau n'est pas réattribué à un autre artiste.
+  // C'est ce marqueur qui fait réellement sortir le morceau de "À traiter".
+  if (song.manualValidatedAt) {
+    return {
+      status: "ready",
+      reason: "manual_human_validation",
+      consensusResolution: "auto_validated",
+      consensusConfidence: 100,
+      consensusSignals: ["CURRENT"],
+    };
+  }
+
   const consensus = musicBrainArtistConsensus(song);
 
   if (consensus.resolution === "auto_fixable") {
@@ -7807,6 +7822,8 @@ function applyMusicBrainArtistRepair(proposal: MusicBrainArtistRepairProposal) {
 
   song.artistName = newArtistName;
   song.artistKey = newArtistKey;
+  song.manualValidatedAt = undefined;
+  song.manualValidationCategory = undefined;
   song.title = cleanTrackTitle(song.rawTitle || song.title, newArtistName);
   song.metadataConfidence = Math.max(
     Number(song.metadataConfidence || 0),
@@ -8704,6 +8721,8 @@ app.post("/partybrain/maintenance/musicbrain-category-validation/apply", (req, r
       Number(song.metadataConfidence || 0),
       99
     );
+    song.manualValidatedAt = validatedAt;
+    song.manualValidationCategory = category;
     song.lastSeenAt = validatedAt;
 
     const artist = musicBrain.artists[song.artistKey];
@@ -8715,15 +8734,25 @@ app.post("/partybrain/maintenance/musicbrain-category-validation/apply", (req, r
   musicBrain.updatedAt = validatedAt;
   saveMusicBrain();
 
+  const remainingInCategory = Object.values(musicBrain.songs).filter((song) => {
+    const publication = musicBrainPublicationDecision(song);
+    return (
+      publication.consensusResolution === "manual_review" &&
+      musicBrainManualReviewCategory(song) === category
+    );
+  }).length;
+
   return res.json({
     ok: true,
     category,
     mode,
     validated: selected.length,
+    remainingInCategory,
     message:
       `${selected.length} morceau(x) validé(s) dans « ${musicBrainManualReviewCategoryLabel(
         category as MusicBrainManualReviewCategory
-      )} ».`,
+      )} ». ${remainingInCategory} restent à vérifier dans cette catégorie.`,
+    summary: musicBrainPublicationSummary(),
   });
 });
 
