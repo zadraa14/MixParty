@@ -33,7 +33,7 @@ class AlignedLine(BaseModel):
 
 class AlignResponse(BaseModel):
     ok: bool = True
-    engine: str = "faster-whisper-v1.4"
+    engine: str = "faster-whisper-v1.5"
     publishable: bool
     confidence: float
     lines: list[AlignedLine]
@@ -92,14 +92,41 @@ def probe_duration(path: Path) -> float:
 
 
 def align_lyrics(words: list[dict[str, Any]], transcript: str):
+    """
+    V1.5 Timing Confidence
+
+    Objectif :
+    juger avant tout si les débuts de lignes Karaoké sont temporellement fiables.
+
+    Le score final privilégie :
+    - couverture des lignes
+    - ordre strictement croissant
+    - continuité temporelle
+    - qualité des ancres lexicales (mots distinctifs)
+    - similarité textuelle globale, mais avec un poids plus faible
+
+    Un texte mal reconnu mot-à-mot ne doit plus faire chuter exagérément
+    un alignement temporel pourtant cohérent.
+    """
     import difflib
 
     lyric_lines = [x.strip() for x in transcript.splitlines() if x.strip()]
     word_norm = [normalize_text(w["word"]) for w in words]
 
     output: list[AlignedLine] = []
-    scores: list[float] = []
+    text_scores: list[float] = []
+    anchor_scores: list[float] = []
+    start_indices: list[int] = []
     cursor = 0
+
+    def useful_tokens(line: str) -> list[str]:
+        tokens = [t for t in normalize_text(line).split() if t]
+
+        # On privilégie les mots plus discriminants.
+        # Les très petits mots ("je", "de", "la"...), très fréquents,
+        # pèsent peu dans la qualité d'une ancre temporelle.
+        strong = [t for t in tokens if len(t) >= 4]
+        return strong if strong else tokens
 
     for lyric in lyric_lines:
         expected_tokens = normalize_text(lyric).split()
@@ -107,53 +134,184 @@ def align_lyrics(words: list[dict[str, Any]], transcript: str):
             continue
 
         expected = " ".join(expected_tokens)
-        # Search locally and monotonically: a lyric line can never jump backwards.
-        search_end = min(len(words), cursor + max(45, len(expected_tokens) * 7))
-        min_len = max(1, len(expected_tokens) - 3)
-        max_len = len(expected_tokens) + 4
+        strong_tokens = useful_tokens(lyric)
+
+        # Recherche strictement monotone, localisée autour du curseur.
+        search_end = min(len(words), cursor + max(56, len(expected_tokens) * 8))
+        min_len = max(1, len(expected_tokens) - 4)
+        max_len = len(expected_tokens) + 5
 
         best = None
-        for start in range(cursor, search_end):
-            for length in range(min_len, max_len + 1):
-                end = start + length
-                if end > len(words):
-                    break
-                candidate = " ".join(word_norm[start:end])
-                score = difflib.SequenceMatcher(None, expected, candidate).ratio()
 
-                # Prefer close matches near the expected cursor.
-                distance_penalty = min(0.08, max(0, start - cursor) * 0.0015)
-                adjusted = score - distance_penalty
+        for word_start in range(cursor, search_end):
+            for length in range(min_len, max_len + 1):
+                word_end = word_start + length
+                if word_end > len(words):
+                    break
+
+                candidate_tokens = word_norm[word_start:word_end]
+                candidate = " ".join(candidate_tokens)
+
+                text_score = difflib.SequenceMatcher(
+                    None,
+                    expected,
+                    candidate,
+                ).ratio()
+
+                # Anchor score : présence des mots distinctifs de la ligne
+                # dans la fenêtre reconnue.
+                candidate_set = set(candidate_tokens)
+                if strong_tokens:
+                    matched = sum(1 for t in strong_tokens if t in candidate_set)
+                    anchor_score = matched / len(strong_tokens)
+                else:
+                    anchor_score = 0.0
+
+                # Préférence pour une fenêtre proche de la position attendue.
+                distance_penalty = min(
+                    0.10,
+                    max(0, word_start - cursor) * 0.0015,
+                )
+
+                # Le choix de la fenêtre combine texte + ancres lexicales.
+                adjusted = (
+                    text_score * 0.62
+                    + anchor_score * 0.38
+                    - distance_penalty
+                )
 
                 if best is None or adjusted > best[0]:
-                    best = (adjusted, score, start, end)
+                    best = (
+                        adjusted,
+                        text_score,
+                        anchor_score,
+                        word_start,
+                        word_end,
+                    )
 
-        if not best or best[1] < 0.50:
+        # En V1.5 on accepte une fenêtre un peu moins parfaite textuellement,
+        # à condition qu'elle possède au moins une ancre exploitable.
+        if not best:
             continue
 
-        _, raw_score, start, end = best
-        output.append(AlignedLine(time=round(float(words[start]["start"]), 3), text=lyric))
-        scores.append(raw_score)
-        cursor = max(cursor, end)
+        _, text_score, anchor_score, word_start, word_end = best
+
+        if text_score < 0.40 and anchor_score < 0.34:
+            continue
+
+        output.append(
+            AlignedLine(
+                time=round(float(words[word_start]["start"]), 3),
+                text=lyric,
+            )
+        )
+        text_scores.append(text_score)
+        anchor_scores.append(anchor_score)
+        start_indices.append(word_start)
+        cursor = max(cursor, word_end)
 
     coverage = len(output) / max(1, len(lyric_lines))
-    similarity = sum(scores) / max(1, len(scores))
+    similarity = sum(text_scores) / max(1, len(text_scores))
+    anchor_quality = sum(anchor_scores) / max(1, len(anchor_scores))
 
-    # Strict certification: coverage matters more than fuzzy text similarity.
-    confidence = max(0.0, min(100.0, (coverage * 0.75 + similarity * 0.25) * 100.0))
+    monotonic = all(
+        output[i].time < output[i + 1].time
+        for i in range(len(output) - 1)
+    )
 
-    # Basic timestamp sanity checks.
-    monotonic = all(output[i].time < output[i + 1].time for i in range(len(output) - 1))
+    # --------------------------------------------------------
+    # Timing continuity
+    # --------------------------------------------------------
+    # On regarde si les lignes avancent régulièrement dans la chanson.
+    # On ne cherche PAS une cadence fixe : on pénalise seulement
+    # les sauts aberrants ou les lignes presque superposées.
+    continuity_scores: list[float] = []
+
+    for i in range(len(output) - 1):
+        delta = output[i + 1].time - output[i].time
+
+        if delta <= 0:
+            continuity_scores.append(0.0)
+        elif delta < 0.35:
+            continuity_scores.append(0.30)
+        elif delta <= 20.0:
+            continuity_scores.append(1.0)
+        elif delta <= 35.0:
+            continuity_scores.append(0.70)
+        else:
+            continuity_scores.append(0.35)
+
+    continuity = (
+        sum(continuity_scores) / len(continuity_scores)
+        if continuity_scores
+        else 1.0
+    )
+
+    # --------------------------------------------------------
+    # Cursor progression
+    # --------------------------------------------------------
+    # Les lignes doivent avancer dans les mots reconnus sans énormes retours
+    # ni réutilisation de la même zone.
+    progression_scores: list[float] = []
+    for i in range(len(start_indices) - 1):
+        jump = start_indices[i + 1] - start_indices[i]
+        if jump <= 0:
+            progression_scores.append(0.0)
+        elif jump <= 40:
+            progression_scores.append(1.0)
+        elif jump <= 80:
+            progression_scores.append(0.75)
+        else:
+            progression_scores.append(0.45)
+
+    progression = (
+        sum(progression_scores) / len(progression_scores)
+        if progression_scores
+        else 1.0
+    )
+
+    # --------------------------------------------------------
+    # Final Timing Confidence
+    # --------------------------------------------------------
+    # Poids volontairement orientés Karaoké :
+    # 42% couverture
+    # 20% continuité temporelle
+    # 14% progression monotone
+    # 14% ancres lexicales
+    # 10% similarité textuelle brute
+    timing_confidence = (
+        coverage * 0.42
+        + continuity * 0.20
+        + progression * 0.14
+        + anchor_quality * 0.14
+        + similarity * 0.10
+    )
+
     if not monotonic:
-        confidence = min(confidence, 70.0)
+        timing_confidence = min(timing_confidence, 0.70)
 
-    return output, confidence, {
+    confidence = max(0.0, min(100.0, timing_confidence * 100.0))
+
+    diagnostics = {
         "lyricLineCount": len(lyric_lines),
         "alignedLineCount": len(output),
         "coverage": round(coverage, 4),
         "averageSimilarity": round(similarity, 4),
+        "anchorQuality": round(anchor_quality, 4),
+        "timingContinuity": round(continuity, 4),
+        "cursorProgression": round(progression, 4),
         "monotonic": monotonic,
+        "timingConfidenceVersion": "v1.5",
+        "scoreWeights": {
+            "coverage": 0.42,
+            "timingContinuity": 0.20,
+            "cursorProgression": 0.14,
+            "anchorQuality": 0.14,
+            "textSimilarity": 0.10,
+        },
     }
+
+    return output, confidence, diagnostics
 
 
 def process_audio(audio_path: Path, transcript: str) -> AlignResponse:
@@ -199,6 +357,8 @@ def process_audio(audio_path: Path, transcript: str) -> AlignResponse:
     publishable = (
         confidence >= MIN_CONFIDENCE
         and diag["coverage"] >= 0.90
+        and diag["timingContinuity"] >= 0.90
+        and diag["cursorProgression"] >= 0.85
         and diag["monotonic"]
         and len(lines) >= 2
     )
@@ -244,7 +404,7 @@ def root():
         "ok": True,
         "service": "mixparty-karaoke-sync-worker",
         "engine": "faster-whisper",
-        "version": "1.4",
+        "version": "1.5",
     }
 
 
