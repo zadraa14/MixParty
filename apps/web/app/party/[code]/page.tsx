@@ -298,7 +298,7 @@ export default function PartyPage() {
   const [castConnected, setCastConnected] = useState(false);
   const [castConnecting, setCastConnecting] = useState(false);
   const [castStateLabel, setCastStateLabel] = useState("INITIALISATION");
-  const [castReceiverStatus, setCastReceiverStatus] = useState("En attente");
+  const [castReceiverStatus, setCastReceiverStatus] = useState("Ping non envoyé");
   const [castDeviceName, setCastDeviceName] = useState("");
   const [castDisplayMode, setCastDisplayMode] = useState<"tv" | "karaoke">("tv");
   const [tvPlayback, setTvPlayback] = useState({ time: 0, duration: 0, state: 2 });
@@ -478,33 +478,9 @@ export default function PartyPage() {
                 (_namespace: string, message: string) => {
                   try {
                     const payload = JSON.parse(message || "{}");
-                    if (payload?.type === "mixparty_receiver_ready") {
-                      setCastReceiverStatus("Receiver prêt · envoi de la soirée");
-                      console.log("📺 Receiver prêt, envoi immédiat de la soirée", payload);
-
-                      const currentSession =
-                        castContextRef.current?.getCurrentSession?.() ||
-                        (window as any).cast?.framework?.CastContext
-                          ?.getInstance?.()
-                          ?.getCurrentSession?.();
-
-                      currentSession
-                        ?.sendMessage(MIXPARTY_CAST_NAMESPACE, {
-                          type: "mixparty_display",
-                          version: "cast-v2-handshake",
-                          partyCode: code,
-                          mode: castDisplayModeRef.current,
-                        })
-                        .catch((error: unknown) => {
-                          console.warn("Réponse au Receiver prête non envoyée", error);
-                        });
-                    }
-
-                    if (payload?.type === "mixparty_display_ack") {
-                      setCastReceiverStatus(
-                        `Receiver OK · ${payload.partyCode || code} · ${payload.mode || "tv"}`
-                      );
-                      console.log("📺 ACK Receiver MixParty", payload);
+                    if (payload?.type === "mixparty_pong") {
+                      setCastReceiverStatus("PONG reçu ✅");
+                      console.log("📺 PONG Receiver MixParty", payload);
                     }
                   } catch {
                     console.log("📺 Message Receiver MixParty", message);
@@ -666,10 +642,25 @@ export default function PartyPage() {
 
       // Le Receiver vient d’être lancé : on lui transmet la soirée et
       // l’affichage demandé. Un second envoi sécurise les appareils plus lents.
-      await sendCastDisplayMode(mode);
+      const sendPing = async () => {
+        try {
+          await session.sendMessage(MIXPARTY_CAST_NAMESPACE, {
+            type: "mixparty_ping",
+            sentAt: Date.now(),
+            partyCode: code,
+          });
+          setCastReceiverStatus("PING envoyé");
+          console.log("📺 PING envoyé au Receiver");
+        } catch (error) {
+          setCastReceiverStatus("PING en erreur");
+          console.warn("PING Cast non envoyé", error);
+        }
+      };
+
+      await sendPing();
       [700, 1600, 3000, 5000].forEach((delay) => {
         window.setTimeout(() => {
-          void sendCastDisplayMode(mode);
+          void sendPing();
         }, delay);
       });
     } catch (error: any) {
