@@ -86,6 +86,7 @@ export default function KaraokePartyPage() {
   });
   const [clock, setClock] = useState(Date.now());
   const [creatorToken, setCreatorToken] = useState("");
+  const [castMode, setCastMode] = useState(false);
   const lyricsRequestRef = useRef("");
   const socketRef = useRef<any>(null);
 
@@ -106,6 +107,8 @@ export default function KaraokePartyPage() {
 
   useEffect(() => {
     setCreatorToken(localStorage.getItem(`mixparty_creator_${code}`) || "");
+    const params = new URLSearchParams(window.location.search);
+    setCastMode(params.get("cast") === "1");
   }, [code]);
 
   useEffect(() => {
@@ -392,7 +395,7 @@ export default function KaraokePartyPage() {
   const backdrop = songArtwork(currentSong);
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[#05050d] text-white">
+    <main className={`relative overflow-hidden bg-[#05050d] text-white ${castMode ? "h-screen min-h-0 w-screen" : "min-h-screen"}`}>
       <div
         className="absolute inset-[-8%] scale-110 bg-cover bg-center opacity-30 blur-[95px] transition-all duration-1000"
         style={{ backgroundImage: `url(${backdrop})` }}
@@ -402,8 +405,8 @@ export default function KaraokePartyPage() {
       <div className="pointer-events-none absolute left-[-12vw] top-[15vh] h-[38vw] w-[38vw] rounded-full bg-fuchsia-500/10 blur-[100px]" />
       <div className="pointer-events-none absolute bottom-[-16vw] right-[-10vw] h-[42vw] w-[42vw] rounded-full bg-orange-500/10 blur-[110px]" />
 
-      <div className="relative z-10 flex min-h-screen flex-col px-4 py-4 sm:px-7 lg:px-10">
-        <header className="flex items-center justify-between gap-5">
+      <div className={`relative z-10 flex flex-col ${castMode ? "h-screen min-h-0 px-7 py-5 lg:px-10" : "min-h-screen px-4 py-4 sm:px-7 lg:px-10"}`}>
+        <header className={castMode ? "hidden" : "flex items-center justify-between gap-5"}>
           <div className="flex items-center gap-3">
             <div className="grid h-12 w-12 place-items-center rounded-2xl border border-fuchsia-300/20 bg-gradient-to-br from-fuchsia-500/20 via-purple-500/15 to-orange-500/15 shadow-[0_0_45px_rgba(217,70,239,.18)]">
               <Mic2 className="h-6 w-6 text-fuchsia-100" />
@@ -430,7 +433,7 @@ export default function KaraokePartyPage() {
           </div>
         </header>
 
-        <section className="mx-auto flex w-full max-w-[1550px] flex-1 flex-col py-4 sm:py-6">
+        <section className={`mx-auto flex w-full max-w-[1700px] flex-1 flex-col ${castMode ? "min-h-0 py-2" : "py-4 sm:py-6"}`}>
           {!currentSong ? (
             <div className="mx-auto flex min-h-[70vh] max-w-3xl flex-col items-center justify-center text-center">
               <div className="mx-auto grid h-24 w-24 place-items-center rounded-[30px] border border-white/10 bg-white/[0.05] shadow-[0_0_70px_rgba(168,85,247,.12)] backdrop-blur-xl">
@@ -448,11 +451,11 @@ export default function KaraokePartyPage() {
             </div>
           ) : (
             <>
-              <div className="mb-5 flex items-center justify-center gap-4 text-center sm:mb-6">
+              <div className={`${castMode ? "mb-3" : "mb-5 sm:mb-6"} flex items-center justify-center gap-4 text-center`}>
                 <img
                   src={backdrop}
                   alt=""
-                  className="h-16 w-16 rounded-2xl object-cover shadow-[0_18px_55px_rgba(0,0,0,.50)] ring-1 ring-white/10 sm:h-20 sm:w-20"
+                  className={`${castMode ? "h-14 w-14 lg:h-16 lg:w-16" : "h-16 w-16 sm:h-20 sm:w-20"} rounded-2xl object-cover shadow-[0_18px_55px_rgba(0,0,0,.50)] ring-1 ring-white/10`}
                 />
                 <div className="min-w-0 text-left">
                   <p className="max-w-[72vw] truncate text-2xl font-black sm:text-3xl">
@@ -470,7 +473,7 @@ export default function KaraokePartyPage() {
                 </div>
               </div>
 
-              <div className="grid min-h-[72vh] w-full gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+              <div className={`grid w-full flex-1 min-h-0 gap-5 ${castMode ? "grid-cols-[minmax(0,1fr)_300px]" : "min-h-[72vh] xl:grid-cols-[minmax(0,1fr)_300px]"}`}>
                 <section className="relative overflow-hidden rounded-[38px] border border-fuchsia-300/20 bg-[linear-gradient(180deg,rgba(13,8,24,.88),rgba(5,5,13,.96))] shadow-[0_30px_100px_rgba(0,0,0,.48),0_0_60px_rgba(217,70,239,.08)]">
                   <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_48%,rgba(217,70,239,.10),transparent_34%),radial-gradient(circle_at_18%_50%,rgba(124,58,237,.08),transparent_35%)]" />
                   <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-fuchsia-300/70 to-transparent" />
@@ -483,7 +486,7 @@ export default function KaraokePartyPage() {
                       </div>
                     </div>
                   ) : lyrics?.available ? (
-                    <div className="relative z-10 flex min-h-[72vh] flex-col">
+                    <div className={`relative z-10 flex flex-col ${castMode ? "h-full min-h-0" : "min-h-[72vh]"}`}>
                       {countdown !== null && !hasStartedLyrics ? (
                         <div className="absolute inset-0 z-40 grid place-items-center bg-black/45 backdrop-blur-md">
                           <div className="text-center">
@@ -515,7 +518,7 @@ export default function KaraokePartyPage() {
                                   key={`${line.time}-${index}`}
                                   className="absolute inset-x-0 top-1/2 flex w-full justify-center px-4 will-change-transform sm:px-8"
                                   style={{
-                                    transform: `translateY(calc(-50% + ${translateY}px)) scale(${scale})`,
+                                    transform: `translateY(calc(-50% + ${castMode ? translateY * 1.12 : translateY}px)) scale(${scale})`,
                                     transformOrigin: "center center",
                                     opacity,
                                     filter: `blur(${blur}px)`,
@@ -524,10 +527,10 @@ export default function KaraokePartyPage() {
                                   }}
                                 >
                                   <p
-                                    className={`mx-auto w-full max-w-[82%] break-words text-center text-balance font-black leading-[1.12] tracking-[-0.035em] ${
+                                    className={`mx-auto w-full break-words text-center text-balance font-black tracking-[-0.035em] ${castMode ? "max-w-[88%] leading-[1.08]" : "max-w-[82%] leading-[1.12]"} ${
                                       isCenter
-                                        ? "bg-gradient-to-r from-fuchsia-300 via-pink-100 to-orange-200 bg-clip-text text-[clamp(2.15rem,4.2vw,4.6rem)] text-transparent drop-shadow-[0_0_28px_rgba(236,72,153,.20)]"
-                                        : "text-[clamp(1.15rem,2vw,1.95rem)] text-white/55"
+                                        ? `bg-gradient-to-r from-fuchsia-300 via-pink-100 to-orange-200 bg-clip-text text-transparent drop-shadow-[0_0_28px_rgba(236,72,153,.20)] ${castMode ? "text-[clamp(2.5rem,4.4vw,5.2rem)]" : "text-[clamp(2.15rem,4.2vw,4.6rem)]"}`
+                                        : `${castMode ? "text-[clamp(1.3rem,2.1vw,2.15rem)]" : "text-[clamp(1.15rem,2vw,1.95rem)]"} text-white/55`
                                     }`}
                                   >
                                     {line.text}
@@ -649,7 +652,7 @@ export default function KaraokePartyPage() {
                         <span>{party?.participants?.length || 0} participant{(party?.participants?.length || 0) > 1 ? "s" : ""}</span>
                       </div>
 
-                      <div className="flex items-center justify-center gap-4">
+                      <div className={castMode ? "hidden" : "flex items-center justify-center gap-4"}>
                         <button
                           type="button"
                           onClick={() => sendPlaybackControl("previous")}
@@ -703,7 +706,7 @@ export default function KaraokePartyPage() {
           )}
         </section>
 
-        <footer className="flex items-center justify-between gap-4 border-t border-white/[0.06] pt-4 text-[10px] font-black uppercase tracking-[.12em] text-white/22">
+        <footer className={castMode ? "hidden" : "flex items-center justify-between gap-4 border-t border-white/[0.06] pt-4 text-[10px] font-black uppercase tracking-[.12em] text-white/22"}>
           <span>Soirée {code || "—"}</span>
           <span>MixParty Karaoké • Premium Flow V3</span>
         </footer>
