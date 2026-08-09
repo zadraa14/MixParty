@@ -1,0 +1,6 @@
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+httpx==0.28.1
+# WhisperX + PyTorch are intentionally unpinned here because the correct wheels
+# depend on CPU/CUDA. Install whisperx and the matching torch build in the image.
+whisperx
