@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MixParty Cast Basic Test</title>
+  <title>MixParty Cast TV</title>
   <style>
     html, body {
       width: 100%;
@@ -19,6 +19,22 @@
       display: grid;
       place-items: center;
       text-align: center;
+    }
+
+    #mixparty-screen {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      border: 0;
+      background: #05050d;
+      display: none;
+      z-index: 20;
+    }
+
+    #receiver-card {
+      position: relative;
+      z-index: 10;
     }
 
     .card {
@@ -81,17 +97,22 @@
 </head>
 
 <body>
-  <main class="card">
+  <main id="receiver-card" class="card">
     <img class="logo" src="/branding/icon.png" alt="MixParty" />
-    <div class="eyebrow">MixParty · Receiver minimal</div>
-    <h1>Google Cast OK</h1>
+    <div class="eyebrow">MixParty · Receiver TV</div>
+    <h1>Connexion MixParty</h1>
     <p>
-      Cette page ne contient ni Next.js côté client, ni Socket.IO,
-      ni PartyBrain, ni Karaoké.
+      Connexion à la soirée en cours…
     </p>
     <div id="party-code">—</div>
     <div id="status">Initialisation du Receiver…</div>
   </main>
+
+  <iframe
+    id="mixparty-screen"
+    title="MixParty TV"
+    allow="autoplay; fullscreen"
+  ></iframe>
 
   <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
   <script>
@@ -100,18 +121,54 @@
     try {
       const context = cast.framework.CastReceiverContext.getInstance();
 
+      function normalizePartyCode(value) {
+        return String(value || "")
+          .trim()
+          .toUpperCase()
+          .replace(/[^A-Z0-9]/g, "")
+          .slice(0, 12);
+      }
+
+      function openMixPartyDisplay(code, mode) {
+        const safeCode = normalizePartyCode(code);
+        if (!safeCode) return;
+
+        const nextMode = mode === "karaoke" ? "karaoke" : "tv";
+        const iframe = document.getElementById("mixparty-screen");
+        const card = document.getElementById("receiver-card");
+
+        const nextUrl =
+          nextMode === "karaoke"
+            ? `/party/${encodeURIComponent(safeCode)}/karaoke?cast=1`
+            : `/party/${encodeURIComponent(safeCode)}?display=tv&cast=1`;
+
+        if (iframe.getAttribute("src") !== nextUrl) {
+          iframe.setAttribute("src", nextUrl);
+        }
+
+        iframe.style.display = "block";
+        card.style.display = "none";
+      }
+
       context.addCustomMessageListener(
         MIXPARTY_NAMESPACE,
         (event) => {
           const payload = event && event.data ? event.data : {};
-          const code = String(payload.partyCode || payload.code || "")
-            .trim()
-            .toUpperCase();
+          const code = normalizePartyCode(payload.partyCode || payload.code);
+          const mode = payload.mode === "karaoke" ? "karaoke" : "tv";
 
           if (!code) return;
 
           document.getElementById("party-code").textContent = code;
-          document.getElementById("status").textContent = "Code soirée reçu ✅";
+          document.getElementById("status").textContent = "Ouverture de MixParty…";
+
+          if (
+            payload.type === "mixparty_party_code" ||
+            payload.type === "mixparty_display" ||
+            !payload.type
+          ) {
+            openMixPartyDisplay(code, mode);
+          }
 
           try {
             if (event.senderId) {
@@ -119,8 +176,12 @@
                 MIXPARTY_NAMESPACE,
                 event.senderId,
                 {
-                  type: "mixparty_party_code_ack",
-                  partyCode: code
+                  type:
+                    payload.type === "mixparty_display"
+                      ? "mixparty_display_ack"
+                      : "mixparty_party_code_ack",
+                  partyCode: code,
+                  mode: mode
                 }
               );
             }
