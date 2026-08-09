@@ -6315,8 +6315,35 @@ const KARAOKE_SYNC_ENGINE_MAX_ABS_OFFSET_SECONDS = Math.max(
   Number(process.env.KARAOKE_SYNC_ENGINE_MAX_ABS_OFFSET_SECONDS || 4)
 );
 
+const KARAOKE_SYNC_ENGINE_DEFAULT_URL =
+  "https://karaoke-sync-worker-production.up.railway.app/align";
+
 function karaokeSyncEngineUrl() {
-  return String(process.env.KARAOKE_SYNC_ENGINE_URL || "").trim();
+  const configured = String(
+    process.env.KARAOKE_SYNC_ENGINE_URL ||
+    process.env.NEXT_PUBLIC_KARAOKE_SYNC_ENGINE_URL ||
+    ""
+  ).trim();
+
+  // Railway doit normalement fournir KARAOKE_SYNC_ENGINE_URL.
+  // Le fallback garde le worker fonctionnel même si cette variable
+  // n'est pas injectée dans le runtime API du service monorepo.
+  const raw = configured || KARAOKE_SYNC_ENGINE_DEFAULT_URL;
+
+  try {
+    const parsed = new URL(raw);
+    if (!["http:", "https:"].includes(parsed.protocol)) return "";
+
+    // Accepte soit la racine du worker, soit /align.
+    const pathname = parsed.pathname.replace(/\/+$/, "");
+    if (!pathname || pathname === "/") {
+      parsed.pathname = "/align";
+    }
+
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return "";
+  }
 }
 
 function karaokeSyncEngineEnabled() {
@@ -6520,7 +6547,11 @@ async function requestKaraokeSyncAlignmentUpload(
   mimeType: string
 ) {
   const endpoint = karaokeSyncEngineUrl();
-  if (!endpoint) throw new Error("KARAOKE_SYNC_ENGINE_NOT_CONFIGURED");
+  if (!endpoint) {
+    throw new Error(
+      "KARAOKE_SYNC_ENGINE_NOT_CONFIGURED: aucune URL worker valide n'a pu être résolue."
+    );
+  }
 
   const record = await fetchLrclibLyricsById(Number(audit.lrclibId));
 
@@ -6789,6 +6820,22 @@ function karaokeSyncEngineSummary() {
       "Shadow mode : les résultats du nouveau moteur sont enregistrés séparément et ne remplacent pas encore les paroles LRCLIB servies par MixParty.",
   };
 }
+
+app.get("/partybrain/karaoke-sync-engine/config", (_req, res) => {
+  const configured = String(
+    process.env.KARAOKE_SYNC_ENGINE_URL ||
+    process.env.NEXT_PUBLIC_KARAOKE_SYNC_ENGINE_URL ||
+    ""
+  ).trim();
+
+  return res.json({
+    enabled: karaokeSyncEngineEnabled(),
+    endpoint: karaokeSyncEngineUrl(),
+    source: configured ? "railway-variable" : "built-in-fallback",
+    envDetected: Boolean(configured),
+    shadowMode: true,
+  });
+});
 
 app.get("/partybrain/karaoke-sync-engine", (_req, res) => {
   return res.json(karaokeSyncEngineSummary());
