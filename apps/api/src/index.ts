@@ -5783,18 +5783,10 @@ async function runAutomaticLrclibWorker() {
         else if (String(match?.syncedLyrics || "").trim()) kind = "synced";
         else if (String(match?.plainLyrics || "").trim()) kind = "plain";
 
-        if (kind === "synced" && karaokeLyricsStrictCandidateMatch(song, result)) {
+        if (kind === "synced" && match && karaokeLyricsStrictCandidateMatch(song, match)) {
           song.karaokeSyncCertifiedAt = Date.now();
           song.karaokeSyncCertifiedReason = karaokeLyricsCertifiedReason(song);
-        } else if (kind !== "synced") {
-          song.karaokeSyncCertifiedAt = undefined;
-          song.karaokeSyncCertifiedReason = undefined;
-        }
-
-        if (kind === "synced" && karaokeLyricsStrictCandidateMatch(song, result)) {
-          song.karaokeSyncCertifiedAt = Date.now();
-          song.karaokeSyncCertifiedReason = karaokeLyricsCertifiedReason(song);
-        } else if (kind !== "synced") {
+        } else {
           song.karaokeSyncCertifiedAt = undefined;
           song.karaokeSyncCertifiedReason = undefined;
         }
