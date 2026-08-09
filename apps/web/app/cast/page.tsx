@@ -57,7 +57,7 @@ export default function MixPartyCastReceiverPage() {
 
         context.addCustomMessageListener(
           CAST_NAMESPACE,
-          (event: { data?: CastDisplayMessage }) => {
+          (event: any) => {
             const payload = event?.data || {};
             const nextCode = normalizePartyCode(payload.partyCode || payload.code);
             const nextMode: DisplayMode =
