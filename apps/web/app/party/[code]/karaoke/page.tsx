@@ -511,9 +511,10 @@ export default function KaraokePartyPage() {
                             return (
                               <div
                                 key={`${line.time}-${index}`}
-                                className="absolute left-1/2 top-1/2 w-full -translate-x-1/2 px-2 will-change-transform"
+                                className="absolute inset-x-0 top-1/2 flex w-full justify-center px-4 will-change-transform sm:px-8"
                                 style={{
-                                  transform: `translate(-50%, calc(-50% + ${translateY}px)) scale(${scale})`,
+                                  transform: `translateY(calc(-50% + ${translateY}px)) scale(${scale})`,
+                                  transformOrigin: "center center",
                                   opacity,
                                   filter: `blur(${blur}px)`,
                                   transition:
@@ -521,10 +522,10 @@ export default function KaraokePartyPage() {
                                 }}
                               >
                                 <p
-                                  className={`mx-auto max-w-6xl text-balance font-black leading-[1.05] tracking-[-0.04em] transition-colors duration-300 ${
+                                  className={`mx-auto w-full max-w-[92%] break-words text-center text-balance font-black leading-[1.05] tracking-[-0.04em] transition-colors duration-300 sm:max-w-[88%] ${
                                     isCenter
-                                      ? "bg-gradient-to-r from-fuchsia-300 via-pink-100 to-orange-200 bg-clip-text text-[clamp(2.65rem,6vw,7.2rem)] text-transparent drop-shadow-[0_0_30px_rgba(236,72,153,.18)]"
-                                      : "text-[clamp(1.55rem,3.6vw,3.8rem)] text-white/75"
+                                      ? "bg-gradient-to-r from-fuchsia-300 via-pink-100 to-orange-200 bg-clip-text text-[clamp(2.15rem,5.2vw,6.2rem)] text-transparent drop-shadow-[0_0_30px_rgba(236,72,153,.18)]"
+                                      : "text-[clamp(1.35rem,3vw,3.1rem)] text-white/75"
                                   }`}
                                 >
                                   {line.text}
