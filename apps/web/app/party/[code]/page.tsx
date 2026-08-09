@@ -1936,7 +1936,7 @@ async function removeSong(index: number, song: Song) {
               onClick={() => setKaraokeScreenOpen(false)}
               className="rounded-xl border border-white/10 bg-white/[0.07] px-3 py-2 text-xs font-black text-white transition active:scale-[.98]"
             >
-              ← Retour à la soirée
+              {tvModeActive ? "📺 Retour au mode TV" : "← Retour à la soirée"}
             </button>
           </div>
           <iframe
@@ -3381,7 +3381,17 @@ const canRemove =
                 <div><UsersRound /><b>{party.participants.length}</b><span>participants en ligne</span></div>
                 <div><TrendingUp /><b>{totalVisibleVotes}</b><span>votes en temps réel</span></div>
               </div>
-              <button type="button" onClick={deactivateTvMode} className="v60-tv__close">Quitter</button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setKaraokeScreenOpen(true)}
+                  className="inline-flex items-center gap-2 rounded-xl border border-fuchsia-300/25 bg-fuchsia-500/10 px-4 py-2 text-xs font-black text-fuchsia-100 transition hover:bg-fuchsia-500/15"
+                >
+                  <Mic2 className="h-4 w-4" />
+                  Karaoké
+                </button>
+                <button type="button" onClick={deactivateTvMode} className="v60-tv__close">Quitter</button>
+              </div>
             </header>
 
             <main className="v60-tv__grid">
