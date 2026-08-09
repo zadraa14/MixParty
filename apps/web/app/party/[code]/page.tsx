@@ -297,6 +297,7 @@ export default function PartyPage() {
   const [castAvailable, setCastAvailable] = useState(false);
   const [castConnected, setCastConnected] = useState(false);
   const [castConnecting, setCastConnecting] = useState(false);
+  const [castStateLabel, setCastStateLabel] = useState("INITIALISATION");
   const [castDeviceName, setCastDeviceName] = useState("");
   const [castDisplayMode, setCastDisplayMode] = useState<"tv" | "karaoke">("tv");
   const [tvPlayback, setTvPlayback] = useState({ time: 0, duration: 0, state: 2 });
@@ -444,12 +445,14 @@ export default function PartyPage() {
 
         castStateHandler = (event: any) => {
           const state = event?.castState;
+          setCastStateLabel(String(state || "UNKNOWN"));
           setCastAvailable(
             state === framework.CastState.NOT_CONNECTED ||
               state === framework.CastState.CONNECTING ||
               state === framework.CastState.CONNECTED
           );
           setCastConnected(state === framework.CastState.CONNECTED);
+          console.log("📺 Google Cast state:", state);
         };
 
         sessionStateHandler = (event: any) => {
@@ -494,11 +497,13 @@ export default function PartyPage() {
         );
 
         const currentState = context.getCastState?.();
+        setCastStateLabel(String(currentState || "UNKNOWN"));
         setCastAvailable(
           currentState === framework.CastState.NOT_CONNECTED ||
             currentState === framework.CastState.CONNECTING ||
             currentState === framework.CastState.CONNECTED
         );
+        console.log("📺 Google Cast initial state:", currentState);
 
         const currentSession = context.getCurrentSession?.();
         if (currentSession) {
@@ -616,8 +621,13 @@ export default function PartyPage() {
         void sendCastDisplayMode(mode);
       }, 700);
     } catch (error: any) {
-      // "cancel" est fréquent quand l’utilisateur ferme simplement la fenêtre Cast.
+      // Le clic reste autorisé même si CastState indique NO_DEVICES_AVAILABLE :
+      // requestSession donne alors l'erreur réelle du SDK au lieu de masquer le diagnostic.
+      const codeValue = String(error?.code || error?.message || error || "UNKNOWN");
       console.warn("Connexion Google Cast annulée ou impossible", error);
+      if (!/cancel/i.test(codeValue)) {
+        window.alert(`Google Cast : ${codeValue}`);
+      }
     } finally {
       setCastConnecting(false);
     }
@@ -3636,22 +3646,16 @@ const canRemove =
                     <button
                       type="button"
                       onClick={() => void startMixPartyCast("tv")}
-                      disabled={!castSdkReady || !castAvailable || castConnecting}
+                      disabled={!castSdkReady || castConnecting}
                       className="inline-flex items-center gap-1.5 rounded-full border border-cyan-300/20 bg-cyan-500/10 px-3 py-1.5 text-[10px] font-black text-cyan-100 transition hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-40"
                       title={
                         !castSdkReady
                           ? "Initialisation Google Cast…"
-                          : !castAvailable
-                            ? "Aucun appareil Google Cast détecté"
-                            : "Caster le Mode TV MixParty"
+                          : `Google Cast : ${castStateLabel}`
                       }
                     >
                       <Cast className={`h-3 w-3 ${castConnecting ? "animate-pulse" : ""}`} />
-                      {castConnecting
-                        ? "Connexion…"
-                        : !castAvailable && castSdkReady
-                          ? "Aucun Cast"
-                          : "Caster sur TV"}
+                      {castConnecting ? "Connexion…" : "Caster sur TV"}
                     </button>
                   ) : (
                     <div className="flex flex-wrap items-center gap-1.5">
