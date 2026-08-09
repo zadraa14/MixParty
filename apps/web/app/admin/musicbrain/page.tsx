@@ -139,6 +139,11 @@ type PublicationQualitySummary = {
   karaokeSyncedReview: number;
   karaokeSyncedBlocked: number;
   karaokeSyncedTotal: number;
+  autoValidated: number;
+  autoFixable: number;
+  manualReview: number;
+  karaokeAutoFixable: number;
+  karaokeManualReview: number;
 };
 
 type PublicationQualityItem = {
@@ -157,6 +162,9 @@ type PublicationQualityItem = {
   publicationStatus: "ready" | "review" | "blocked";
   publicationReason: string;
   proposedArtistName?: string;
+  consensusResolution: "auto_validated" | "auto_fixable" | "manual_review" | "blocked";
+  consensusConfidence: number;
+  consensusSignals: string[];
   karaokeSynced: boolean;
   lrclibArtistName?: string;
   lrclibTrackName?: string;
@@ -423,6 +431,10 @@ export default function MusicBrainAdminPage() {
     useState<"review" | "ready" | "blocked" | "all">("review");
   const [publicationQualitySearch, setPublicationQualitySearch] = useState("");
 
+  const [autoFixLoading, setAutoFixLoading] = useState(false);
+  const [autoFixMessage, setAutoFixMessage] = useState("");
+  const [autoFixError, setAutoFixError] = useState("");
+
   const [activeAdminTab, setActiveAdminTab] = useState<
     | "overview"
     | "catalog"
@@ -435,6 +447,57 @@ export default function MusicBrainAdminPage() {
   >("overview");
 
 
+
+  async function runMusicBrainAutoFix() {
+    if (!adminToken.trim()) {
+      setAutoFixError("Entre le code administrateur Railway avant de lancer Auto-Fix.");
+      return;
+    }
+
+    const autoFixable = Number(publicationQuality?.summary.autoFixable || 0);
+    if (autoFixable <= 0) {
+      setAutoFixError("Aucune correction automatique sûre à appliquer.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Lancer Auto-Fix sur ${autoFixable} morceau(x) ? MusicBrain ne corrigera que les cas avec au moins deux preuves indépendantes concordantes.`
+    );
+    if (!confirmed) return;
+
+    setAutoFixLoading(true);
+    setAutoFixMessage("");
+    setAutoFixError("");
+
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/maintenance/musicbrain-autofix/run`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-partybrain-admin-token": adminToken.trim(),
+          },
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Auto-Fix MusicBrain impossible.");
+      }
+
+      setAutoFixMessage(data?.message || "Auto-Fix terminé.");
+      await loadPublicationQuality("review", "");
+      await loadStats();
+      await loadKaraokeReadySongs("");
+    } catch (err) {
+      setAutoFixError(
+        err instanceof Error ? err.message : "Auto-Fix MusicBrain impossible."
+      );
+    } finally {
+      setAutoFixLoading(false);
+    }
+  }
 
   async function loadPublicationQuality(
     status = publicationQualityFilter,
@@ -1276,6 +1339,10 @@ export default function MusicBrainAdminPage() {
     artiste_inconnu: "Artiste inconnu",
     artiste_generique: "Artiste générique",
     musicbrain_rejected: "Refusé par MusicBrain",
+    autofix_available: "Correction automatique sûre disponible",
+    autovalidated_consensus: "Validé automatiquement par consensus",
+    manual_artist_review: "Artiste réellement ambigu",
+    manual_metadata_review: "Métadonnées encore ambiguës",
   };
 
   const cleanupReviewItems = Array.isArray(cleanupReport?.reviewItems) ? cleanupReport.reviewItems : [];
@@ -2342,13 +2409,13 @@ export default function MusicBrainAdminPage() {
                       </div>
                       <div>
                         <p className="text-xs font-black uppercase tracking-[.22em] text-violet-300">
-                          Publication Gate
+                          MusicBrain Quality V3
                         </p>
                         <h2 className="mt-1 text-2xl font-black">
-                          MusicBrain décide avant MixParty
+                          Le maximum est traité automatiquement
                         </h2>
                         <p className="mt-2 text-sm leading-6 text-white/50">
-                          Les morceaux validés peuvent être publiés. Les morceaux incertains restent dans MusicBrain pour contrôle. Les erreurs évidentes sont bloquées avant d’atteindre MixParty ou la bibliothèque Karaoké.
+                          MusicBrain compare le titre YouTube, la chaîne, les métadonnées Art Track et LRCLIB. Deux preuves indépendantes concordantes permettent une validation ou une correction automatique. Toi, tu ne gardes que les vrais cas ambigus.
                         </p>
                       </div>
                     </div>
@@ -2370,69 +2437,123 @@ export default function MusicBrainAdminPage() {
                         publicationQualityLoading ? "animate-spin" : ""
                       }`}
                     />
-                    Actualiser la qualité
+                    Actualiser
                   </button>
                 </div>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  {[
-                    {
-                      key: "ready" as const,
-                      label: "Validés",
-                      value: publicationQuality?.summary.ready || 0,
-                      detail: "publiables dans MixParty",
-                      tone: "border-emerald-300/15 bg-emerald-500/[0.07] text-emerald-100",
-                    },
-                    {
-                      key: "review" as const,
-                      label: "À vérifier",
-                      value: publicationQuality?.summary.review || 0,
-                      detail: "retenus par MusicBrain",
-                      tone: "border-amber-300/15 bg-amber-500/[0.07] text-amber-100",
-                    },
-                    {
-                      key: "blocked" as const,
-                      label: "Bloqués",
-                      value: publicationQuality?.summary.blocked || 0,
-                      detail: "erreurs évidentes",
-                      tone: "border-red-300/15 bg-red-500/[0.06] text-red-100",
-                    },
-                    {
-                      key: "all" as const,
-                      label: "Karaoké publiable",
-                      value: publicationQuality?.summary.karaokeSyncedReady || 0,
-                      detail: `${number.format(
-                        publicationQuality?.summary.karaokeSyncedReview || 0
-                      )} synchronisé(s) encore à vérifier`,
-                      tone: "border-cyan-300/15 bg-cyan-500/[0.07] text-cyan-100",
-                    },
-                  ].map((card) => (
-                    <button
-                      key={card.label}
-                      type="button"
-                      onClick={() => {
-                        if (card.key !== "all") {
-                          setPublicationQualityFilter(card.key);
+                  <article className="rounded-2xl border border-emerald-300/15 bg-emerald-500/[0.07] p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[.16em] text-emerald-200/60">
+                      Auto-validés
+                    </p>
+                    <p className="mt-2 text-3xl font-black text-emerald-100">
+                      {number.format(publicationQuality?.summary.autoValidated || 0)}
+                    </p>
+                    <p className="mt-1 text-xs text-emerald-100/45">
+                      aucune action nécessaire
+                    </p>
+                  </article>
+
+                  <article className="rounded-2xl border border-cyan-300/15 bg-cyan-500/[0.07] p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[.16em] text-cyan-200/60">
+                      Auto-corrigeables
+                    </p>
+                    <p className="mt-2 text-3xl font-black text-cyan-100">
+                      {number.format(publicationQuality?.summary.autoFixable || 0)}
+                    </p>
+                    <p className="mt-1 text-xs text-cyan-100/45">
+                      MusicBrain sait déjà quoi corriger
+                    </p>
+                  </article>
+
+                  <article className="rounded-2xl border border-amber-300/15 bg-amber-500/[0.07] p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[.16em] text-amber-200/60">
+                      Vraiment à vérifier
+                    </p>
+                    <p className="mt-2 text-3xl font-black text-amber-100">
+                      {number.format(publicationQuality?.summary.manualReview || 0)}
+                    </p>
+                    <p className="mt-1 text-xs text-amber-100/45">
+                      seulement les cas ambigus
+                    </p>
+                  </article>
+
+                  <article className="rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/[0.07] p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[.16em] text-fuchsia-200/60">
+                      Karaoké publiable
+                    </p>
+                    <p className="mt-2 text-3xl font-black text-fuchsia-100">
+                      {number.format(publicationQuality?.summary.karaokeSyncedReady || 0)}
+                    </p>
+                    <p className="mt-1 text-xs text-fuchsia-100/45">
+                      {number.format(publicationQuality?.summary.karaokeAutoFixable || 0)} correction(s) auto en attente
+                    </p>
+                  </article>
+                </div>
+
+                <div className="mt-5 rounded-2xl border border-cyan-300/15 bg-cyan-500/[0.055] p-4 sm:p-5">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[.16em] text-cyan-200">
+                        Auto-Fix
+                      </p>
+                      <p className="mt-1 text-sm font-black text-white">
+                        {number.format(publicationQuality?.summary.autoFixable || 0)} correction(s) peuvent être appliquées sans validation morceau par morceau.
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-white/40">
+                        Exemple : chaîne 7clouds + titre « Ariana Grande - … » + LRCLIB « Ariana Grande » → correction automatique vers Ariana Grande.
+                      </p>
+                    </div>
+
+                    <div className="w-full max-w-md">
+                      <label className="flex items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-3 py-2.5">
+                        <KeyRound className="h-4 w-4 text-cyan-300" />
+                        <input
+                          type="password"
+                          value={adminToken}
+                          onChange={(event) => setAdminToken(event.target.value)}
+                          placeholder="Code administrateur Railway"
+                          autoComplete="off"
+                          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-white/25"
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => void runMusicBrainAutoFix()}
+                        disabled={
+                          autoFixLoading ||
+                          Number(publicationQuality?.summary.autoFixable || 0) <= 0
                         }
-                      }}
-                      className={`rounded-2xl border p-4 text-left transition hover:-translate-y-0.5 ${card.tone}`}
-                    >
-                      <p className="text-[10px] font-black uppercase tracking-[.16em] opacity-60">
-                        {card.label}
-                      </p>
-                      <p className="mt-2 text-3xl font-black">
-                        {number.format(card.value)}
-                      </p>
-                      <p className="mt-1 text-xs opacity-55">{card.detail}</p>
-                    </button>
-                  ))}
+                        className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-300/25 bg-cyan-500/15 px-4 py-3 text-sm font-black text-cyan-100 transition hover:bg-cyan-500/20 disabled:opacity-40"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        {autoFixLoading
+                          ? "Auto-Fix en cours…"
+                          : `Corriger automatiquement ${number.format(
+                              publicationQuality?.summary.autoFixable || 0
+                            )} morceau(x)`}
+                      </button>
+                    </div>
+                  </div>
+
+                  {autoFixMessage ? (
+                    <p className="mt-3 rounded-xl border border-emerald-300/15 bg-emerald-500/[0.08] p-3 text-xs font-bold text-emerald-200">
+                      {autoFixMessage}
+                    </p>
+                  ) : null}
+
+                  {autoFixError ? (
+                    <p className="mt-3 rounded-xl border border-red-300/15 bg-red-500/[0.08] p-3 text-xs font-bold text-red-200">
+                      {autoFixError}
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex flex-wrap gap-2">
                       {[
-                        ["review", "À vérifier"],
+                        ["review", "À traiter"],
                         ["ready", "Validés"],
                         ["blocked", "Bloqués"],
                         ["all", "Tout"],
@@ -2494,10 +2615,10 @@ export default function MusicBrainAdminPage() {
 
                   <div className="mt-4 flex items-center justify-between gap-3 text-[11px] font-bold text-white/35">
                     <span>
-                      {number.format(publicationQuality?.total || 0)} entrée(s) dans ce filtre
+                      {number.format(publicationQuality?.total || 0)} entrée(s)
                     </span>
                     <span>
-                      priorité aux morceaux Karaoké synchronisés et les plus utilisés
+                      les morceaux Karaoké synchronisés restent prioritaires
                     </span>
                   </div>
 
@@ -2536,46 +2657,57 @@ export default function MusicBrainAdminPage() {
                               <div className="flex shrink-0 flex-wrap gap-1.5">
                                 {item.karaokeSynced ? (
                                   <span className="rounded-full border border-cyan-300/15 bg-cyan-500/10 px-2 py-1 text-[9px] font-black text-cyan-200">
-                                    🎤 LRCLIB synchronisé
+                                    🎤 Synchronisé
                                   </span>
                                 ) : null}
 
                                 <span
                                   className={`rounded-full border px-2 py-1 text-[9px] font-black ${
-                                    item.publicationStatus === "ready"
+                                    item.consensusResolution === "auto_validated"
                                       ? "border-emerald-300/15 bg-emerald-500/10 text-emerald-200"
-                                      : item.publicationStatus === "review"
-                                        ? "border-amber-300/15 bg-amber-500/10 text-amber-200"
-                                        : "border-red-300/15 bg-red-500/10 text-red-200"
+                                      : item.consensusResolution === "auto_fixable"
+                                        ? "border-cyan-300/15 bg-cyan-500/10 text-cyan-200"
+                                        : item.consensusResolution === "manual_review"
+                                          ? "border-amber-300/15 bg-amber-500/10 text-amber-200"
+                                          : "border-red-300/15 bg-red-500/10 text-red-200"
                                   }`}
                                 >
-                                  {item.publicationStatus === "ready"
-                                    ? "Validé"
-                                    : item.publicationStatus === "review"
-                                      ? "À vérifier"
-                                      : "Bloqué"}
+                                  {item.consensusResolution === "auto_validated"
+                                    ? "Auto-validé"
+                                    : item.consensusResolution === "auto_fixable"
+                                      ? "Auto-corrigeable"
+                                      : item.consensusResolution === "manual_review"
+                                        ? "À vérifier"
+                                        : "Bloqué"}
                                 </span>
                               </div>
                             </div>
 
                             <div className="mt-2 grid gap-1 text-[10px] text-white/35">
                               <p>
-                                <span className="text-white/55">Raison :</span>{" "}
+                                <span className="text-white/55">Décision :</span>{" "}
                                 {publicationReasonLabels[item.publicationReason] ||
                                   item.publicationReason}
                               </p>
+
                               <p>
-                                <span className="text-white/55">Chaîne :</span>{" "}
-                                {item.channelTitle || "—"}
+                                <span className="text-white/55">Preuves :</span>{" "}
+                                {(item.consensusSignals || []).length
+                                  ? item.consensusSignals.join(" + ")
+                                  : "aucune preuve forte"}
                                 {" • "}
                                 <span className="text-white/55">Confiance :</span>{" "}
-                                {Math.round(item.metadataConfidence || 0)} %
+                                {Math.round(item.consensusConfidence || 0)} %
                               </p>
 
                               {item.proposedArtistName ? (
-                                <p className="font-bold text-amber-100/70">
-                                  Proposition MusicBrain : {item.artistName} →{" "}
-                                  <strong className="text-amber-200">
+                                <p className={`font-bold ${
+                                  item.consensusResolution === "auto_fixable"
+                                    ? "text-cyan-100/75"
+                                    : "text-amber-100/70"
+                                }`}>
+                                  {item.artistName} →{" "}
+                                  <strong>
                                     {item.proposedArtistName}
                                   </strong>
                                 </p>
@@ -2583,16 +2715,16 @@ export default function MusicBrainAdminPage() {
 
                               {item.lrclibArtistName &&
                               item.lrclibArtistName !== item.artistName ? (
-                                <p className="text-cyan-100/55">
-                                  LRCLIB propose : {item.lrclibArtistName}
+                                <p className="text-fuchsia-100/55">
+                                  LRCLIB : {item.lrclibArtistName}
                                 </p>
                               ) : null}
 
                               <p className="text-white/25">
-                                Recherches {number.format(item.searchCount)} • Ajouts{" "}
+                                Chaîne {item.channelTitle || "—"} • Recherches{" "}
+                                {number.format(item.searchCount)} • Ajouts{" "}
                                 {number.format(item.addedCount)} • Lectures{" "}
-                                {number.format(item.playedCount)} • Votes{" "}
-                                {number.format(item.voteCount)}
+                                {number.format(item.playedCount)}
                               </p>
                             </div>
                           </div>
@@ -2603,7 +2735,7 @@ export default function MusicBrainAdminPage() {
                     {!publicationQualityLoading &&
                     !(publicationQuality?.items || []).length ? (
                       <div className="rounded-2xl border border-white/8 bg-black/20 p-6 text-center text-sm text-white/35">
-                        Aucune entrée dans ce filtre.
+                        Rien à afficher dans ce filtre.
                       </div>
                     ) : null}
                   </div>
@@ -2611,14 +2743,14 @@ export default function MusicBrainAdminPage() {
                   {(publicationQuality?.total || 0) >
                   (publicationQuality?.returned || 0) ? (
                     <p className="mt-3 text-xs text-white/30">
-                      Les {number.format(publicationQuality?.returned ?? 0)} premières entrées sont affichées. Utilise la recherche pour cibler un artiste ou une chaîne précise.
+                      Les {number.format(publicationQuality?.returned ?? 0)} premières entrées sont affichées. Utilise la recherche pour cibler un cas précis.
                     </p>
                   ) : null}
                 </div>
               </section>
             ) : null}
 
-{activeAdminTab === "quality" || activeAdminTab === "maintenance" ? (
+{activeAdminTab === "maintenance" ? (
               <>
             <section className="mt-7 rounded-[28px] border border-amber-400/20 bg-gradient-to-br from-amber-500/10 via-orange-500/5 to-fuchsia-500/5 p-5 backdrop-blur-xl sm:p-6">
               <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -2628,8 +2760,8 @@ export default function MusicBrainAdminPage() {
                       <ShieldCheck className="h-5 w-5" />
                     </div>
                     <div>
-                      <p className="text-xs font-black uppercase tracking-[.22em] text-amber-300">{activeAdminTab === "quality" ? "Qualité des données" : "Maintenance sécurisée"}</p>
-                      <h2 className="mt-1 text-2xl font-black">{activeAdminTab === "quality" ? "Contrôle et nettoyage MusicBrain" : "Cache et opérations administrateur"}</h2>
+                      <p className="text-xs font-black uppercase tracking-[.22em] text-amber-300">"Maintenance sécurisée"</p>
+                      <h2 className="mt-1 text-2xl font-black">"Cache et opérations administrateur"</h2>
                     </div>
                   </div>
                   <p className="mt-4 text-sm leading-6 text-white/55">

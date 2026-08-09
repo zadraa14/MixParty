@@ -7039,11 +7039,227 @@ type MusicBrainPublicationStatus =
   | "review"
   | "blocked";
 
+type MusicBrainConsensusSignal =
+  | "CURRENT"
+  | "TITLE"
+  | "CHANNEL"
+  | "TOPIC"
+  | "LRCLIB"
+  | "ART_TRACK";
+
+type MusicBrainConsensusResolution =
+  | "auto_validated"
+  | "auto_fixable"
+  | "manual_review"
+  | "blocked";
+
+type MusicBrainConsensusResult = {
+  resolution: MusicBrainConsensusResolution;
+  artistName: string;
+  proposedArtistName?: string;
+  confidence: number;
+  signals: MusicBrainConsensusSignal[];
+  reason: string;
+};
+
 type MusicBrainPublicationDecision = {
   status: MusicBrainPublicationStatus;
   reason: string;
   proposedArtistName?: string;
+  consensusResolution: MusicBrainConsensusResolution;
+  consensusConfidence: number;
+  consensusSignals: MusicBrainConsensusSignal[];
 };
+
+function sameMusicBrainArtist(left: unknown, right: unknown) {
+  const leftKey = normalizeMusicQuery(String(left || ""));
+  const rightKey = normalizeMusicQuery(String(right || ""));
+  return Boolean(leftKey && rightKey && leftKey === rightKey);
+}
+
+function validConsensusArtist(value: unknown) {
+  const artist = cleanArtistName(String(value || ""));
+  return (
+    validRepairArtist(artist) &&
+    !repairArtistLooksMulti(artist) &&
+    !isSuspiciousArtistName(artist)
+  );
+}
+
+function musicBrainArtistConsensus(song: MusicBrainSong): MusicBrainConsensusResult {
+  const currentArtist = cleanArtistName(song.artistName || "");
+  const currentKey = normalizeMusicQuery(currentArtist);
+  const titleArtist = cleanArtistName(
+    artistFromTitlePrefix(song.rawTitle || song.title || "")
+  );
+  const topicArtist = cleanArtistName(
+    artistFromTopicChannel(song.channelTitle || "")
+  );
+
+  const karaokeEntry = karaokeLyricsAudit.entries[song.videoId];
+  const lrclibArtist =
+    karaokeEntry?.kind === "synced"
+      ? cleanArtistName(karaokeEntry.matchedArtistName || "")
+      : "";
+
+  const candidateNames = [
+    currentArtist,
+    titleArtist,
+    topicArtist,
+    lrclibArtist,
+  ].filter((name, index, all) => {
+    const key = normalizeMusicQuery(name);
+    return Boolean(
+      key &&
+      validConsensusArtist(name) &&
+      all.findIndex((item) => normalizeMusicQuery(item) === key) === index
+    );
+  });
+
+  type CandidateEvidence = {
+    artistName: string;
+    signals: Set<MusicBrainConsensusSignal>;
+    score: number;
+  };
+
+  const evidence = new Map<string, CandidateEvidence>();
+
+  function addSignal(
+    artistName: string,
+    signal: MusicBrainConsensusSignal,
+    score: number
+  ) {
+    if (!validConsensusArtist(artistName)) return;
+    const key = normalizeMusicQuery(artistName);
+    if (!key) return;
+
+    const existing = evidence.get(key) || {
+      artistName: cleanArtistName(artistName),
+      signals: new Set<MusicBrainConsensusSignal>(),
+      score: 0,
+    };
+
+    if (!existing.signals.has(signal)) {
+      existing.signals.add(signal);
+      existing.score += score;
+    }
+
+    evidence.set(key, existing);
+  }
+
+  if (validConsensusArtist(currentArtist)) {
+    addSignal(currentArtist, "CURRENT", 1);
+
+    if (
+      song.metadataSource === "ART_TRACK_DESCRIPTION" &&
+      Number(song.metadataConfidence || 0) >= 65
+    ) {
+      addSignal(currentArtist, "ART_TRACK", 4);
+    }
+
+    if (channelConfirmsRepairArtist(song.channelTitle, currentArtist)) {
+      addSignal(currentArtist, "CHANNEL", 2);
+    }
+  }
+
+  if (validConsensusArtist(titleArtist)) {
+    addSignal(titleArtist, "TITLE", 2);
+    if (channelConfirmsRepairArtist(song.channelTitle, titleArtist)) {
+      addSignal(titleArtist, "CHANNEL", 2);
+    }
+  }
+
+  if (validConsensusArtist(topicArtist)) {
+    addSignal(topicArtist, "TOPIC", 2);
+  }
+
+  if (validConsensusArtist(lrclibArtist)) {
+    // LRCLIB ne compte ici que lorsque les paroles synchronisées ont
+    // réellement été validées pour ce videoId.
+    addSignal(lrclibArtist, "LRCLIB", 3);
+  }
+
+  const ranked = [...evidence.values()].sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return b.signals.size - a.signals.size;
+  });
+
+  const best = ranked[0];
+
+  if (!best) {
+    return {
+      resolution: "manual_review",
+      artistName: currentArtist || "Artiste inconnu",
+      confidence: 0,
+      signals: [],
+      reason: "Aucun signal indépendant exploitable.",
+    };
+  }
+
+  const signals = [...best.signals];
+
+  const hasIndependentPair =
+    (best.signals.has("TITLE") && best.signals.has("LRCLIB")) ||
+    (best.signals.has("TITLE") && best.signals.has("CHANNEL")) ||
+    (best.signals.has("LRCLIB") && best.signals.has("TOPIC")) ||
+    (best.signals.has("LRCLIB") && best.signals.has("CHANNEL")) ||
+    best.signals.has("ART_TRACK");
+
+  const confidence = Math.min(
+    99,
+    Math.round(
+      45 +
+        best.score * 8 +
+        Math.max(0, best.signals.size - 1) * 5
+    )
+  );
+
+  // Le meilleur consensus pointe vers un autre artiste :
+  // correction automatique seulement avec au moins deux preuves indépendantes.
+  if (
+    currentKey &&
+    !sameMusicBrainArtist(best.artistName, currentArtist)
+  ) {
+    if (hasIndependentPair && best.score >= 5) {
+      return {
+        resolution: "auto_fixable",
+        artistName: currentArtist || "Artiste inconnu",
+        proposedArtistName: best.artistName,
+        confidence: Math.max(92, confidence),
+        signals,
+        reason: `Consensus fort vers « ${best.artistName} » (${signals.join(" + ")}).`,
+      };
+    }
+
+    return {
+      resolution: "manual_review",
+      artistName: currentArtist || "Artiste inconnu",
+      proposedArtistName: best.artistName,
+      confidence,
+      signals,
+      reason: `Une correction vers « ${best.artistName} » est plausible, mais les preuves ne sont pas assez indépendantes.`,
+    };
+  }
+
+  // L'identité actuelle est confirmée par des sources concordantes.
+  if (sameMusicBrainArtist(best.artistName, currentArtist) && hasIndependentPair) {
+    return {
+      resolution: "auto_validated",
+      artistName: currentArtist,
+      confidence: Math.max(90, confidence),
+      signals,
+      reason: `Identité confirmée automatiquement (${signals.join(" + ")}).`,
+    };
+  }
+
+  return {
+    resolution: "manual_review",
+    artistName: currentArtist || "Artiste inconnu",
+    confidence,
+    signals,
+    reason: "MusicBrain conserve ce morceau pour vérification humaine.",
+  };
+}
 
 function musicBrainPublicationDecision(song: MusicBrainSong): MusicBrainPublicationDecision {
   const learning = musicBrainLearningDecision({
@@ -7055,11 +7271,36 @@ function musicBrainPublicationDecision(song: MusicBrainSong): MusicBrainPublicat
     metadataConfidence: song.metadataConfidence,
   });
 
-  // Erreur évidente déjà reconnue par le moteur MusicBrain.
   if (!learning.learn) {
     return {
       status: "blocked",
       reason: learning.reason || "musicbrain_rejected",
+      consensusResolution: "blocked",
+      consensusConfidence: 100,
+      consensusSignals: [],
+    };
+  }
+
+  const consensus = musicBrainArtistConsensus(song);
+
+  if (consensus.resolution === "auto_fixable") {
+    return {
+      status: "review",
+      reason: "autofix_available",
+      proposedArtistName: consensus.proposedArtistName,
+      consensusResolution: consensus.resolution,
+      consensusConfidence: consensus.confidence,
+      consensusSignals: consensus.signals,
+    };
+  }
+
+  if (consensus.resolution === "auto_validated") {
+    return {
+      status: "ready",
+      reason: "autovalidated_consensus",
+      consensusResolution: consensus.resolution,
+      consensusConfidence: consensus.confidence,
+      consensusSignals: consensus.signals,
     };
   }
 
@@ -7069,9 +7310,6 @@ function musicBrainPublicationDecision(song: MusicBrainSong): MusicBrainPublicat
   const titleArtistKey = normalizeMusicQuery(titleArtist);
   const channelKey = normalizeMusicQuery(song.channelTitle || "");
 
-  // Cas typique 7clouds / chaîne de paroles :
-  // MusicBrain a pris la chaîne comme artiste alors que le titre YouTube
-  // commence clairement par un autre artiste.
   const channelLooksLikeCurrentArtist =
     Boolean(
       currentArtistKey &&
@@ -7097,45 +7335,50 @@ function musicBrainPublicationDecision(song: MusicBrainSong): MusicBrainPublicat
     if (repair?.level === "safe") {
       return {
         status: "review",
-        reason: "safe_repair_available",
+        reason: "autofix_available",
         proposedArtistName: repair.proposedArtistName,
-      };
-    }
-
-    if (repair?.level === "review") {
-      return {
-        status: "review",
-        reason: "artist_repair_requires_validation",
-        proposedArtistName: repair.proposedArtistName,
-      };
-    }
-
-    if (titlePointsToAnotherArtist) {
-      return {
-        status: "review",
-        reason: "artist_conflicts_with_youtube_title",
-        proposedArtistName: titleArtist,
+        consensusResolution: "auto_fixable",
+        consensusConfidence: Math.max(92, repair.confidence),
+        consensusSignals:
+          repair.source === "TOPIC_CHANNEL"
+            ? ["TITLE", "TOPIC"]
+            : ["TITLE", "CHANNEL"],
       };
     }
 
     return {
       status: "review",
-      reason: "suspicious_artist_identity",
+      reason:
+        repair?.level === "review"
+          ? "manual_artist_review"
+          : titlePointsToAnotherArtist
+            ? "artist_conflicts_with_youtube_title"
+            : "suspicious_artist_identity",
+      proposedArtistName:
+        repair?.proposedArtistName ||
+        (titlePointsToAnotherArtist ? titleArtist : undefined),
+      consensusResolution: "manual_review",
+      consensusConfidence: consensus.confidence,
+      consensusSignals: consensus.signals,
     };
   }
 
-  // Le système existant considère déjà QUERY_FALLBACK et les métadonnées
-  // insuffisamment confirmées comme "fiable_a_verifier".
   if (learning.reason === "fiable_a_verifier") {
     return {
       status: "review",
-      reason: "musicbrain_requires_review",
+      reason: "manual_metadata_review",
+      consensusResolution: "manual_review",
+      consensusConfidence: consensus.confidence,
+      consensusSignals: consensus.signals,
     };
   }
 
   return {
     status: "ready",
     reason: "musicbrain_validated",
+    consensusResolution: "auto_validated",
+    consensusConfidence: Math.max(80, consensus.confidence),
+    consensusSignals: consensus.signals,
   };
 }
 
@@ -7144,20 +7387,39 @@ function musicBrainPublicationSummary() {
     ready: 0,
     review: 0,
     blocked: 0,
+    autoValidated: 0,
+    autoFixable: 0,
+    manualReview: 0,
     karaokeSyncedReady: 0,
     karaokeSyncedReview: 0,
     karaokeSyncedBlocked: 0,
+    karaokeAutoFixable: 0,
+    karaokeManualReview: 0,
   };
 
   for (const song of Object.values(musicBrain.songs)) {
     const decision = musicBrainPublicationDecision(song);
     summary[decision.status] += 1;
 
+    if (decision.consensusResolution === "auto_validated") {
+      summary.autoValidated += 1;
+    } else if (decision.consensusResolution === "auto_fixable") {
+      summary.autoFixable += 1;
+    } else if (decision.consensusResolution === "manual_review") {
+      summary.manualReview += 1;
+    }
+
     const karaokeEntry = karaokeLyricsAudit.entries[song.videoId];
     if (karaokeEntry?.kind === "synced") {
       if (decision.status === "ready") summary.karaokeSyncedReady += 1;
       else if (decision.status === "review") summary.karaokeSyncedReview += 1;
       else summary.karaokeSyncedBlocked += 1;
+
+      if (decision.consensusResolution === "auto_fixable") {
+        summary.karaokeAutoFixable += 1;
+      } else if (decision.consensusResolution === "manual_review") {
+        summary.karaokeManualReview += 1;
+      }
     }
   }
 
@@ -7736,6 +7998,158 @@ function cleanMusicBrainDatabase() {
 }
 
 
+function applyMusicBrainConsensusArtistCorrection(
+  videoId: string,
+  proposedArtistName: string,
+  confidence: number
+) {
+  const song = musicBrain.songs[videoId];
+  if (!song) return false;
+
+  const freshConsensus = musicBrainArtistConsensus(song);
+  if (
+    freshConsensus.resolution !== "auto_fixable" ||
+    !freshConsensus.proposedArtistName ||
+    !sameMusicBrainArtist(
+      freshConsensus.proposedArtistName,
+      proposedArtistName
+    )
+  ) {
+    return false;
+  }
+
+  const oldArtistKey = song.artistKey;
+  const newArtistName = cleanArtistName(freshConsensus.proposedArtistName);
+  const newArtistKey = normalizeMusicQuery(newArtistName);
+
+  if (!newArtistKey || newArtistKey === oldArtistKey) return false;
+
+  const oldArtist = musicBrain.artists[oldArtistKey];
+  if (oldArtist?.songs?.[song.videoId]) {
+    delete oldArtist.songs[song.videoId];
+  }
+
+  song.artistName = newArtistName;
+  song.artistKey = newArtistKey;
+  song.title = cleanTrackTitle(song.rawTitle || song.title, newArtistName);
+  song.metadataConfidence = Math.max(
+    Number(song.metadataConfidence || 0),
+    Number(confidence || 0),
+    freshConsensus.confidence,
+    95
+  );
+  song.lastSeenAt = Date.now();
+
+  const now = Date.now();
+  const targetArtist = musicBrain.artists[newArtistKey] || {
+    key: newArtistKey,
+    name: newArtistName,
+    aliases: [],
+    collaborators: {},
+    firstSeenAt: song.firstSeenAt || now,
+    lastSeenAt: now,
+    searchCount: 0,
+    songs: {},
+  };
+
+  targetArtist.name = newArtistName;
+  targetArtist.lastSeenAt = now;
+  targetArtist.songs[song.videoId] = song;
+  musicBrain.artists[newArtistKey] = targetArtist;
+
+  removeEmptyMusicBrainArtist(oldArtistKey);
+
+  const karaokeEntry = karaokeAudit.entries[song.videoId];
+  if (karaokeEntry) {
+    karaokeEntry.sourceArtistName = newArtistName;
+  }
+
+  return true;
+}
+
+function musicBrainAutoFixPreview() {
+  const before = musicBrainPublicationSummary();
+  const corrections = Object.values(musicBrain.songs)
+    .map((song) => {
+      const consensus = musicBrainArtistConsensus(song);
+      if (
+        consensus.resolution !== "auto_fixable" ||
+        !consensus.proposedArtistName
+      ) {
+        return null;
+      }
+
+      return {
+        videoId: song.videoId,
+        title: song.title,
+        rawTitle: song.rawTitle || song.title,
+        currentArtistName: song.artistName,
+        proposedArtistName: consensus.proposedArtistName,
+        confidence: consensus.confidence,
+        signals: consensus.signals,
+        karaokeSynced:
+          karaokeLyricsAudit.entries[song.videoId]?.kind === "synced",
+        reason: consensus.reason,
+      };
+    })
+    .filter(Boolean)
+    .sort((a: any, b: any) => {
+      if (a.karaokeSynced !== b.karaokeSynced) {
+        return Number(b.karaokeSynced) - Number(a.karaokeSynced);
+      }
+      return Number(b.confidence || 0) - Number(a.confidence || 0);
+    });
+
+  return {
+    generatedAt: Date.now(),
+    before,
+    autoFixableCount: corrections.length,
+    corrections: corrections.slice(0, 500),
+    note:
+      "Aucune correction n'est appliquée pendant l'aperçu. Auto-Fix exige au moins deux signaux indépendants concordants.",
+  };
+}
+
+app.get("/partybrain/musicbrain-autofix/preview", (_req, res) => {
+  return res.json(musicBrainAutoFixPreview());
+});
+
+app.post("/partybrain/maintenance/musicbrain-autofix/run", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  const preview = musicBrainAutoFixPreview();
+  let corrected = 0;
+
+  for (const correction of preview.corrections as any[]) {
+    if (
+      applyMusicBrainConsensusArtistCorrection(
+        correction.videoId,
+        correction.proposedArtistName,
+        correction.confidence
+      )
+    ) {
+      corrected += 1;
+    }
+  }
+
+  musicBrain.updatedAt = Date.now();
+  saveMusicBrain();
+  saveKaraokeAudit();
+
+  const after = musicBrainPublicationSummary();
+
+  return res.json({
+    ok: true,
+    corrected,
+    before: preview.before,
+    after,
+    message:
+      `${corrected} correction(s) automatique(s) appliquée(s). ` +
+      `${after.manualReview} morceau(x) restent réellement à vérifier manuellement.`,
+  });
+});
+
+
 app.get("/partybrain/musicbrain-publication/status", (_req, res) => {
   return res.json(musicBrainPublicationSummary());
 });
@@ -7784,6 +8198,9 @@ app.get("/partybrain/musicbrain-publication/items", (req, res) => {
         publicationStatus: publication.status,
         publicationReason: publication.reason,
         proposedArtistName: publication.proposedArtistName || "",
+        consensusResolution: publication.consensusResolution,
+        consensusConfidence: publication.consensusConfidence,
+        consensusSignals: publication.consensusSignals,
         karaokeSynced: karaokeEntry?.kind === "synced",
         lrclibArtistName: karaokeEntry?.matchedArtistName || "",
         lrclibTrackName: karaokeEntry?.matchedTrackName || "",
