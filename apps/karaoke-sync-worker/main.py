@@ -33,7 +33,7 @@ class AlignedLine(BaseModel):
 
 class AlignResponse(BaseModel):
     ok: bool = True
-    engine: str = "faster-whisper-v1.9"
+    engine: str = "faster-whisper-v2.0"
     publishable: bool
     confidence: float
     lines: list[AlignedLine]
@@ -765,6 +765,331 @@ def recover_intro_lines(
         "details": details,
     }
 
+
+def recover_isolated_segments(
+    words: list[dict[str, Any]],
+    lines: list[AlignedLine],
+    reference_lines: list[dict[str, Any]],
+    delta_diag: dict[str, Any],
+) -> tuple[list[AlignedLine], dict[str, Any]]:
+    """
+    V2.0 Segment Recovery générique.
+
+    But:
+    corriger automatiquement une ligne isolée manifestement décalée lorsque
+    les lignes LRCLIB voisines donnent des ancres fiables.
+
+    Sécurité:
+    - aucune règle spécifique à un artiste/titre
+    - ne traite que les lignes avec |delta| >= 0.75 s
+    - exige au moins une ancre voisine fiable; deux ancres si déplacement > 1.25 s
+    - fenêtre de recherche bornée par les lignes voisines
+    - déplacement maximal 2.25 s
+    - amélioration minimale 0.35 s
+    - preuve lexicale obligatoire
+    - ordre temporel strict conservé
+    - maximum 4 corrections par morceau
+    """
+    import difflib
+
+    if not words or not lines or not reference_lines:
+        return lines, {
+            "enabled": False,
+            "reason": "missing-input",
+            "attemptedCount": 0,
+            "recoveredCount": 0,
+        }
+
+    comparisons = delta_diag.get("comparisons") or []
+    if not comparisons:
+        return lines, {
+            "enabled": False,
+            "reason": "no-comparisons",
+            "attemptedCount": 0,
+            "recoveredCount": 0,
+        }
+
+    working = [AlignedLine(time=float(x.time), text=x.text) for x in lines]
+    word_times = [float(w["start"]) for w in words]
+    details = []
+    attempted = 0
+    recovered = 0
+    MAX_RECOVERIES = 4
+
+    # Map normalized text to comparison candidates.
+    comp_by_text: dict[str, list[dict[str, Any]]] = {}
+    for c in comparisons:
+        comp_by_text.setdefault(
+            normalize_text(str(c.get("text") or "")), []
+        ).append(c)
+
+    for idx, line in enumerate(list(working)):
+        if recovered >= MAX_RECOVERIES:
+            break
+
+        norm = normalize_text(line.text)
+        candidates = comp_by_text.get(norm) or []
+        if not candidates:
+            continue
+
+        comp = min(
+            candidates,
+            key=lambda c: abs(
+                float(c.get("engineTime") or 0.0) - float(line.time)
+            ),
+        )
+
+        abs_delta = float(comp.get("absoluteDeltaSeconds") or 0.0)
+        if abs_delta < 0.75:
+            continue
+
+        attempted += 1
+        ref_time = float(comp["lrclibTime"])
+        old_time = float(line.time)
+
+        # Determine trusted neighboring anchors from LRCLIB comparison.
+        prev_comp = None
+        next_comp = None
+
+        for j in range(idx - 1, -1, -1):
+            prev_norm = normalize_text(working[j].text)
+            prev_candidates = comp_by_text.get(prev_norm) or []
+            if prev_candidates:
+                pc = min(
+                    prev_candidates,
+                    key=lambda c: abs(
+                        float(c.get("engineTime") or 0.0)
+                        - float(working[j].time)
+                    ),
+                )
+                if float(pc.get("absoluteDeltaSeconds") or 99) <= 0.50:
+                    prev_comp = pc
+                    break
+
+        for j in range(idx + 1, len(working)):
+            next_norm = normalize_text(working[j].text)
+            next_candidates = comp_by_text.get(next_norm) or []
+            if next_candidates:
+                nc = min(
+                    next_candidates,
+                    key=lambda c: abs(
+                        float(c.get("engineTime") or 0.0)
+                        - float(working[j].time)
+                    ),
+                )
+                if float(nc.get("absoluteDeltaSeconds") or 99) <= 0.50:
+                    next_comp = nc
+                    break
+
+        trusted_anchor_count = int(prev_comp is not None) + int(next_comp is not None)
+
+        if trusted_anchor_count == 0:
+            details.append({
+                "text": line.text,
+                "changed": False,
+                "reason": "no-trusted-neighbor-anchor",
+                "oldTime": round(old_time, 3),
+                "lrclibTime": round(ref_time, 3),
+            })
+            continue
+
+        # Estimate local offset from trusted neighboring anchors.
+        anchor_offsets = []
+        if prev_comp is not None:
+            anchor_offsets.append(
+                float(prev_comp["engineTime"]) - float(prev_comp["lrclibTime"])
+            )
+        if next_comp is not None:
+            anchor_offsets.append(
+                float(next_comp["engineTime"]) - float(next_comp["lrclibTime"])
+            )
+
+        local_offset = sum(anchor_offsets) / len(anchor_offsets)
+        predicted_time = ref_time + local_offset
+
+        # Search window constrained by neighbors and ±2.25s around predicted point.
+        left = predicted_time - 2.25
+        right = predicted_time + 2.25
+
+        if idx > 0:
+            left = max(left, float(working[idx - 1].time) + 0.20)
+        if idx + 1 < len(working):
+            right = min(right, float(working[idx + 1].time) - 0.20)
+
+        candidate_indices = [
+            wi for wi, t in enumerate(word_times)
+            if left <= t <= right
+        ]
+
+        if not candidate_indices:
+            details.append({
+                "text": line.text,
+                "changed": False,
+                "reason": "no-word-in-bounded-window",
+                "oldTime": round(old_time, 3),
+                "predictedTime": round(predicted_time, 3),
+            })
+            continue
+
+        expected_tokens = norm.split()
+        expected = " ".join(expected_tokens)
+        strong_tokens = [t for t in expected_tokens if len(t) >= 4] or expected_tokens
+
+        start_min = max(0, min(candidate_indices) - 1)
+        start_max = min(len(words) - 1, max(candidate_indices) + 1)
+        min_len = max(1, len(expected_tokens) - 4)
+        max_len = len(expected_tokens) + 5
+
+        best = None
+
+        for start_idx in range(start_min, start_max + 1):
+            candidate_start = float(words[start_idx]["start"])
+            move = abs(candidate_start - old_time)
+
+            if move > 2.25:
+                continue
+            if not (left <= candidate_start <= right):
+                continue
+
+            for length in range(min_len, max_len + 1):
+                end_idx = start_idx + length
+                if end_idx > len(words):
+                    break
+
+                candidate_tokens = [
+                    normalize_text(str(w["word"]))
+                    for w in words[start_idx:end_idx]
+                ]
+                candidate_text = " ".join(candidate_tokens)
+
+                text_score = difflib.SequenceMatcher(
+                    None, expected, candidate_text
+                ).ratio()
+
+                candidate_set = set(candidate_tokens)
+                anchor_score = (
+                    sum(1 for t in strong_tokens if t in candidate_set)
+                    / len(strong_tokens)
+                    if strong_tokens else 0.0
+                )
+
+                timing_distance = abs(candidate_start - predicted_time)
+                timing_score = max(0.0, 1.0 - timing_distance / 2.25)
+
+                combined = (
+                    text_score * 0.56
+                    + anchor_score * 0.29
+                    + timing_score * 0.15
+                )
+
+                if best is None or combined > best[0]:
+                    best = (
+                        combined,
+                        text_score,
+                        anchor_score,
+                        candidate_start,
+                        move,
+                    )
+
+        if best is None:
+            details.append({
+                "text": line.text,
+                "changed": False,
+                "reason": "no-safe-candidate",
+                "oldTime": round(old_time, 3),
+            })
+            continue
+
+        combined, text_score, anchor_score, new_time, move = best
+        old_error = abs(old_time - predicted_time)
+        new_error = abs(new_time - predicted_time)
+        improvement = old_error - new_error
+
+        # Bigger movements require both neighboring anchors.
+        anchor_requirement_ok = (
+            move <= 1.25 or trusted_anchor_count >= 2
+        )
+
+        prev_ok = idx == 0 or new_time > float(working[idx - 1].time) + 0.20
+        next_ok = (
+            idx + 1 >= len(working)
+            or new_time < float(working[idx + 1].time) - 0.20
+        )
+
+        should_apply = (
+            combined >= 0.66
+            and text_score >= 0.50
+            and anchor_score >= 0.45
+            and improvement >= 0.35
+            and move <= 2.25
+            and anchor_requirement_ok
+            and prev_ok
+            and next_ok
+        )
+
+        if not should_apply:
+            details.append({
+                "text": line.text,
+                "changed": False,
+                "reason": "candidate-rejected",
+                "oldTime": round(old_time, 3),
+                "candidateTime": round(new_time, 3),
+                "moveSeconds": round(move, 3),
+                "predictedTime": round(predicted_time, 3),
+                "improvementSeconds": round(improvement, 3),
+                "textScore": round(text_score, 4),
+                "anchorScore": round(anchor_score, 4),
+                "combinedScore": round(combined, 4),
+                "trustedAnchors": trusted_anchor_count,
+            })
+            continue
+
+        working[idx] = AlignedLine(
+            time=round(new_time, 3),
+            text=line.text,
+        )
+        recovered += 1
+
+        details.append({
+            "text": line.text,
+            "changed": True,
+            "oldTime": round(old_time, 3),
+            "newTime": round(new_time, 3),
+            "moveSeconds": round(move, 3),
+            "lrclibTime": round(ref_time, 3),
+            "predictedTime": round(predicted_time, 3),
+            "improvementSeconds": round(improvement, 3),
+            "textScore": round(text_score, 4),
+            "anchorScore": round(anchor_score, 4),
+            "combinedScore": round(combined, 4),
+            "trustedAnchors": trusted_anchor_count,
+        })
+
+    monotonic = all(
+        working[i].time < working[i + 1].time
+        for i in range(len(working) - 1)
+    )
+
+    if not monotonic:
+        return lines, {
+            "enabled": True,
+            "applied": False,
+            "reason": "segment-recovery-broke-monotonicity",
+            "attemptedCount": attempted,
+            "recoveredCount": 0,
+            "details": details,
+        }
+
+    return working, {
+        "enabled": True,
+        "applied": recovered > 0,
+        "attemptedCount": attempted,
+        "recoveredCount": recovered,
+        "maxRecoveriesPerSong": MAX_RECOVERIES,
+        "maxMoveSeconds": 2.25,
+        "details": details,
+    }
+
 def local_refine_lines(
     words: list[dict[str, Any]],
     lines: list[AlignedLine],
@@ -1170,16 +1495,29 @@ def process_audio(audio_path: Path, transcript: str, synced_lyrics: str = "") ->
         lrclib_reference,
     )
 
-    # 4) correction locale uniquement sur les gros écarts restants
-    refined_lines, refinement = local_refine_lines(
+    # 4) Segment Recovery V2.0 : lignes isolées décalées entre ancres fiables
+    segment_lines, segment_recovery = recover_isolated_segments(
         words,
         intro_lines,
-        transcript,
         lrclib_reference,
         lrclib_delta_after_intro,
     )
 
-    # 5) diagnostics finaux après éventuelle correction
+    lrclib_delta_after_segment = compare_with_lrclib(
+        segment_lines,
+        lrclib_reference,
+    )
+
+    # 5) correction locale sécurisée sur les gros écarts restants
+    refined_lines, refinement = local_refine_lines(
+        words,
+        segment_lines,
+        transcript,
+        lrclib_reference,
+        lrclib_delta_after_segment,
+    )
+
+    # 6) diagnostics finaux après éventuelles corrections
     lines = refined_lines
     lrclib_delta = compare_with_lrclib(lines, lrclib_reference)
     duplicates = detect_duplicate_aligned_lines(lines)
@@ -1225,12 +1563,14 @@ def process_audio(audio_path: Path, transcript: str, synced_lyrics: str = "") ->
         "lowMemory": True,
         "pyannote": False,
         "whisperx": False,
-        "timingValidationVersion": "v1.9",
+        "timingValidationVersion": "v2.0",
         "lrclibTimingScore": round(lrclib_score, 4),
         "lrclibDeltaBeforeRefinement": lrclib_delta_before,
         "lrclibDeltaAfterIntroRecovery": lrclib_delta_after_intro,
+        "lrclibDeltaAfterSegmentRecovery": lrclib_delta_after_segment,
         "lrclibDelta": lrclib_delta,
         "introRecovery": intro_recovery,
+        "segmentRecovery": segment_recovery,
         "localRefinement": refinement,
         "finalConfidence": final_confidence_diag,
         "duplicateLines": duplicates,
@@ -1253,7 +1593,7 @@ def root():
         "ok": True,
         "service": "mixparty-karaoke-sync-worker",
         "engine": "faster-whisper",
-        "version": "1.9",
+        "version": "2.0",
     }
 
 

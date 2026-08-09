@@ -1,22 +1,25 @@
-# MixParty Karaoke Sync Worker V1.9 — Intro Recovery
+# MixParty Karaoke Sync Worker V2.0 — Segment Recovery
 
-Cette version cible uniquement un défaut observé sur ABCD :
-Faster-Whisper ratait la toute première ligne courte ("A-B, C-D") et
-l'accrochait beaucoup trop tard.
+V2.0 généralise les corrections sans créer de règle par chanson.
 
-## Intro Recovery
-- analyse uniquement les 0 à 15 premières secondes
-- cible seulement les 3 premières lignes LRCLIB
-- ne touche pas à une ligne déjà à moins de 2,5 s de LRCLIB
-- stratégie spéciale pour les fragments très courts
-- contrôle obligatoire avec la ligne suivante
-- impossible d'insérer une ligne après 15 s
+Pipeline:
+1. Faster-Whisper
+2. Intro Recovery V1.9
+3. Segment Recovery V2.0
+4. Local Refinement sécurisé
+5. Recalcul complet du score
+6. Publication seulement si confiance >= 92 %
 
-## Pipeline
-1. alignement Faster-Whisper normal
-2. Intro Recovery
-3. Local Refinement V1.8
-4. recalcul complet de la confiance
-5. certification seulement si score >= 92 %
+Segment Recovery:
+- cible les lignes isolées avec un écart >= 0,75 s
+- utilise les lignes voisines fiables comme ancres
+- recherche uniquement dans une petite fenêtre audio
+- maximum 2,25 s de déplacement
+- les déplacements > 1,25 s exigent deux ancres fiables
+- preuve lexicale obligatoire
+- amélioration minimale 0,35 s
+- maximum 4 corrections par morceau
+- refuse toute correction qui casserait l'ordre des timestamps
 
-Shadow Mode inchangé.
+Aucune règle spécifique à GIMS, ABCD ou à un autre morceau.
+Shadow Mode et seuil 92 % conservés.
