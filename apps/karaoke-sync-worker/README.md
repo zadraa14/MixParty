@@ -1,31 +1,41 @@
-# MixParty Karaoke Sync Worker V1
+# MixParty Karaoke Sync Worker V1.1 — Railway Light
 
-Worker HTTP séparé du backend principal. Il reçoit les paroles LRCLIB et **l'audio exact réellement utilisé**, puis utilise WhisperX pour produire de nouveaux timestamps calculés sur cet audio.
+Cette variante vise à réduire fortement l'image Docker Railway.
 
-## Endpoint
+## Pourquoi la V1 était lourde
 
-- `GET /health`
-- `POST /align`
+`pip install whisperx` peut résoudre la pile PyTorch Linux avec des dépendances
+CUDA/NVIDIA très volumineuses. La V1.1 installe explicitement les wheels
+**CPU-only** de PyTorch avant WhisperX.
 
-Le backend MixParty V1 Shadow attend déjà ce contrat.
+## Fichiers à remplacer
 
-## Important
+Remplace entièrement le contenu de :
 
-Le worker ne télécharge pas lui-même l'audio YouTube. `audioUrl` doit pointer vers une source audio que MixParty est autorisé à traiter. C'est volontaire : un simple `videoId` ne donne pas au worker les octets audio nécessaires à un alignement fiable.
+`apps/karaoke-sync-worker`
 
-## Déploiement
+par les fichiers de ce dossier, puis :
 
-Une machine GPU est fortement recommandée. Le projet Nightingale documente environ 2–5 min par chanson sur GPU contre 10–20 min sur CPU pour son pipeline d'analyse comparable.
-
-Une fois le worker publié :
-
-```text
-KARAOKE_SYNC_ENGINE_URL=https://TON-WORKER/align
-KARAOKE_SYNC_ENGINE_TOKEN=le-meme-token
+```powershell
+cd C:\Dev\MixParty
+git add apps/karaoke-sync-worker
+git commit -m "fix: lighten karaoke sync worker for Railway"
+git push
 ```
 
-à ajouter au backend MixParty.
+Railway garde le Root Directory :
 
-## Étape suivante
+`/apps/karaoke-sync-worker`
 
-Brancher un fournisseur d'audio autorisé dans `apps/api/src/index.ts` afin que le backend ajoute `audioUrl` au JSON envoyé au worker. Tant que cette URL n'existe pas, le worker répond `needs_review` au lieu de certifier à tort.
+## Variables
+
+Aucune variable n'est obligatoire pour le simple démarrage.
+
+Valeurs conseillées :
+- `WHISPER_MODEL=small`
+- `WHISPER_DEVICE=cpu`
+- `WHISPER_COMPUTE_TYPE=int8`
+- `KARAOKE_MIN_CONFIDENCE=92`
+
+Le modèle Whisper n'est pas embarqué dans l'image Docker : il sera récupéré
+au premier véritable traitement si nécessaire.

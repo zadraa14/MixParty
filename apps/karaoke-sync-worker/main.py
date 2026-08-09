@@ -14,7 +14,7 @@ app = FastAPI(title="MixParty Karaoke Sync Worker", version="1.0.0")
 WORKER_TOKEN = os.getenv("KARAOKE_SYNC_ENGINE_TOKEN", "").strip()
 MIN_CONFIDENCE = float(os.getenv("KARAOKE_MIN_CONFIDENCE", "92"))
 MAX_AUDIO_MB = int(os.getenv("KARAOKE_MAX_AUDIO_MB", "40"))
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "medium")
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
 WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
 
