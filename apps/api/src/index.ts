@@ -8675,6 +8675,7 @@ app.get("/partybrain/musicbrain-publication/items", (req, res) => {
       : "all";
 
   const query = normalizeMusicQuery(String(req.query?.q || ""));
+  const category = String(req.query?.category || "").trim();
   const rawLimit = Number(req.query?.limit || 200);
   const rawOffset = Number(req.query?.offset || 0);
 
@@ -8724,6 +8725,10 @@ app.get("/partybrain/musicbrain-publication/items", (req, res) => {
     })
     .filter((item) => status === "all" || item.publicationStatus === status)
     .filter((item) => {
+      if (!category) return true;
+      return item.manualReviewCategory === category;
+    })
+    .filter((item) => {
       if (!query) return true;
       const haystack = normalizeMusicQuery(
         `${item.title} ${item.rawTitle} ${item.artistName} ${item.channelTitle} ${item.proposedArtistName} ${item.lrclibArtistName}`
@@ -8762,6 +8767,7 @@ app.get("/partybrain/musicbrain-publication/items", (req, res) => {
     generatedAt: Date.now(),
     status,
     query: String(req.query?.q || ""),
+    category,
     total: items.length,
     returned: pageItems.length,
     offset,

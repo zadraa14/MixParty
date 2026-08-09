@@ -563,7 +563,8 @@ export default function MusicBrainAdminPage() {
 
   async function loadPublicationQuality(
     status = publicationQualityFilter,
-    search = publicationQualitySearch
+    search = publicationQualitySearch,
+    category = selectedDiagnosticCategory || ""
   ) {
     setPublicationQualityLoading(true);
     setPublicationQualityError("");
@@ -575,6 +576,7 @@ export default function MusicBrainAdminPage() {
       });
 
       if (search.trim()) params.set("q", search.trim());
+      if (category.trim()) params.set("category", category.trim());
 
       const response = await fetch(
         `${getApiBaseUrl()}/partybrain/musicbrain-publication/items?${params.toString()}`,
@@ -1318,7 +1320,7 @@ export default function MusicBrainAdminPage() {
       void loadMusicBrainQualityDiagnostic();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeAdminTab, publicationQualityFilter]);
+  }, [activeAdminTab, publicationQualityFilter, selectedDiagnosticCategory]);
 
   useEffect(() => {
     const refreshDelay = stats?.academy.running ? 5_000 : 60_000;
@@ -1417,13 +1419,6 @@ export default function MusicBrainAdminPage() {
       .toLowerCase()
       .includes(query);
   });
-
-  const visiblePublicationQualityItems = (publicationQuality?.items || []).filter(
-    (item) =>
-      !selectedDiagnosticCategory ||
-      item.manualReviewCategory === selectedDiagnosticCategory
-  );
-
 
   return (
     <main className="min-h-screen bg-[#07040f] px-4 py-6 text-white sm:px-8 lg:px-12">
@@ -1849,7 +1844,114 @@ export default function MusicBrainAdminPage() {
                   </p>
                 </div>
               ) : stats.academy.lastSession ? (
-                <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+                <div className="mt-5 rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/[0.045] p-4 sm:p-5">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div>
+                      <p className="text-xs font-black uppercase tracking-[.16em] text-fuchsia-200">
+                        Diagnostic des cas restants
+                      </p>
+                      <p className="mt-1 text-sm font-black">
+                        MusicBrain classe les morceaux encore ambigus avant de créer de nouvelles règles.
+                      </p>
+                      <p className="mt-1 text-xs text-white/40">
+                        3e passe sûre : {number.format(qualityDiagnostic?.thirdPassResolved || 0)} cas supplémentaire(s) résolu(s) automatiquement • {number.format(qualityDiagnostic?.stillManual || 0)} restent réellement ambigus.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void loadMusicBrainQualityDiagnostic()}
+                      disabled={qualityDiagnosticLoading}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-4 py-2.5 text-xs font-black text-fuchsia-100 disabled:opacity-40"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${qualityDiagnosticLoading ? "animate-spin" : ""}`} />
+                      Analyser les cas restants
+                    </button>
+                  </div>
+
+                  {qualityDiagnosticError ? (
+                    <p className="mt-3 rounded-xl border border-red-300/15 bg-red-500/[0.08] p-3 text-xs font-bold text-red-200">
+                      {qualityDiagnosticError}
+                    </p>
+                  ) : null}
+
+                  <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                    {(qualityDiagnostic?.categories || []).map((category) => {
+                      const selected = selectedDiagnosticCategory === category.key;
+                      return (
+                        <button
+                          key={category.key}
+                          type="button"
+                          onClick={() => {
+                            const nextCategory = selected ? null : category.key;
+                            setSelectedDiagnosticCategory(nextCategory);
+                            setPublicationQualityFilter("review");
+                            setPublicationQualitySearch("");
+                            void loadPublicationQuality("review", "", nextCategory || "");
+                          }}
+                          className={`rounded-xl border p-3 text-left transition ${
+                            selected
+                              ? "border-fuchsia-300/45 bg-fuchsia-500/15"
+                              : "border-white/8 bg-black/20 hover:border-fuchsia-300/25 hover:bg-fuchsia-500/[0.07]"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <p className={`text-[10px] font-black uppercase tracking-[.13em] ${
+                                selected ? "text-fuchsia-200" : "text-white/40"
+                              }`}>
+                                {category.label}
+                              </p>
+                              <p className="mt-2 text-2xl font-black">
+                                {number.format(category.count)}
+                              </p>
+                            </div>
+                            <span className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-[9px] font-black uppercase text-white/45">
+                              {selected ? "Affiché" : "Voir"}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+
+                    {!qualityDiagnosticLoading &&
+                    !(qualityDiagnostic?.categories || []).length ? (
+                      <p className="text-xs text-white/35">
+                        Aucun diagnostic chargé.
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+
+                                {selectedDiagnosticCategory ? (
+                  <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/[0.07] p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[.15em] text-fuchsia-200">
+                        Filtre diagnostic actif
+                      </p>
+                      <p className="mt-1 text-sm font-black">
+                        {qualityDiagnostic?.categories.find(
+                          (category) => category.key === selectedDiagnosticCategory
+                        )?.label || selectedDiagnosticCategory}
+                      </p>
+                      <p className="mt-1 text-xs text-white/40">
+                        Cette catégorie est chargée directement depuis MusicBrain.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedDiagnosticCategory(null);
+                        void loadPublicationQuality("review", "", "");
+                      }}
+                      className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-black text-white/70"
+                    >
+                      Afficher tous les cas
+                    </button>
+                  </div>
+                ) : null}
+
+<div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <p className="text-xs font-black uppercase tracking-[.18em] text-violet-300">Dernière session</p>
@@ -2496,7 +2598,8 @@ export default function MusicBrainAdminPage() {
                     onClick={() =>
                       void loadPublicationQuality(
                         publicationQualityFilter,
-                        publicationQualitySearch
+                        publicationQualitySearch,
+                        selectedDiagnosticCategory || ""
                       )
                     }
                     disabled={publicationQualityLoading}
@@ -2619,107 +2722,7 @@ export default function MusicBrainAdminPage() {
                   ) : null}
                 </div>
 
-                <div className="mt-5 rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/[0.045] p-4 sm:p-5">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                    <div>
-                      <p className="text-xs font-black uppercase tracking-[.16em] text-fuchsia-200">
-                        Diagnostic des cas restants
-                      </p>
-                      <p className="mt-1 text-sm font-black">
-                        MusicBrain classe les morceaux encore ambigus avant de créer de nouvelles règles.
-                      </p>
-                      <p className="mt-1 text-xs text-white/40">
-                        3e passe sûre : {number.format(qualityDiagnostic?.thirdPassResolved || 0)} cas supplémentaire(s) résolu(s) automatiquement • {number.format(qualityDiagnostic?.stillManual || 0)} restent réellement ambigus.
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => void loadMusicBrainQualityDiagnostic()}
-                      disabled={qualityDiagnosticLoading}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-fuchsia-300/20 bg-fuchsia-500/10 px-4 py-2.5 text-xs font-black text-fuchsia-100 disabled:opacity-40"
-                    >
-                      <RefreshCw className={`h-3.5 w-3.5 ${qualityDiagnosticLoading ? "animate-spin" : ""}`} />
-                      Analyser les cas restants
-                    </button>
-                  </div>
-
-                  {qualityDiagnosticError ? (
-                    <p className="mt-3 rounded-xl border border-red-300/15 bg-red-500/[0.08] p-3 text-xs font-bold text-red-200">
-                      {qualityDiagnosticError}
-                    </p>
-                  ) : null}
-
-                  <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                    {(qualityDiagnostic?.categories || []).map((category) => {
-                      const selected = selectedDiagnosticCategory === category.key;
-                      return (
-                        <button
-                          key={category.key}
-                          type="button"
-                          onClick={() => {
-                            setSelectedDiagnosticCategory(selected ? null : category.key);
-                            setPublicationQualityFilter("review");
-                            setPublicationQualitySearch("");
-                          }}
-                          className={`rounded-xl border p-3 text-left transition ${
-                            selected
-                              ? "border-fuchsia-300/45 bg-fuchsia-500/15"
-                              : "border-white/8 bg-black/20 hover:border-fuchsia-300/25 hover:bg-fuchsia-500/[0.07]"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className={`text-[10px] font-black uppercase tracking-[.13em] ${
-                                selected ? "text-fuchsia-200" : "text-white/40"
-                              }`}>
-                                {category.label}
-                              </p>
-                              <p className="mt-2 text-2xl font-black">
-                                {number.format(category.count)}
-                              </p>
-                            </div>
-                            <span className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-1 text-[9px] font-black uppercase text-white/45">
-                              {selected ? "Affiché" : "Voir"}
-                            </span>
-                          </div>
-                        </button>
-                      );
-                    })}
-
-                    {!qualityDiagnosticLoading &&
-                    !(qualityDiagnostic?.categories || []).length ? (
-                      <p className="text-xs text-white/35">
-                        Aucun diagnostic chargé.
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-
-                
-                {selectedDiagnosticCategory ? (
-                  <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/[0.07] p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[.15em] text-fuchsia-200">
-                        Filtre diagnostic actif
-                      </p>
-                      <p className="mt-1 text-sm font-black">
-                        {qualityDiagnostic?.categories.find(
-                          (category) => category.key === selectedDiagnosticCategory
-                        )?.label || selectedDiagnosticCategory}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedDiagnosticCategory(null)}
-                      className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-xs font-black text-white/70"
-                    >
-                      Afficher tous les cas
-                    </button>
-                  </div>
-                ) : null}
-
-<div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
+                <div className="mt-5 rounded-2xl border border-white/10 bg-black/20 p-4">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                     <div className="flex flex-wrap gap-2">
                       {[
@@ -2753,7 +2756,8 @@ export default function MusicBrainAdminPage() {
                         event.preventDefault();
                         void loadPublicationQuality(
                           publicationQualityFilter,
-                          publicationQualitySearch
+                          publicationQualitySearch,
+                          selectedDiagnosticCategory || ""
                         );
                       }}
                     >
@@ -2793,7 +2797,7 @@ export default function MusicBrainAdminPage() {
                   </div>
 
                   <div className="mt-3 max-h-[720px] space-y-2 overflow-y-auto pr-1">
-                    {visiblePublicationQualityItems.map((item) => (
+                    {(publicationQuality?.items || []).map((item) => (
                       <article
                         key={item.videoId}
                         className="rounded-2xl border border-white/8 bg-black/25 p-3 sm:p-4"
@@ -2909,7 +2913,7 @@ export default function MusicBrainAdminPage() {
                     ))}
 
                     {!publicationQualityLoading &&
-                    !visiblePublicationQualityItems.length ? (
+                    !(publicationQuality?.items || []).length ? (
                       <div className="rounded-2xl border border-white/8 bg-black/20 p-6 text-center text-sm text-white/35">
                         Rien à afficher dans ce filtre.
                       </div>
