@@ -33,7 +33,7 @@ class AlignedLine(BaseModel):
 
 class AlignResponse(BaseModel):
     ok: bool = True
-    engine: str = "faster-whisper-v1.7"
+    engine: str = "faster-whisper-v1.8"
     publishable: bool
     confidence: float
     lines: list[AlignedLine]
@@ -515,14 +515,14 @@ def local_refine_lines(
     delta_diag: dict[str, Any],
 ) -> tuple[list[AlignedLine], dict[str, Any]]:
     """
-    V1.7 Local Refinement
+    V1.8 Safe Local Refinement
 
-    Pour les lignes avec un écart LRCLIB > 0,75 s :
-    - on calcule un offset global robuste à partir des bonnes lignes
-    - on prédit une zone temporelle attendue
-    - on rescane uniquement une petite fenêtre de mots autour de cette zone
-    - on remplace le timing seulement si le nouveau matching texte est convaincant
-      ET améliore nettement la cohérence temporelle.
+    Règles :
+    - aucune correction > 2.0 s
+    - la correction doit améliorer la proximité avec la zone attendue
+    - elle doit rester cohérente avec les lignes voisines
+    - après correction, l'ordre des timestamps doit rester strictement croissant
+    - la confiance sera recalculée après les corrections
     """
     import difflib
 
@@ -548,19 +548,17 @@ def local_refine_lines(
     for item in comparisons:
         by_text.setdefault(normalize_text(str(item.get("text") or "")), []).append(item)
 
-    refined: list[AlignedLine] = []
+    refined = [AlignedLine(time=float(line.time), text=line.text) for line in lines]
     attempted = 0
     changed = 0
     details = []
 
-    # Index temporel des mots, déjà triés.
     word_times = [float(w["start"]) for w in words]
 
-    for line in lines:
+    for idx, line in enumerate(lines):
         norm_line = normalize_text(line.text)
         candidate_comparisons = by_text.get(norm_line) or []
 
-        # Prend la comparaison la plus proche du timing actuel.
         comp = None
         if candidate_comparisons:
             comp = min(
@@ -571,7 +569,6 @@ def local_refine_lines(
             )
 
         if not comp or float(comp.get("absoluteDeltaSeconds") or 0) <= 0.75:
-            refined.append(line)
             continue
 
         attempted += 1
@@ -579,18 +576,15 @@ def local_refine_lines(
         ref_time = float(comp["lrclibTime"])
         predicted_time = ref_time + global_offset
 
-        # Fenêtre étroite autour du timing attendu.
-        left_time = predicted_time - 2.25
-        right_time = predicted_time + 2.25
+        # Narrow local window.
+        left_time = predicted_time - 2.0
+        right_time = predicted_time + 2.0
 
         candidate_word_indices = [
-            idx
-            for idx, t in enumerate(word_times)
-            if left_time <= t <= right_time
+            wi for wi, t in enumerate(word_times) if left_time <= t <= right_time
         ]
 
         if not candidate_word_indices:
-            refined.append(line)
             details.append({
                 "text": line.text,
                 "changed": False,
@@ -604,15 +598,19 @@ def local_refine_lines(
         expected = " ".join(expected_tokens)
         strong_tokens = [t for t in expected_tokens if len(t) >= 4] or expected_tokens
 
-        start_min = max(0, min(candidate_word_indices) - 2)
-        start_max = min(len(words) - 1, max(candidate_word_indices) + 2)
+        start_min = max(0, min(candidate_word_indices) - 1)
+        start_max = min(len(words) - 1, max(candidate_word_indices) + 1)
         min_len = max(1, len(expected_tokens) - 4)
         max_len = len(expected_tokens) + 5
 
         best = None
 
         for start_idx in range(start_min, start_max + 1):
-            if abs(float(words[start_idx]["start"]) - predicted_time) > 2.75:
+            candidate_start = float(words[start_idx]["start"])
+            move_amount = abs(candidate_start - float(line.time))
+
+            # Hard safety limit.
+            if move_amount > 2.0:
                 continue
 
             for length in range(min_len, max_len + 1):
@@ -633,24 +631,20 @@ def local_refine_lines(
                 ).ratio()
 
                 candidate_set = set(candidate_tokens)
-                matched_anchors = sum(
-                    1 for token in strong_tokens if token in candidate_set
-                )
                 anchor_score = (
-                    matched_anchors / len(strong_tokens)
+                    sum(1 for token in strong_tokens if token in candidate_set)
+                    / len(strong_tokens)
                     if strong_tokens
                     else 0.0
                 )
 
-                timing_distance = abs(
-                    float(words[start_idx]["start"]) - predicted_time
-                )
-                timing_score = max(0.0, 1.0 - timing_distance / 2.75)
+                timing_distance = abs(candidate_start - predicted_time)
+                timing_score = max(0.0, 1.0 - timing_distance / 2.0)
 
                 combined = (
-                    text_score * 0.52
+                    text_score * 0.55
                     + anchor_score * 0.30
-                    + timing_score * 0.18
+                    + timing_score * 0.15
                 )
 
                 if best is None or combined > best[0]:
@@ -658,71 +652,75 @@ def local_refine_lines(
                         combined,
                         text_score,
                         anchor_score,
-                        timing_distance,
-                        start_idx,
+                        candidate_start,
+                        move_amount,
                     )
 
         if not best:
-            refined.append(line)
             details.append({
                 "text": line.text,
                 "changed": False,
-                "reason": "no-local-match",
+                "reason": "no-safe-local-match",
                 "oldTime": round(float(line.time), 3),
                 "predictedTime": round(predicted_time, 3),
             })
             continue
 
-        combined, text_score, anchor_score, timing_distance, start_idx = best
-        new_time = float(words[start_idx]["start"])
+        combined, text_score, anchor_score, new_time, move_amount = best
 
         old_distance = abs(float(line.time) - predicted_time)
-        improvement = old_distance - abs(new_time - predicted_time)
+        new_distance = abs(new_time - predicted_time)
+        improvement = old_distance - new_distance
 
-        # Très conservateur :
-        # on ne bouge la ligne que si le nouveau choix est lexicalement crédible
-        # et gagne au moins 0,30 s sur la cohérence attendue.
+        # Neighbor consistency.
+        prev_time = float(refined[idx - 1].time) if idx > 0 else None
+        next_time = float(lines[idx + 1].time) if idx + 1 < len(lines) else None
+
+        prev_ok = prev_time is None or new_time > prev_time + 0.20
+        next_ok = next_time is None or new_time < next_time - 0.20
+
         should_change = (
-            combined >= 0.62
-            and (text_score >= 0.50 or anchor_score >= 0.50)
-            and improvement >= 0.30
+            combined >= 0.64
+            and (text_score >= 0.52 or anchor_score >= 0.50)
+            and improvement >= 0.25
+            and move_amount <= 2.0
+            and prev_ok
+            and next_ok
         )
 
         if should_change:
-            refined.append(
-                AlignedLine(
-                    time=round(new_time, 3),
-                    text=line.text,
-                )
-            )
+            refined[idx] = AlignedLine(time=round(new_time, 3), text=line.text)
             changed += 1
             details.append({
                 "text": line.text,
                 "changed": True,
                 "oldTime": round(float(line.time), 3),
                 "newTime": round(new_time, 3),
+                "moveSeconds": round(move_amount, 3),
                 "predictedTime": round(predicted_time, 3),
                 "improvementSeconds": round(improvement, 3),
                 "textScore": round(text_score, 4),
                 "anchorScore": round(anchor_score, 4),
                 "combinedScore": round(combined, 4),
+                "neighborSafe": True,
             })
         else:
-            refined.append(line)
             details.append({
                 "text": line.text,
                 "changed": False,
-                "reason": "candidate-not-strong-enough",
+                "reason": "candidate-rejected-by-safety-rules",
                 "oldTime": round(float(line.time), 3),
                 "candidateTime": round(new_time, 3),
+                "moveSeconds": round(move_amount, 3),
                 "predictedTime": round(predicted_time, 3),
                 "improvementSeconds": round(improvement, 3),
                 "textScore": round(text_score, 4),
                 "anchorScore": round(anchor_score, 4),
                 "combinedScore": round(combined, 4),
+                "prevSafe": prev_ok,
+                "nextSafe": next_ok,
             })
 
-    # Sécurité : timestamps strictement croissants.
     monotonic = all(
         refined[i].time < refined[i + 1].time
         for i in range(len(refined) - 1)
@@ -745,8 +743,88 @@ def local_refine_lines(
         "attemptedCount": attempted,
         "refinedCount": changed,
         "globalOffsetSeconds": round(global_offset, 3),
+        "maxMoveSeconds": 2.0,
         "details": details,
     }
+
+
+def recompute_timing_confidence(
+    base_diag: dict[str, Any],
+    final_lines: list[AlignedLine],
+    lrclib_delta: dict[str, Any],
+    duplicates: dict[str, Any],
+) -> tuple[float, dict[str, Any]]:
+    """
+    Recalcule la confiance APRÈS corrections.
+
+    Le score final combine :
+    - couverture
+    - continuité temporelle réelle des lignes finales
+    - progression
+    - qualité lexicale
+    - validation croisée LRCLIB
+    - pénalité doublons
+    """
+    coverage = float(base_diag.get("coverage") or 0)
+    progression = float(base_diag.get("cursorProgression") or 0)
+    anchor_quality = float(base_diag.get("anchorQuality") or 0)
+    similarity = float(base_diag.get("averageSimilarity") or 0)
+
+    continuity_scores = []
+    for i in range(len(final_lines) - 1):
+        delta = float(final_lines[i + 1].time) - float(final_lines[i].time)
+        if delta <= 0:
+            continuity_scores.append(0.0)
+        elif delta < 0.35:
+            continuity_scores.append(0.35)
+        elif delta <= 20:
+            continuity_scores.append(1.0)
+        elif delta <= 35:
+            continuity_scores.append(0.75)
+        else:
+            continuity_scores.append(0.40)
+
+    final_continuity = (
+        sum(continuity_scores) / len(continuity_scores)
+        if continuity_scores
+        else 1.0
+    )
+
+    lrclib_score = lrclib_timing_score(lrclib_delta)
+
+    score = (
+        coverage * 0.34
+        + final_continuity * 0.22
+        + progression * 0.12
+        + anchor_quality * 0.10
+        + similarity * 0.08
+        + lrclib_score * 0.14
+    )
+
+    if duplicates.get("suspect"):
+        score -= min(0.08, 0.02 * int(duplicates.get("count") or 0))
+
+    score = max(0.0, min(1.0, score))
+
+    details = {
+        "coverage": round(coverage, 4),
+        "finalTimingContinuity": round(final_continuity, 4),
+        "cursorProgression": round(progression, 4),
+        "anchorQuality": round(anchor_quality, 4),
+        "textSimilarity": round(similarity, 4),
+        "lrclibTimingScore": round(lrclib_score, 4),
+        "duplicatePenaltyApplied": bool(duplicates.get("suspect")),
+        "weights": {
+            "coverage": 0.34,
+            "finalTimingContinuity": 0.22,
+            "cursorProgression": 0.12,
+            "anchorQuality": 0.10,
+            "textSimilarity": 0.08,
+            "lrclibTimingScore": 0.14,
+        },
+    }
+
+    return score * 100.0, details
 
 
 def lrclib_timing_score(delta_diag: dict[str, Any]) -> float:
@@ -835,17 +913,18 @@ def process_audio(audio_path: Path, transcript: str, synced_lyrics: str = "") ->
     duplicates = detect_duplicate_aligned_lines(lines)
     lrclib_score = lrclib_timing_score(lrclib_delta)
 
-    # Bonus croisé LRCLIB volontairement petit et plafonné.
-    if lrclib_delta.get("available") and lrclib_delta.get("matchedLineCount"):
-        confidence = min(
-            100.0,
-            confidence + max(0.0, lrclib_score - 0.72) * 10.0
-        )
+    # V1.8 : recalcul complet APRES correction locale.
+    confidence, final_confidence_diag = recompute_timing_confidence(
+        diag,
+        lines,
+        lrclib_delta,
+        duplicates,
+    )
 
     publishable = (
         confidence >= MIN_CONFIDENCE
         and diag["coverage"] >= 0.90
-        and diag["timingContinuity"] >= 0.90
+        and final_confidence_diag["finalTimingContinuity"] >= 0.90
         and diag["cursorProgression"] >= 0.85
         and diag["monotonic"]
         and not duplicates["suspect"]
@@ -874,11 +953,12 @@ def process_audio(audio_path: Path, transcript: str, synced_lyrics: str = "") ->
         "lowMemory": True,
         "pyannote": False,
         "whisperx": False,
-        "timingValidationVersion": "v1.7",
+        "timingValidationVersion": "v1.8",
         "lrclibTimingScore": round(lrclib_score, 4),
         "lrclibDeltaBeforeRefinement": lrclib_delta_before,
         "lrclibDelta": lrclib_delta,
         "localRefinement": refinement,
+        "finalConfidence": final_confidence_diag,
         "duplicateLines": duplicates,
     }
 
@@ -899,7 +979,7 @@ def root():
         "ok": True,
         "service": "mixparty-karaoke-sync-worker",
         "engine": "faster-whisper",
-        "version": "1.7",
+        "version": "1.8",
     }
 
 
