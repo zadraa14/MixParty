@@ -334,6 +334,7 @@ export default function PartyPage() {
   const applyingRemotePlaybackRef = useRef(false);
   const changingSongRef = useRef(false);
   const mobileSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
+  const karaokeBackgroundLoadTimerRef = useRef<number | null>(null);
   const castContextRef = useRef<any>(null);
   const castDisplayModeRef = useRef<"tv" | "karaoke">("tv");
   const castPlaybackRef = useRef({ time: 0, duration: 0, state: 2, videoId: "" });
@@ -1282,6 +1283,36 @@ export default function PartyPage() {
   }, [karaokeDebouncedSearch]);
 
 
+
+
+  useEffect(() => {
+    if (!karaokeCatalog) return;
+    if (!karaokeHasMore || karaokeLoadingMore || karaokeCatalogLoading) return;
+
+    // On charge le catalogue complet EN ARRIÈRE-PLAN, page par page.
+    // L'interface reste légère car les chansons des dossiers fermés
+    // ne sont toujours pas montées dans le DOM.
+    if (karaokeBackgroundLoadTimerRef.current !== null) {
+      window.clearTimeout(karaokeBackgroundLoadTimerRef.current);
+    }
+
+    karaokeBackgroundLoadTimerRef.current = window.setTimeout(() => {
+      void loadMoreKaraokeCatalog();
+    }, 180);
+
+    return () => {
+      if (karaokeBackgroundLoadTimerRef.current !== null) {
+        window.clearTimeout(karaokeBackgroundLoadTimerRef.current);
+        karaokeBackgroundLoadTimerRef.current = null;
+      }
+    };
+  }, [
+    karaokeCatalog?.items.length,
+    karaokeHasMore,
+    karaokeLoadingMore,
+    karaokeCatalogLoading,
+    karaokeDebouncedSearch,
+  ]);
 
   function activateKaraokeMode() {
     setKaraokeMode(true);
@@ -2742,17 +2773,31 @@ async function removeSong(index: number, song: Song) {
             </p>
 
             {karaokeHasMore ? (
-              <button
-                type="button"
-                onClick={() => void loadMoreKaraokeCatalog()}
-                disabled={karaokeLoadingMore}
-                className="w-full max-w-sm rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/10 px-4 py-3 text-xs font-black text-fuchsia-100 transition hover:bg-fuchsia-500/15 disabled:opacity-50"
-              >
-                {karaokeLoadingMore ? "Chargement…" : "Charger plus d’artistes"}
-              </button>
+              <div className="w-full max-w-sm">
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-fuchsia-500 via-purple-500 to-cyan-400 transition-[width] duration-300"
+                    style={{
+                      width: `${
+                        karaokeCatalog.matched > 0
+                          ? Math.min(
+                              100,
+                              (karaokeCatalog.items.length / karaokeCatalog.matched) * 100
+                            )
+                          : 0
+                      }%`,
+                    }}
+                  />
+                </div>
+                <p className="mt-2 text-[10px] font-black text-fuchsia-200/65">
+                  {karaokeLoadingMore
+                    ? "Chargement du catalogue en arrière-plan…"
+                    : "La suite se charge automatiquement…"}
+                </p>
+              </div>
             ) : (
               <span className="rounded-full border border-emerald-300/15 bg-emerald-500/[0.08] px-3 py-1.5 text-[10px] font-black text-emerald-200">
-                Catalogue chargé
+                Catalogue complet chargé
               </span>
             )}
           </div>
