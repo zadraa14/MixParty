@@ -402,7 +402,7 @@ export default function KaraokePartyPage() {
       <div className="pointer-events-none absolute left-[-12vw] top-[15vh] h-[38vw] w-[38vw] rounded-full bg-fuchsia-500/10 blur-[100px]" />
       <div className="pointer-events-none absolute bottom-[-16vw] right-[-10vw] h-[42vw] w-[42vw] rounded-full bg-orange-500/10 blur-[110px]" />
 
-      <div className="relative z-10 flex min-h-screen flex-col px-5 py-5 sm:px-8 lg:px-12">
+      <div className="relative z-10 flex min-h-screen flex-col px-4 py-4 sm:px-7 lg:px-10">
         <header className="flex items-center justify-between gap-5">
           <div className="flex items-center gap-3">
             <div className="grid h-12 w-12 place-items-center rounded-2xl border border-fuchsia-300/20 bg-gradient-to-br from-fuchsia-500/20 via-purple-500/15 to-orange-500/15 shadow-[0_0_45px_rgba(217,70,239,.18)]">
@@ -430,9 +430,9 @@ export default function KaraokePartyPage() {
           </div>
         </header>
 
-        <section className="mx-auto flex w-full max-w-[1500px] flex-1 flex-col justify-center py-5 sm:py-8">
+        <section className="mx-auto flex w-full max-w-[1550px] flex-1 flex-col py-4 sm:py-6">
           {!currentSong ? (
-            <div className="mx-auto max-w-3xl text-center">
+            <div className="mx-auto flex min-h-[70vh] max-w-3xl flex-col items-center justify-center text-center">
               <div className="mx-auto grid h-24 w-24 place-items-center rounded-[30px] border border-white/10 bg-white/[0.05] shadow-[0_0_70px_rgba(168,85,247,.12)] backdrop-blur-xl">
                 <Music4 className="h-10 w-10 text-fuchsia-200/50" />
               </div>
@@ -443,19 +443,19 @@ export default function KaraokePartyPage() {
                 Prêt pour la prochaine chanson
               </h2>
               <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/40 sm:text-lg">
-                Choisis un morceau dans le catalogue Karaoké de la soirée. L’écran se mettra à jour automatiquement.
+                Choisis un morceau dans le catalogue Karaoké de la soirée.
               </p>
             </div>
           ) : (
             <>
-              <div className="mb-5 flex items-center justify-center gap-4 text-center sm:mb-8">
+              <div className="mb-5 flex items-center justify-center gap-4 text-center sm:mb-6">
                 <img
                   src={backdrop}
                   alt=""
                   className="h-16 w-16 rounded-2xl object-cover shadow-[0_18px_55px_rgba(0,0,0,.50)] ring-1 ring-white/10 sm:h-20 sm:w-20"
                 />
                 <div className="min-w-0 text-left">
-                  <p className="max-w-[70vw] truncate text-xl font-black sm:text-2xl lg:text-3xl">
+                  <p className="max-w-[72vw] truncate text-2xl font-black sm:text-3xl">
                     {currentSong.title}
                   </p>
                   <p className="mt-1 truncate text-sm font-bold text-white/45 sm:text-base">
@@ -470,129 +470,142 @@ export default function KaraokePartyPage() {
                 </div>
               </div>
 
-              <div className="mx-auto grid w-full max-w-[1500px] gap-5 lg:grid-cols-[minmax(0,1fr)_330px]">
-                <div>
-                {lyricsLoading ? (
-                  <div className="rounded-[40px] border border-fuchsia-300/15 bg-black/25 p-12 text-center shadow-[0_35px_110px_rgba(0,0,0,.35)] backdrop-blur-2xl">
-                    <Mic2 className="mx-auto h-11 w-11 animate-pulse text-fuchsia-300" />
-                    <p className="mt-4 text-lg font-black">Chargement des paroles…</p>
-                  </div>
-                ) : lyrics?.available ? (
-                  <div className="relative min-h-[56vh] overflow-hidden rounded-[42px] border border-white/10 bg-black/28 px-5 py-8 text-center shadow-[0_35px_120px_rgba(0,0,0,.48)] backdrop-blur-2xl sm:px-10 sm:py-10 lg:px-14">
-                    <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-fuchsia-300/80 to-orange-300/70" />
-                    <div className="absolute left-1/2 top-0 h-40 w-3/4 -translate-x-1/2 bg-fuchsia-500/[0.05] blur-[70px]" />
+              <div className="grid min-h-[72vh] w-full gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+                <section className="relative overflow-hidden rounded-[38px] border border-fuchsia-300/20 bg-[linear-gradient(180deg,rgba(13,8,24,.88),rgba(5,5,13,.96))] shadow-[0_30px_100px_rgba(0,0,0,.48),0_0_60px_rgba(217,70,239,.08)]">
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_48%,rgba(217,70,239,.10),transparent_34%),radial-gradient(circle_at_18%_50%,rgba(124,58,237,.08),transparent_35%)]" />
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-fuchsia-300/70 to-transparent" />
 
-                    {countdown !== null && !hasStartedLyrics ? (
-                      <div className="absolute inset-0 z-20 grid place-items-center bg-black/35 backdrop-blur-md">
-                        <div className="text-center">
-                          <p className="text-xs font-black uppercase tracking-[.35em] text-fuchsia-200/60">
-                            Prépare-toi
-                          </p>
-                          <div
-                            key={countdown}
-                            className="mt-3 bg-gradient-to-br from-white via-fuchsia-100 to-orange-200 bg-clip-text text-[9rem] font-black leading-none text-transparent drop-shadow-[0_0_45px_rgba(217,70,239,.28)] sm:text-[13rem]"
-                            style={{ animation: "karaokeCountdown .7s ease-out both" }}
-                          >
-                            {countdown}
+                  {lyricsLoading ? (
+                    <div className="relative z-10 grid min-h-[62vh] place-items-center">
+                      <div className="text-center">
+                        <Mic2 className="mx-auto h-11 w-11 animate-pulse text-fuchsia-300" />
+                        <p className="mt-4 text-lg font-black">Chargement des paroles…</p>
+                      </div>
+                    </div>
+                  ) : lyrics?.available ? (
+                    <div className="relative z-10 flex min-h-[72vh] flex-col">
+                      {countdown !== null && !hasStartedLyrics ? (
+                        <div className="absolute inset-0 z-40 grid place-items-center bg-black/45 backdrop-blur-md">
+                          <div className="text-center">
+                            <p className="text-xs font-black uppercase tracking-[.35em] text-fuchsia-200/60">
+                              Prépare-toi
+                            </p>
+                            <div
+                              key={countdown}
+                              className="mt-3 bg-gradient-to-br from-white via-fuchsia-100 to-orange-200 bg-clip-text text-[9rem] font-black leading-none text-transparent sm:text-[13rem]"
+                              style={{ animation: "karaokeCountdown .7s ease-out both" }}
+                            >
+                              {countdown}
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="relative flex-1 overflow-hidden px-5 sm:px-8">
+                        <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-24 bg-gradient-to-b from-[#08060f] via-[#08060f]/65 to-transparent" />
+                        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-24 bg-gradient-to-t from-[#05050d] via-[#05050d]/70 to-transparent" />
+
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <div className="relative h-full w-full max-w-6xl">
+                            {lyricFlow.visible.map(({ line, index, translateY, opacity, scale, blur }) => {
+                              const isCenter = Math.abs(index - lyricFlow.position) < 0.58;
+
+                              return (
+                                <div
+                                  key={`${line.time}-${index}`}
+                                  className="absolute inset-x-0 top-1/2 flex w-full justify-center px-4 will-change-transform sm:px-8"
+                                  style={{
+                                    transform: `translateY(calc(-50% + ${translateY}px)) scale(${scale})`,
+                                    transformOrigin: "center center",
+                                    opacity,
+                                    filter: `blur(${blur}px)`,
+                                    transition:
+                                      "transform 110ms linear, opacity 180ms ease, filter 180ms ease",
+                                  }}
+                                >
+                                  <p
+                                    className={`mx-auto w-full max-w-[88%] break-words text-center text-balance font-black leading-[1.08] tracking-[-0.035em] ${
+                                      isCenter
+                                        ? "bg-gradient-to-r from-fuchsia-300 via-pink-100 to-orange-200 bg-clip-text text-[clamp(2.5rem,5vw,5.7rem)] text-transparent drop-shadow-[0_0_28px_rgba(236,72,153,.20)]"
+                                        : "text-[clamp(1.35rem,2.45vw,2.45rem)] text-white/55"
+                                    }`}
+                                  >
+                                    {line.text}
+                                  </p>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       </div>
-                    ) : null}
 
-                    <div className="relative z-10 min-h-[48vh] overflow-hidden">
-                      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-28 bg-gradient-to-b from-black/45 via-black/10 to-transparent" />
-                      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-28 bg-gradient-to-t from-black/45 via-black/10 to-transparent" />
-
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="relative h-full w-full max-w-6xl">
-                          {lyricFlow.visible.map(({ line, index, translateY, opacity, scale, blur }) => {
-                            const isCenter = Math.abs(index - lyricFlow.position) < 0.58;
-
-                            return (
-                              <div
-                                key={`${line.time}-${index}`}
-                                className="absolute inset-x-0 top-1/2 flex w-full justify-center px-4 will-change-transform sm:px-8"
-                                style={{
-                                  transform: `translateY(calc(-50% + ${translateY}px)) scale(${scale})`,
-                                  transformOrigin: "center center",
-                                  opacity,
-                                  filter: `blur(${blur}px)`,
-                                  transition:
-                                    "transform 110ms linear, opacity 180ms ease, filter 180ms ease",
-                                }}
-                              >
-                                <p
-                                  className={`mx-auto w-full max-w-[92%] break-words text-center text-balance font-black leading-[1.05] tracking-[-0.04em] transition-colors duration-300 sm:max-w-[88%] ${
-                                    isCenter
-                                      ? "bg-gradient-to-r from-fuchsia-300 via-pink-100 to-orange-200 bg-clip-text text-[clamp(2.15rem,5.2vw,6.2rem)] text-transparent drop-shadow-[0_0_30px_rgba(236,72,153,.18)]"
-                                      : "text-[clamp(1.35rem,3vw,3.1rem)] text-white/75"
-                                  }`}
-                                >
-                                  {line.text}
-                                </p>
-                              </div>
-                            );
-                          })}
-
-                          {!lyricFlow.visible.length ? (
-                            <div className="absolute inset-0 grid place-items-center text-6xl font-black text-fuchsia-100/60">
-                              ♪
-                            </div>
-                          ) : null}
+                      <div className="relative z-30 px-7 pb-6 pt-2 sm:px-10 sm:pb-7">
+                        <div className="flex items-center gap-4 text-xs font-black text-white/70">
+                          <span>{formatTime(playbackTime)}</span>
+                          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+                            <div
+                              className="h-full rounded-full bg-gradient-to-r from-fuchsia-400 via-pink-400 to-orange-300 shadow-[0_0_18px_rgba(217,70,239,.5)]"
+                              style={{
+                                width: `${
+                                  (currentSong.durationSeconds || lyrics?.duration || 0) > 0
+                                    ? Math.min(
+                                        100,
+                                        Math.max(
+                                          0,
+                                          (playbackTime /
+                                            Number(currentSong.durationSeconds || lyrics?.duration || 1)) *
+                                            100
+                                        )
+                                      )
+                                    : 0
+                                }%`,
+                              }}
+                            />
+                          </div>
+                          <span>
+                            {formatTime(Number(currentSong.durationSeconds || lyrics?.duration || 0))}
+                          </span>
                         </div>
                       </div>
-
-                      <div className="pointer-events-none absolute left-1/2 top-1/2 z-30 h-px w-[82%] -translate-x-1/2 bg-gradient-to-r from-transparent via-fuchsia-300/10 to-transparent" />
                     </div>
-                  </div>
-                ) : (
-                  <div className="rounded-[40px] border border-amber-300/15 bg-black/30 p-10 text-center shadow-[0_35px_110px_rgba(0,0,0,.40)] backdrop-blur-2xl">
-                    <Mic2 className="mx-auto h-11 w-11 text-amber-200/70" />
-                    <h2 className="mt-4 text-2xl font-black">
-                      Karaoké indisponible pour ce morceau
-                    </h2>
-                    <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-white/45 sm:text-base">
-                      {lyrics?.message ||
-                        "Aucune parole synchronisée n’est encore disponible dans MusicBrain pour ce titre."}
+                  ) : (
+                    <div className="relative z-10 grid min-h-[62vh] place-items-center p-10 text-center">
+                      <div>
+                        <Mic2 className="mx-auto h-11 w-11 text-amber-200/70" />
+                        <h2 className="mt-4 text-2xl font-black">
+                          Karaoké indisponible pour ce morceau
+                        </h2>
+                        <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-white/45 sm:text-base">
+                          {lyrics?.message ||
+                            "Aucune parole synchronisée n’est encore disponible pour ce titre."}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </section>
+
+                <aside className="flex flex-col rounded-[32px] border border-white/10 bg-[linear-gradient(180deg,rgba(12,10,22,.92),rgba(5,5,13,.96))] p-4 shadow-[0_24px_80px_rgba(0,0,0,.34)] backdrop-blur-2xl">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[.22em] text-fuchsia-300/80">
+                      À suivre
                     </p>
-                    {lyrics?.kind === "unchecked" ? (
-                      <p className="mt-3 text-xs font-bold text-fuchsia-200/55">
-                        PartyBrain vérifiera automatiquement LRCLIB lorsque ce morceau sera appris.
-                      </p>
-                    ) : null}
-                  </div>
-                )}
-                </div>
-
-                <aside className="rounded-[32px] border border-white/10 bg-black/28 p-4 shadow-[0_24px_80px_rgba(0,0,0,.34)] backdrop-blur-2xl">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[.22em] text-fuchsia-300/70">
-                        À suivre
-                      </p>
-                      <h3 className="mt-1 text-lg font-black">
-                        Prochaines musiques
-                      </h3>
-                    </div>
-                    <span className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-black text-white/45">
-                      {queue.length}
-                    </span>
+                    <h3 className="mt-1 text-lg font-black">Prochaines chansons</h3>
                   </div>
 
                   <div className="mt-4 space-y-2">
-                    {queue.slice(0, 6).map((song, index) => (
+                    {queue.slice(0, 5).map((song, index) => (
                       <div
                         key={`${song.videoId}-${song.addedAt || index}`}
                         className={`flex items-center gap-3 rounded-2xl border p-2.5 ${
                           index === 0
-                            ? "border-fuchsia-300/20 bg-fuchsia-500/[0.08]"
-                            : "border-white/[0.06] bg-white/[0.025]"
+                            ? "border-fuchsia-300/25 bg-fuchsia-500/[0.09]"
+                            : "border-white/[0.06] bg-white/[0.02]"
                         }`}
                       >
-                        <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-xl text-[10px] font-black ${
+                        <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-[11px] font-black ${
                           index === 0
-                            ? "bg-fuchsia-500/20 text-fuchsia-100"
-                            : "bg-white/[0.05] text-white/35"
+                            ? "bg-fuchsia-500/25 text-fuchsia-100"
+                            : "bg-white/[0.06] text-white/40"
                         }`}>
                           {index + 1}
                         </span>
@@ -600,7 +613,7 @@ export default function KaraokePartyPage() {
                         <img
                           src={songArtwork(song)}
                           alt=""
-                          className="h-11 w-11 shrink-0 rounded-xl object-cover ring-1 ring-white/10"
+                          className="h-12 w-12 shrink-0 rounded-xl object-cover ring-1 ring-white/10"
                         />
 
                         <div className="min-w-0 flex-1">
@@ -610,13 +623,12 @@ export default function KaraokePartyPage() {
                           <p className="mt-0.5 truncate text-[10px] font-bold text-white/35">
                             {song.artistName || song.addedBy || "MixParty"}
                           </p>
+                          {Number(song.votes || 0) > 0 ? (
+                            <p className="mt-1 text-[10px] font-black text-orange-300/80">
+                              ♥ {song.votes}
+                            </p>
+                          ) : null}
                         </div>
-
-                        {Number(song.votes || 0) > 0 ? (
-                          <span className="text-[10px] font-black text-fuchsia-200/60">
-                            +{song.votes}
-                          </span>
-                        ) : null}
                       </div>
                     ))}
 
@@ -630,58 +642,60 @@ export default function KaraokePartyPage() {
                     ) : null}
                   </div>
 
-                  <div className="mt-5 border-t border-white/[0.07] pt-4">
-                    <p className="mb-3 text-center text-[10px] font-black uppercase tracking-[.18em] text-white/25">
-                      Contrôles DJ
-                    </p>
+                  <div className="mt-auto pt-5">
+                    <div className="border-t border-white/[0.07] pt-4">
+                      <div className="mb-4 flex items-center justify-center gap-2 text-xs font-black text-fuchsia-200/75">
+                        <span>👥</span>
+                        <span>{party?.participants?.length || 0} participant{(party?.participants?.length || 0) > 1 ? "s" : ""}</span>
+                      </div>
 
-                    <div className="flex items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => sendPlaybackControl("previous")}
-                        disabled={!creatorToken || !(party?.history?.length)}
-                        className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/[0.05] text-white/70 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-25"
-                        aria-label="Morceau précédent"
-                      >
-                        <SkipBack className="h-5 w-5 fill-current" />
-                      </button>
+                      <div className="flex items-center justify-center gap-4">
+                        <button
+                          type="button"
+                          onClick={() => sendPlaybackControl("previous")}
+                          disabled={!creatorToken || !(party?.history?.length)}
+                          className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-white/75 disabled:opacity-25"
+                        >
+                          <SkipBack className="h-5 w-5 fill-current" />
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          sendPlaybackControl(playback.state === 1 ? "pause" : "play")
-                        }
-                        disabled={!creatorToken || !currentSong}
-                        className="grid h-14 w-14 place-items-center rounded-[20px] border border-fuchsia-300/25 bg-gradient-to-br from-fuchsia-500/35 via-purple-500/25 to-orange-500/20 text-white shadow-[0_0_35px_rgba(217,70,239,.16)] transition hover:scale-[1.03] disabled:cursor-not-allowed disabled:opacity-30"
-                        aria-label={playback.state === 1 ? "Pause" : "Lecture"}
-                      >
-                        {playback.state === 1 ? (
-                          <Pause className="h-6 w-6 fill-current" />
-                        ) : (
-                          <Play className="ml-0.5 h-6 w-6 fill-current" />
-                        )}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => sendPlaybackControl(playback.state === 1 ? "pause" : "play")}
+                          disabled={!creatorToken || !currentSong}
+                          className="grid h-16 w-16 place-items-center rounded-full border border-fuchsia-300/30 bg-black/40 text-white shadow-[0_0_0_2px_rgba(217,70,239,.08),0_0_35px_rgba(217,70,239,.22)] disabled:opacity-30"
+                        >
+                          {playback.state === 1 ? (
+                            <Pause className="h-7 w-7 fill-current" />
+                          ) : (
+                            <Play className="ml-1 h-7 w-7 fill-current" />
+                          )}
+                        </button>
 
-                      <button
-                        type="button"
-                        onClick={() => sendPlaybackControl("next")}
-                        disabled={!creatorToken}
-                        className="grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-white/[0.05] text-white/70 transition hover:bg-white/[0.09] disabled:cursor-not-allowed disabled:opacity-25"
-                        aria-label="Morceau suivant"
-                      >
-                        <SkipForward className="h-5 w-5 fill-current" />
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => sendPlaybackControl("next")}
+                          disabled={!creatorToken}
+                          className="grid h-11 w-11 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-white/75 disabled:opacity-25"
+                        >
+                          <SkipForward className="h-5 w-5 fill-current" />
+                        </button>
+                      </div>
+
+                      <div className="mt-5 rounded-2xl border border-emerald-300/15 bg-emerald-500/[0.07] px-4 py-3">
+                        <div className="flex items-center gap-2 text-xs font-black text-emerald-200">
+                          {connected ? (
+                            <Wifi className="h-4 w-4" />
+                          ) : (
+                            <WifiOff className="h-4 w-4 text-red-300" />
+                          )}
+                          <span>{connected ? "Connecté" : "Reconnexion…"}</span>
+                        </div>
+                        <p className="mt-1 pl-6 text-[10px] font-bold text-emerald-200/55">
+                          {connected ? "Synchronisé en direct" : "Synchronisation en attente"}
+                        </p>
+                      </div>
                     </div>
-
-                    {!creatorToken ? (
-                      <p className="mt-3 text-center text-[10px] leading-4 text-amber-200/45">
-                        Les contrôles sont disponibles uniquement sur l’appareil du créateur de la soirée.
-                      </p>
-                    ) : (
-                      <p className="mt-3 text-center text-[10px] leading-4 text-white/25">
-                        Contrôle à distance du lecteur principal MixParty.
-                      </p>
-                    )}
                   </div>
                 </aside>
               </div>
@@ -691,7 +705,7 @@ export default function KaraokePartyPage() {
 
         <footer className="flex items-center justify-between gap-4 border-t border-white/[0.06] pt-4 text-[10px] font-black uppercase tracking-[.12em] text-white/22">
           <span>Soirée {code || "—"}</span>
-          <span>MixParty Karaoké • Lyrics Flow V2</span>
+          <span>MixParty Karaoké • Premium Flow V3</span>
         </footer>
       </div>
 
