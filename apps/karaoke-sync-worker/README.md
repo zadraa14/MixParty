@@ -1,25 +1,24 @@
-# MixParty Karaoke Sync Worker V2.0 — Segment Recovery
+# MixParty Karaoke Sync Worker V2.1 — Block Recovery
 
-V2.0 généralise les corrections sans créer de règle par chanson.
+V2.1 ajoute un recalage générique par petits blocs, sans règle par chanson.
 
 Pipeline:
 1. Faster-Whisper
-2. Intro Recovery V1.9
-3. Segment Recovery V2.0
-4. Local Refinement sécurisé
-5. Recalcul complet du score
-6. Publication seulement si confiance >= 92 %
+2. Intro Recovery
+3. Block Recovery V2.1
+4. Segment Recovery V2.0 (fallback pour lignes isolées)
+5. Local Refinement sécurisé
+6. Recalcul complet du score
+7. Publication seulement si confiance >= 92 %
 
-Segment Recovery:
-- cible les lignes isolées avec un écart >= 0,75 s
-- utilise les lignes voisines fiables comme ancres
-- recherche uniquement dans une petite fenêtre audio
-- maximum 2,25 s de déplacement
-- les déplacements > 1,25 s exigent deux ancres fiables
-- preuve lexicale obligatoire
-- amélioration minimale 0,35 s
-- maximum 4 corrections par morceau
-- refuse toute correction qui casserait l'ordre des timestamps
+Block Recovery V2.1:
+- détecte automatiquement 2 à 4 lignes consécutives avec écart >= 0,75 s
+- exige deux ancres voisines fiables (<= 0,50 s)
+- interpole l'offset local entre les deux ancres
+- recherche chaque ligne dans une fenêtre audio bornée
+- valide lexicalement chaque candidat
+- applique le bloc uniquement si toutes les lignes restent monotones et sûres
+- refuse le bloc entier si une ligne n'a pas de preuve suffisante
 
-Aucune règle spécifique à GIMS, ABCD ou à un autre morceau.
+Aucune règle spécifique à GIMS, ABCD ou un autre morceau.
 Shadow Mode et seuil 92 % conservés.

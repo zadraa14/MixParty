@@ -11,7 +11,7 @@ from typing import Any, Optional
 from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-app = FastAPI(title="MixParty Karaoke Sync Worker", version="1.4")
+app = FastAPI(title="MixParty Karaoke Sync Worker", version="2.1")
 
 MODEL_NAME = os.getenv("WHISPER_MODEL", "base")
 DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
@@ -33,7 +33,7 @@ class AlignedLine(BaseModel):
 
 class AlignResponse(BaseModel):
     ok: bool = True
-    engine: str = "faster-whisper-v2.0"
+    engine: str = "faster-whisper-v2.1"
     publishable: bool
     confidence: float
     lines: list[AlignedLine]
@@ -766,6 +766,142 @@ def recover_intro_lines(
     }
 
 
+def recover_suspect_blocks(
+    words: list[dict[str, Any]],
+    lines: list[AlignedLine],
+    reference_lines: list[dict[str, Any]],
+    delta_diag: dict[str, Any],
+) -> tuple[list[AlignedLine], dict[str, Any]]:
+    """V2.1 Block Recovery: recale de petits blocs suspects entre deux ancres fiables."""
+    import difflib
+
+    comparisons = delta_diag.get("comparisons") or []
+    if not words or not lines or len(comparisons) < 4:
+        return lines, {"enabled": False, "reason": "missing-input", "attemptedBlocks": 0, "recoveredBlocks": 0}
+
+    # Les comparaisons sont déjà dans l'ordre LRCLIB. On ne cible que 2 à 4
+    # lignes consécutives franchement suspectes, encadrées par deux ancres <= 0,50 s.
+    suspect = [float(c.get("absoluteDeltaSeconds") or 0) >= 0.75 for c in comparisons]
+    blocks = []
+    i = 0
+    while i < len(comparisons):
+        if not suspect[i]:
+            i += 1
+            continue
+        j = i
+        while j + 1 < len(comparisons) and suspect[j + 1]:
+            j += 1
+        if 2 <= (j - i + 1) <= 4 and i > 0 and j + 1 < len(comparisons):
+            left = comparisons[i - 1]
+            right = comparisons[j + 1]
+            if float(left.get("absoluteDeltaSeconds") or 99) <= 0.50 and float(right.get("absoluteDeltaSeconds") or 99) <= 0.50:
+                blocks.append((i, j, left, right))
+        i = j + 1
+
+    if not blocks:
+        return lines, {"enabled": True, "applied": False, "reason": "no-anchored-suspect-block", "attemptedBlocks": 0, "recoveredBlocks": 0, "details": []}
+
+    working = [AlignedLine(time=float(x.time), text=x.text) for x in lines]
+    details = []
+    recovered_blocks = 0
+    recovered_lines = 0
+
+    def find_line_index(text: str, engine_time: float):
+        norm = normalize_text(text)
+        cand = [(k, abs(float(x.time)-engine_time)) for k,x in enumerate(working) if normalize_text(x.text)==norm]
+        return min(cand, key=lambda z:z[1])[0] if cand else None
+
+    for bi, (start, end, left_anchor, right_anchor) in enumerate(blocks[:3]):
+        block = comparisons[start:end+1]
+        left_off = float(left_anchor["engineTime"]) - float(left_anchor["lrclibTime"])
+        right_off = float(right_anchor["engineTime"]) - float(right_anchor["lrclibTime"])
+        ref_left = float(left_anchor["lrclibTime"])
+        ref_right = float(right_anchor["lrclibTime"])
+        proposals = []
+        rejected = None
+
+        for c in block:
+            text = str(c.get("text") or "")
+            norm = normalize_text(text)
+            tokens = norm.split()
+            if not tokens:
+                rejected = "empty-text"; break
+            rt = float(c["lrclibTime"])
+            frac = 0.5 if ref_right <= ref_left else max(0.0, min(1.0, (rt-ref_left)/(ref_right-ref_left)))
+            predicted = rt + left_off + (right_off-left_off)*frac
+            old = float(c["engineTime"])
+            # Fenêtre assez large pour récupérer un bloc, mais toujours bornée par les ancres.
+            lo = max(float(left_anchor["engineTime"])+0.12, predicted-2.50)
+            hi = min(float(right_anchor["engineTime"])-0.12, predicted+2.50)
+            expected = " ".join(tokens)
+            strong = [t for t in tokens if len(t)>=4] or tokens
+            best = None
+            for wi,w in enumerate(words):
+                st=float(w["start"])
+                if st < lo or st > hi: continue
+                for ln in range(max(1,len(tokens)-4), len(tokens)+6):
+                    if wi+ln>len(words): break
+                    ct=[normalize_text(str(x["word"])) for x in words[wi:wi+ln]]
+                    cand=" ".join(ct)
+                    text_score=difflib.SequenceMatcher(None, expected, cand).ratio()
+                    aset=set(ct)
+                    anchor_score=sum(1 for t in strong if t in aset)/len(strong)
+                    timing_score=max(0.0,1.0-abs(st-predicted)/2.50)
+                    score=text_score*.62+anchor_score*.28+timing_score*.10
+                    if best is None or score>best[0]: best=(score,text_score,anchor_score,st)
+            if best is None or best[0] < .64 or best[1] < .48 or best[2] < .42:
+                rejected = "weak-block-candidate"; break
+            score,ts,ans,new=best
+            # Le nouveau point doit améliorer le modèle local d'au moins 0,25 s pour les gros écarts.
+            improvement=abs(old-predicted)-abs(new-predicted)
+            if improvement < .25:
+                rejected = "insufficient-block-improvement"; break
+            proposals.append((c,new,score,ts,ans,predicted,old))
+
+        # Validation conjointe: ordre strict + indices réels trouvés + pas de collision.
+        if not rejected:
+            new_times=[x[1] for x in proposals]
+            if any(new_times[k] >= new_times[k+1]-0.12 for k in range(len(new_times)-1)):
+                rejected="block-non-monotonic"
+        indices=[]
+        if not rejected:
+            for c,*_ in proposals:
+                idx=find_line_index(str(c.get("text") or ""), float(c["engineTime"]))
+                if idx is None: rejected="line-not-found"; break
+                indices.append(idx)
+            if len(set(indices)) != len(indices): rejected="duplicate-line-index"
+
+        if rejected:
+            details.append({"block": bi+1, "changed": False, "reason": rejected, "lineCount": len(block)})
+            continue
+
+        # Vérifie aussi les voisins extérieurs dans la liste alignée.
+        ordered=sorted(zip(indices, proposals), key=lambda z:z[0])
+        safe=True
+        for pos,(idx,prop) in enumerate(ordered):
+            nt=prop[1]
+            prev_t = ordered[pos-1][1][1] if pos else (float(working[idx-1].time) if idx>0 else -1e9)
+            next_t = ordered[pos+1][1][1] if pos+1<len(ordered) else (float(working[idx+1].time) if idx+1<len(working) else 1e9)
+            if nt <= prev_t+0.12 or nt >= next_t-0.12: safe=False; break
+        if not safe:
+            details.append({"block": bi+1,"changed":False,"reason":"neighbor-order-guard","lineCount":len(block)})
+            continue
+
+        line_details=[]
+        for idx,prop in ordered:
+            c,new,score,ts,ans,predicted,old=prop
+            working[idx]=AlignedLine(time=round(new,3), text=working[idx].text)
+            line_details.append({"text":working[idx].text,"oldTime":round(old,3),"newTime":round(new,3),"lrclibTime":round(float(c["lrclibTime"]),3),"predictedTime":round(predicted,3),"combinedScore":round(score,4),"textScore":round(ts,4),"anchorScore":round(ans,4)})
+        recovered_blocks += 1
+        recovered_lines += len(ordered)
+        details.append({"block":bi+1,"changed":True,"lineCount":len(ordered),"lines":line_details})
+
+    monotonic=all(float(working[k].time)<float(working[k+1].time) for k in range(len(working)-1))
+    if not monotonic:
+        return lines,{"enabled":True,"applied":False,"reason":"block-recovery-broke-monotonicity","attemptedBlocks":len(blocks),"recoveredBlocks":0,"recoveredLines":0,"details":details}
+    return working,{"enabled":True,"applied":recovered_blocks>0,"attemptedBlocks":len(blocks),"recoveredBlocks":recovered_blocks,"recoveredLines":recovered_lines,"details":details}
+
+
 def recover_isolated_segments(
     words: list[dict[str, Any]],
     lines: list[AlignedLine],
@@ -1495,12 +1631,25 @@ def process_audio(audio_path: Path, transcript: str, synced_lyrics: str = "") ->
         lrclib_reference,
     )
 
-    # 4) Segment Recovery V2.0 : lignes isolées décalées entre ancres fiables
-    segment_lines, segment_recovery = recover_isolated_segments(
+    # 4) Block Recovery V2.1 : petits groupes de lignes suspectes entre deux ancres fiables
+    block_lines, block_recovery = recover_suspect_blocks(
         words,
         intro_lines,
         lrclib_reference,
         lrclib_delta_after_intro,
+    )
+
+    lrclib_delta_after_block = compare_with_lrclib(
+        block_lines,
+        lrclib_reference,
+    )
+
+    # 5) Segment Recovery V2.0 conservé pour les lignes isolées restantes
+    segment_lines, segment_recovery = recover_isolated_segments(
+        words,
+        block_lines,
+        lrclib_reference,
+        lrclib_delta_after_block,
     )
 
     lrclib_delta_after_segment = compare_with_lrclib(
@@ -1508,7 +1657,7 @@ def process_audio(audio_path: Path, transcript: str, synced_lyrics: str = "") ->
         lrclib_reference,
     )
 
-    # 5) correction locale sécurisée sur les gros écarts restants
+    # 6) correction locale sécurisée sur les gros écarts restants
     refined_lines, refinement = local_refine_lines(
         words,
         segment_lines,
@@ -1517,7 +1666,7 @@ def process_audio(audio_path: Path, transcript: str, synced_lyrics: str = "") ->
         lrclib_delta_after_segment,
     )
 
-    # 6) diagnostics finaux après éventuelles corrections
+    # 7) diagnostics finaux après éventuelles corrections
     lines = refined_lines
     lrclib_delta = compare_with_lrclib(lines, lrclib_reference)
     duplicates = detect_duplicate_aligned_lines(lines)
@@ -1563,13 +1712,15 @@ def process_audio(audio_path: Path, transcript: str, synced_lyrics: str = "") ->
         "lowMemory": True,
         "pyannote": False,
         "whisperx": False,
-        "timingValidationVersion": "v2.0",
+        "timingValidationVersion": "v2.1",
         "lrclibTimingScore": round(lrclib_score, 4),
         "lrclibDeltaBeforeRefinement": lrclib_delta_before,
         "lrclibDeltaAfterIntroRecovery": lrclib_delta_after_intro,
+        "lrclibDeltaAfterBlockRecovery": lrclib_delta_after_block,
         "lrclibDeltaAfterSegmentRecovery": lrclib_delta_after_segment,
         "lrclibDelta": lrclib_delta,
         "introRecovery": intro_recovery,
+        "blockRecovery": block_recovery,
         "segmentRecovery": segment_recovery,
         "localRefinement": refinement,
         "finalConfidence": final_confidence_diag,
