@@ -791,8 +791,13 @@ export default function PartyPage() {
 
       try {
         setLoadError("");
+        const partyLoadUrl =
+          externalDisplayMode === "tv"
+            ? `${getApiBaseUrl()}/party/${encodeURIComponent(code)}`
+            : `/mixparty-api/party/${encodeURIComponent(code)}`;
+
         const response = await fetch(
-          `/mixparty-api/party/${encodeURIComponent(code)}`,
+          partyLoadUrl,
           {
             cache: "no-store",
             headers: { "cache-control": "no-cache" },
