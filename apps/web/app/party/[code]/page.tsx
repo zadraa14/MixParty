@@ -470,11 +470,13 @@ export default function PartyPage() {
             setCastDeviceName(String(device?.friendlyName || "TV"));
             sendInitialDisplayToSession(session);
 
-            // Petit second envoi de sécurité le temps que le Receiver /cast
-            // termine complètement son initialisation.
-            window.setTimeout(() => {
-              sendInitialDisplayToSession(context?.getCurrentSession?.());
-            }, 700);
+            // Certains Chromecast / Android TV mettent plus d'une seconde
+            // à charger le Receiver Next.js. On renvoie donc l'état plusieurs fois.
+            [700, 1600, 3000, 5000].forEach((delay) => {
+              window.setTimeout(() => {
+                sendInitialDisplayToSession(context?.getCurrentSession?.());
+              }, delay);
+            });
           }
 
           if (
@@ -617,9 +619,11 @@ export default function PartyPage() {
       // Le Receiver vient d’être lancé : on lui transmet la soirée et
       // l’affichage demandé. Un second envoi sécurise les appareils plus lents.
       await sendCastDisplayMode(mode);
-      window.setTimeout(() => {
-        void sendCastDisplayMode(mode);
-      }, 700);
+      [700, 1600, 3000, 5000].forEach((delay) => {
+        window.setTimeout(() => {
+          void sendCastDisplayMode(mode);
+        }, delay);
+      });
     } catch (error: any) {
       // Le clic reste autorisé même si CastState indique NO_DEVICES_AVAILABLE :
       // requestSession donne alors l'erreur réelle du SDK au lieu de masquer le diagnostic.

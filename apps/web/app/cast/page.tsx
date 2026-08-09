@@ -63,9 +63,31 @@ export default function MixPartyCastReceiverPage() {
             const nextMode: DisplayMode =
               payload.mode === "karaoke" ? "karaoke" : "tv";
 
+            console.log("📺 MixParty Receiver message", {
+              senderId: event?.senderId,
+              partyCode: nextCode,
+              mode: nextMode,
+            });
+
             if (nextCode) setPartyCode(nextCode);
             if (payload.mode) setMode(nextMode);
             setSenderConnected(true);
+
+            try {
+              if (event?.senderId) {
+                context.sendCustomMessage(
+                  CAST_NAMESPACE,
+                  event.senderId,
+                  {
+                    type: "mixparty_display_ack",
+                    partyCode: nextCode,
+                    mode: nextMode,
+                  }
+                );
+              }
+            } catch (error) {
+              console.warn("ACK Cast non envoyé", error);
+            }
           }
         );
 
@@ -139,13 +161,50 @@ export default function MixPartyCastReceiverPage() {
 
   if (!partyCode) {
     return (
-      <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[#05050d] px-6 text-white">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_30%_25%,rgba(168,85,247,.22),transparent_35%),radial-gradient(circle_at_75%_70%,rgba(249,115,22,.14),transparent_30%)]" />
-        <div className="relative z-10 w-full max-w-xl rounded-[36px] border border-white/10 bg-white/[0.045] p-8 text-center shadow-[0_35px_120px_rgba(0,0,0,.5)] backdrop-blur-2xl">
+      <main
+        className="relative grid h-screen w-screen place-items-center overflow-hidden bg-[#05050d] text-white"
+        style={{
+          width: "100vw",
+          height: "100vh",
+          margin: 0,
+          padding: 0,
+          overflow: "hidden",
+          background: "#05050d",
+        }}
+      >
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(circle at 30% 25%, rgba(168,85,247,.22), transparent 35%), radial-gradient(circle at 75% 70%, rgba(249,115,22,.14), transparent 30%)",
+          }}
+        />
+        <div
+          className="relative z-10 text-center"
+          style={{
+            width: "min(88vw, 560px)",
+            maxWidth: "560px",
+            boxSizing: "border-box",
+            border: "1px solid rgba(255,255,255,.10)",
+            borderRadius: "36px",
+            background: "rgba(255,255,255,.045)",
+            padding: "32px",
+            textAlign: "center",
+            boxShadow: "0 35px 120px rgba(0,0,0,.50)",
+          }}
+        >
           <img
             src="/branding/icon.png"
             alt="MixParty"
-            className="mx-auto h-24 w-24 object-contain drop-shadow-[0_0_32px_rgba(168,85,247,.35)]"
+            style={{
+              display: "block",
+              width: "96px",
+              height: "96px",
+              maxWidth: "18vw",
+              maxHeight: "18vw",
+              margin: "0 auto",
+              objectFit: "contain",
+            }}
           />
 
           <p className="mt-5 text-[11px] font-black uppercase tracking-[.3em] text-purple-300">
