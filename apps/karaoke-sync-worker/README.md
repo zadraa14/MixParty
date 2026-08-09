@@ -1,24 +1,38 @@
-# MixParty Karaoke Sync Worker V2.1 — Block Recovery
+# MixParty Karaoke Sync Worker V2.2 — Edge Recovery + Robust QA
 
-V2.1 ajoute un recalage générique par petits blocs, sans règle par chanson.
+Construit directement depuis la V2.1 réellement testée.
 
-Pipeline:
-1. Faster-Whisper
-2. Intro Recovery
-3. Block Recovery V2.1
-4. Segment Recovery V2.0 (fallback pour lignes isolées)
-5. Local Refinement sécurisé
-6. Recalcul complet du score
-7. Publication seulement si confiance >= 92 %
+## Edge Recovery
+Traite automatiquement les 3 premières / 3 dernières lignes quand elles sont
+décalées et qu'une ancre fiable existe vers l'intérieur du morceau.
 
-Block Recovery V2.1:
-- détecte automatiquement 2 à 4 lignes consécutives avec écart >= 0,75 s
-- exige deux ancres voisines fiables (<= 0,50 s)
-- interpole l'offset local entre les deux ancres
-- recherche chaque ligne dans une fenêtre audio bornée
-- valide lexicalement chaque candidat
-- applique le bloc uniquement si toutes les lignes restent monotones et sûres
-- refuse le bloc entier si une ligne n'a pas de preuve suffisante
+Garde-fous :
+- delta >= 0,75 s uniquement
+- déplacement max 2,25 s
+- preuve lexicale obligatoire
+- amélioration >= 0,35 s
+- ordre temporel strict conservé
 
-Aucune règle spécifique à GIMS, ABCD ou un autre morceau.
-Shadow Mode et seuil 92 % conservés.
+## Robust QA Score
+Le score final n'est plus détruit par un seul outlier de bord.
+Il juge la distribution globale :
+- couverture
+- continuité
+- progression
+- ancres lexicales
+- similarité
+- % de lignes à ±0,25 / ±0,50 / ±0,75 / ±1,00 s
+- delta médian
+
+## Validation finale
+Le score >= 92 % ne suffit PAS à lui seul.
+Le morceau doit aussi satisfaire :
+- couverture >= 90 %
+- comparaison LRCLIB >= 88 %
+- >= 88 % des lignes à ±0,75 s
+- >= 94 % à ±1,00 s
+- delta médian <= 0,40 s
+- aucun doublon suspect
+- timestamps croissants
+
+Shadow Mode conservé.
