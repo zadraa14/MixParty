@@ -24,11 +24,12 @@
     html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#05050d;color:#fff;font-family:Arial,Helvetica,sans-serif}
     body{position:relative}
     .hidden{display:none!important}
-    .backdrop{position:fixed;inset:-3%;background-size:cover;background-position:center;filter:blur(12px) saturate(1.08);opacity:.18;transform:scale(1.04);transition:background-image .7s ease}
+    .backdrop{position:fixed;inset:-2%;background-size:cover;background-position:center;filter:blur(7px) saturate(1.16) brightness(.78);opacity:.46;transform:scale(1.035);transition:background-image .7s ease}
     .veil{position:fixed;inset:0;background:
-      radial-gradient(circle at 18% 20%,rgba(80,70,255,.22),transparent 30%),
-      radial-gradient(circle at 64% 18%,rgba(236,72,153,.16),transparent 30%),
-      linear-gradient(180deg,rgba(5,5,13,.28),rgba(5,5,13,.90))}
+      radial-gradient(circle at 18% 20%,rgba(80,70,255,.18),transparent 32%),
+      radial-gradient(circle at 64% 18%,rgba(236,72,153,.13),transparent 30%),
+      linear-gradient(90deg,rgba(5,5,13,.64),rgba(5,5,13,.22) 48%,rgba(5,5,13,.54)),
+      linear-gradient(180deg,rgba(5,5,13,.20),rgba(5,5,13,.74))}
     .gridfx{position:fixed;inset:0;opacity:.032;background-image:linear-gradient(rgba(255,255,255,.55) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.55) 1px,transparent 1px);background-size:4vw 4vw}
     #boot{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:5vh 5vw}
     .boot-card{width:min(46vw,760px);padding:4vh 3vw;text-align:center;border:1px solid var(--border);border-radius:2vw;background:rgba(10,7,22,.88);box-shadow:0 4vh 10vh rgba(0,0,0,.5)}
@@ -57,11 +58,9 @@
     .track{min-width:0;padding-right:.5vw}.eyebrow{display:inline-flex;padding:.55vh .7vw;border:1px solid rgba(236,72,153,.18);border-radius:999px;background:rgba(236,72,153,.08);color:#f0abfc;font-size:clamp(8px,.56vw,10px);font-weight:900;letter-spacing:.16em}
     .track h1{margin:1.1vh 0 0;font-size:clamp(34px,3.9vw,72px);line-height:.97;letter-spacing:-.05em;max-height:1.95em;overflow:hidden;text-wrap:balance}
     .track .artist{margin-top:1vh;font-size:clamp(18px,1.65vw,30px);font-weight:800;color:rgba(255,255,255,.68);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .progress-row{margin-top:3vh;display:grid;grid-template-columns:4.3vw 1fr 4.3vw;gap:.7vw;align-items:center;font-size:clamp(9px,.62vw,12px);font-weight:900;color:rgba(255,255,255,.6)}
-    .progress{height:.48vh;min-height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.progress i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left center;background:linear-gradient(90deg,#7c3aed,#ec4899,#fb923c);box-shadow:0 0 1.2vw rgba(236,72,153,.42);will-change:transform}
-    .wave{height:8.2vh;margin-top:1.8vh;display:flex;align-items:center;gap:.22vw;overflow:hidden}.wave span{flex:1;min-width:3px;border-radius:999px;background:linear-gradient(to top,#7c3aed,#ec4899,#fb923c);opacity:.58;animation:wave 1.55s cubic-bezier(.4,0,.2,1) infinite;transform-origin:center;will-change:transform;transform:translateZ(0) scaleY(.30)}
-    @keyframes wave{0%,100%{transform:scaleY(.30);opacity:.34}50%{transform:scaleY(1);opacity:.92}}
-    .meta{margin-top:1.4vh;display:flex;gap:.6vw;flex-wrap:wrap}.chip{padding:.72vh .75vw;border:1px solid var(--border);border-radius:999px;background:rgba(255,255,255,.045);font-size:clamp(8px,.58vw,11px);font-weight:900;color:rgba(255,255,255,.68)}
+    .progress-row{margin-top:3.4vh;display:grid;grid-template-columns:4.3vw 1fr 4.3vw;gap:.7vw;align-items:center;font-size:clamp(9px,.62vw,12px);font-weight:900;color:rgba(255,255,255,.6)}
+    .progress{height:.48vh;min-height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.progress i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:left center;background:linear-gradient(90deg,#7c3aed,#ec4899,#fb923c);box-shadow:0 0 1.2vw rgba(236,72,153,.42);will-change:transform}}
+    .meta{margin-top:2.4vh;display:flex;gap:.6vw;flex-wrap:wrap}.chip{padding:.72vh .75vw;border:1px solid var(--border);border-radius:999px;background:rgba(255,255,255,.045);font-size:clamp(8px,.58vw,11px);font-weight:900;color:rgba(255,255,255,.68)}
 
     .queue-panel{padding:1.1vw;overflow:hidden}.queue-head{display:flex;justify-content:space-between;gap:.6vw;font-size:clamp(8px,.55vw,10px);font-weight:900;letter-spacing:.14em;color:#ddd6fe}.queue-list{margin-top:1vh;display:grid;gap:.75vh;max-height:calc(100% - 2.2vh);overflow:hidden}
     .qitem{display:grid;grid-template-columns:2vw 3.4vw minmax(0,1fr) 3vw;gap:.55vw;align-items:center;padding:.65vh .55vw;border:1px solid rgba(255,255,255,.07);border-radius:.95vw;background:rgba(255,255,255,.025);min-height:5.4vh}.qitem.next{border-color:rgba(168,85,247,.32);background:rgba(168,85,247,.085)}.qrank{font-weight:900;color:#c4b5fd;font-size:clamp(10px,.72vw,14px)}.qitem img{width:3.4vw;max-width:54px;aspect-ratio:1;border-radius:.68vw;object-fit:cover}.qcopy{min-width:0}.qcopy strong,.qcopy small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qcopy strong{font-size:clamp(10px,.72vw,14px)}.qcopy small{margin-top:.25vh;font-size:clamp(8px,.52vw,10px);color:var(--muted)}.qvote{text-align:center;font-weight:900;color:#f0abfc;font-size:clamp(10px,.72vw,14px)}
@@ -133,7 +132,6 @@
               <div class="progress"><i id="progress"></i></div>
               <span id="time-total">LIVE</span>
             </div>
-            <div class="wave" id="wave"></div>
             <div class="meta">
               <span class="chip" id="addedby">Ajouté par MixParty</span>
               <span class="chip" id="currentvotes">0 vote</span>
@@ -176,14 +174,6 @@
     let displayClock = {time:0,lastAt:performance.now(),initialized:false};
     let renderedLyricIndex = -999;
     let lastUiTick = 0;
-
-    for(let i=0;i<24;i++){
-      const s=document.createElement("span");
-      s.style.height=(28+((i*29)%68))+"%";
-      s.style.animationDelay=(-((i%12)*110))+"ms";
-      s.style.animationDuration=(1.35+((i%7)*0.07))+"s";
-      $("wave").appendChild(s);
-    }
 
     function esc(value){return String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
     function fmt(sec){sec=Math.max(0,Math.floor(Number(sec)||0));return Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0")}
