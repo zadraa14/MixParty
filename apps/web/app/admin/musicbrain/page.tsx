@@ -2748,6 +2748,10 @@ export default function MusicBrainAdminPage() {
                             : null;
 
                           const lrclibDelta = diagnostics.lrclibDelta || {};
+                          const lrclibDeltaBefore =
+                            diagnostics.lrclibDeltaBeforeRefinement || {};
+                          const localRefinement =
+                            diagnostics.localRefinement || {};
                           const duplicateLines = diagnostics.duplicateLines || {};
 
                           const formatPercent01 = (value: unknown) =>
@@ -2822,6 +2826,30 @@ export default function MusicBrainAdminPage() {
                                 : duplicateLines.suspect === false
                                   ? "✅ Aucun"
                                   : "—",
+                            ],
+                            [
+                              "Correction locale",
+                              localRefinement.enabled
+                                ? localRefinement.applied
+                                  ? `✅ ${Number(localRefinement.refinedCount || 0)} ligne(s)`
+                                  : `— ${Number(localRefinement.attemptedCount || 0)} testée(s)`
+                                : "—",
+                            ],
+                            [
+                              "Offset global",
+                              Number.isFinite(
+                                Number(localRefinement.globalOffsetSeconds)
+                              )
+                                ? `${Number(localRefinement.globalOffsetSeconds) >= 0 ? "+" : ""}${Number(localRefinement.globalOffsetSeconds).toFixed(2)} s`
+                                : "—",
+                            ],
+                            [
+                              "Delta médian avant",
+                              Number.isFinite(
+                                Number(lrclibDeltaBefore.medianAbsoluteDeltaSeconds)
+                              )
+                                ? `${Number(lrclibDeltaBefore.medianAbsoluteDeltaSeconds).toFixed(2)} s`
+                                : "—",
                             ],
                             [
                               "Moteur",
@@ -2900,6 +2928,57 @@ export default function MusicBrainAdminPage() {
                                       + {alignedLines.length - 8} ligne(s) alignée(s)
                                     </p>
                                   ) : null}
+                                </div>
+                              ) : null}
+
+                              {Array.isArray(localRefinement.details) &&
+                              localRefinement.details.length ? (
+                                <div className="mt-3 rounded-xl border border-amber-300/10 bg-amber-500/[0.04] p-3">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <p className="text-[9px] font-black uppercase tracking-[.16em] text-amber-200/65">
+                                      Correction locale V1.7
+                                    </p>
+                                    <span className="text-[9px] font-bold text-white/35">
+                                      {Number(localRefinement.refinedCount || 0)} corrigée(s) /
+                                      {" "}
+                                      {Number(localRefinement.attemptedCount || 0)} testée(s)
+                                    </span>
+                                  </div>
+
+                                  <div className="mt-2 max-h-44 space-y-1 overflow-y-auto pr-1">
+                                    {localRefinement.details
+                                      .slice(0, 16)
+                                      .map((item: any, index: number) => (
+                                        <div
+                                          key={`${item?.text}-${index}`}
+                                          className="grid grid-cols-[42px_58px_58px_70px_minmax(0,1fr)] items-center gap-2 rounded-lg bg-black/20 px-2 py-1.5 text-[9px]"
+                                        >
+                                          <span>
+                                            {item?.changed ? "✅" : "—"}
+                                          </span>
+                                          <span className="font-mono text-white/40">
+                                            {Number.isFinite(Number(item?.oldTime))
+                                              ? `${Number(item.oldTime).toFixed(2)}s`
+                                              : "—"}
+                                          </span>
+                                          <span className="font-mono text-cyan-200/65">
+                                            {Number.isFinite(Number(item?.newTime))
+                                              ? `${Number(item.newTime).toFixed(2)}s`
+                                              : Number.isFinite(Number(item?.candidateTime))
+                                                ? `${Number(item.candidateTime).toFixed(2)}s`
+                                                : "—"}
+                                          </span>
+                                          <span className="font-mono text-amber-200/65">
+                                            {Number.isFinite(Number(item?.improvementSeconds))
+                                              ? `gain ${Number(item.improvementSeconds).toFixed(2)}s`
+                                              : String(item?.reason || "")}
+                                          </span>
+                                          <span className="truncate text-white/45">
+                                            {String(item?.text || "")}
+                                          </span>
+                                        </div>
+                                      ))}
+                                  </div>
                                 </div>
                               ) : null}
 
