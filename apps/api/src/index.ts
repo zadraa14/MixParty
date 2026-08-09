@@ -6168,21 +6168,55 @@ function isGenericKaraokeArtistName(value: unknown) {
   );
 }
 
+function inferKaraokeArtistFromRawTitle(song: MusicBrainSong) {
+  const raw = String(song.rawTitle || "").trim();
+  if (!raw) return "";
+
+  // Beaucoup de chaînes de paroles (ex. 7clouds) publient sous la forme :
+  // "Ariana Grande - 7 rings (Lyrics)".
+  // On récupère donc le préfixe avant le séparateur comme candidat artiste.
+  const match = raw.match(
+    /^\s*(.{2,90}?)\s+(?:-|–|—|\||:)\s+.{2,}\s*$/
+  );
+
+  const candidate = String(match?.[1] || "")
+    .replace(/\[[^\]]*]/g, " ")
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/\b(?:official|lyrics?|paroles|karaok[eé]|audio|video|clip)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!candidate || isGenericKaraokeArtistName(candidate)) return "";
+
+  // Évite de prendre un titre de chanson entier pour un artiste.
+  if (candidate.length > 70) return "";
+
+  return candidate;
+}
+
 function resolveKaraokeArtistName(song: MusicBrainSong, entry: KaraokeLyricsAuditEntry) {
   const lrclibArtist = String(entry?.matchedArtistName || "").trim();
   const musicBrainArtist = String(song?.artistName || "").trim();
+  const rawTitleArtist = inferKaraokeArtistFromRawTitle(song);
 
-  // Pour le catalogue Karaoké, LRCLIB est prioritaire :
-  // il a déjà validé la correspondance titre + artiste + durée.
+  // 1. LRCLIB reste prioritaire lorsqu'il contient un vrai artiste.
   if (lrclibArtist && !isGenericKaraokeArtistName(lrclibArtist)) {
     return lrclibArtist;
   }
 
+  // 2. Si LRCLIB a hérité d'un faux artiste (7clouds, Lyrics, etc.),
+  // on tente de récupérer l'artiste réel depuis le titre YouTube brut.
+  if (rawTitleArtist) {
+    return rawTitleArtist;
+  }
+
+  // 3. MusicBrain sert ensuite de secours uniquement s'il n'est pas générique.
   if (musicBrainArtist && !isGenericKaraokeArtistName(musicBrainArtist)) {
     return musicBrainArtist;
   }
 
-  return lrclibArtist || musicBrainArtist || "Artiste inconnu";
+  // Jamais de dossier "7clouds", "Lyrics", etc.
+  return "À classer";
 }
 
 app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
@@ -6223,9 +6257,11 @@ app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
         karaokeArtistSource:
           resolvedArtistName === String(entry.matchedArtistName || "").trim()
             ? "LRCLIB"
-            : resolvedArtistName === String(song.artistName || "").trim()
-              ? "MUSICBRAIN"
-              : "FALLBACK",
+            : resolvedArtistName === inferKaraokeArtistFromRawTitle(song)
+              ? "RAW_TITLE"
+              : resolvedArtistName === String(song.artistName || "").trim()
+                ? "MUSICBRAIN"
+                : "UNCLASSIFIED",
       };
     })
     .filter(Boolean)

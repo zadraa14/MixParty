@@ -2229,8 +2229,11 @@ async function removeSong(index: number, song: Song) {
         }
       >
     >((groups, song) => {
+      // artistName est déjà résolu/nettoyé côté API.
+      // matchedArtistName reste une donnée de diagnostic LRCLIB et ne doit
+      // surtout pas réécraser l'artiste corrigé (ex. 7clouds).
       const rawArtist =
-        String(song.matchedArtistName || song.artistName || "Artiste inconnu").trim() ||
+        String(song.artistName || song.matchedArtistName || "Artiste inconnu").trim() ||
         "Artiste inconnu";
 
       const key = karaokeArtistFolderKey(rawArtist) || "artisteinconnu";
@@ -2290,18 +2293,19 @@ async function removeSong(index: number, song: Song) {
       })
     );
 
-  const karaokeAvailableLetters = Array.from(
-    new Set(
-      karaokeArtistGroups.map((group) => {
-        const first = normalizeKaraokeText(group.artist).charAt(0).toUpperCase();
-        return /[A-Z]/.test(first) ? first : "#";
-      })
-    )
-  ).sort((a, b) => {
-    if (a === "#") return 1;
-    if (b === "#") return -1;
-    return a.localeCompare(b, "fr");
-  });
+  const karaokeUsedLetters = new Set(
+    karaokeArtistGroups.map((group) => {
+      const first = normalizeKaraokeText(group.artist).charAt(0).toUpperCase();
+      return /[A-Z]/.test(first) ? first : "#";
+    })
+  );
+
+  // Affiche toujours A → Z pour que la bibliothèque reste stable visuellement,
+  // même lorsqu'une lettre n'a momentanément aucun artiste.
+  const karaokeAvailableLetters = [
+    ..."ABCDEFGHIJKLMNOPQRSTUVWXYZ".split(""),
+    ...(karaokeUsedLetters.has("#") ? ["#"] : []),
+  ];
 
   const visibleKaraokeArtistGroups =
     karaokeLetterFilter === "ALL"
@@ -2430,11 +2434,14 @@ async function removeSong(index: number, song: Song) {
               <button
                 key={letter}
                 type="button"
+                disabled={!karaokeUsedLetters.has(letter)}
                 onClick={() => setKaraokeLetterFilter(letter)}
                 className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border text-[11px] font-black transition ${
                   karaokeLetterFilter === letter
                     ? "border-fuchsia-300/30 bg-fuchsia-500/20 text-fuchsia-100"
-                    : "border-white/10 bg-white/[0.04] text-white/45 hover:text-white/80"
+                    : karaokeUsedLetters.has(letter)
+                      ? "border-white/10 bg-white/[0.04] text-white/45 hover:text-white/80"
+                      : "cursor-default border-white/[0.04] bg-white/[0.015] text-white/10"
                 }`}
               >
                 {letter}
