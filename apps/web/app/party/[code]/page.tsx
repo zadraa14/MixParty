@@ -326,6 +326,7 @@ export default function PartyPage() {
   const mobileSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const castContextRef = useRef<any>(null);
   const castDisplayModeRef = useRef<"tv" | "karaoke">("tv");
+  const castPlaybackRef = useRef({ time: 0, duration: 0, state: 2, videoId: "" });
 
   function addPlayerAudit(event: string, detail?: string) {
     const entry = { at: Date.now(), event, detail };
@@ -405,6 +406,55 @@ export default function PartyPage() {
   useEffect(() => {
     castDisplayModeRef.current = castDisplayMode;
   }, [castDisplayMode]);
+
+  useEffect(() => {
+    castPlaybackRef.current = {
+      time: Number(tvPlayback.time || 0),
+      duration: Number(tvPlayback.duration || party?.currentSong?.durationSeconds || 0),
+      state: Number(tvPlayback.state ?? 2),
+      videoId: String(party?.currentSong?.videoId || ""),
+    };
+  }, [
+    tvPlayback.time,
+    tvPlayback.duration,
+    tvPlayback.state,
+    party?.currentSong?.videoId,
+    party?.currentSong?.durationSeconds,
+  ]);
+
+  // Pendant une session Cast, le téléphone/PC DJ reste le lecteur principal.
+  // Il envoie seulement la position de lecture au Receiver autonome afin
+  // d'afficher une timeline TV et des paroles Karaoké parfaitement synchronisées.
+  useEffect(() => {
+    if (!castConnected) return;
+
+    const sendPlaybackToCast = () => {
+      const context =
+        castContextRef.current ||
+        (window as any).cast?.framework?.CastContext?.getInstance?.();
+      const session = context?.getCurrentSession?.();
+      if (!session) return;
+
+      const playback = castPlaybackRef.current;
+
+      session
+        .sendMessage(MIXPARTY_CAST_NAMESPACE, {
+          type: "mixparty_playback",
+          partyCode: code,
+          mode: castDisplayModeRef.current,
+          videoId: playback.videoId,
+          time: playback.time,
+          duration: playback.duration,
+          state: playback.state,
+          sentAt: Date.now(),
+        })
+        .catch(() => {});
+    };
+
+    sendPlaybackToCast();
+    const timer = window.setInterval(sendPlaybackToCast, 750);
+    return () => window.clearInterval(timer);
+  }, [castConnected, code]);
 
   useEffect(() => {
     let cancelled = false;
@@ -791,13 +841,8 @@ export default function PartyPage() {
 
       try {
         setLoadError("");
-        const partyLoadUrl =
-          externalDisplayMode === "tv"
-            ? `${getApiBaseUrl()}/party/${encodeURIComponent(code)}`
-            : `/mixparty-api/party/${encodeURIComponent(code)}`;
-
         const response = await fetch(
-          partyLoadUrl,
+          `/mixparty-api/party/${encodeURIComponent(code)}`,
           {
             cache: "no-store",
             headers: { "cache-control": "no-cache" },

@@ -2,228 +2,257 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>MixParty Cast TV</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+  <title>MixParty Cast</title>
   <style>
-    html, body {
-      width: 100%;
-      height: 100%;
-      margin: 0;
-      background: #05050d;
-      color: #ffffff;
-      font-family: Arial, Helvetica, sans-serif;
-      overflow: hidden;
+    :root {
+      color-scheme: dark;
+      --bg:#05050d;
+      --panel:rgba(12,9,24,.82);
+      --border:rgba(255,255,255,.10);
+      --muted:rgba(255,255,255,.46);
+      --purple:#a855f7;
+      --pink:#ec4899;
+      --orange:#fb923c;
+      --cyan:#67e8f9;
+      --green:#6ee7b7;
     }
-
-    body {
-      display: grid;
-      place-items: center;
-      text-align: center;
-    }
-
-    #mixparty-screen {
-      position: fixed;
-      inset: 0;
-      width: 100vw;
-      height: 100vh;
-      border: 0;
-      background: #05050d;
-      display: none;
-      z-index: 20;
-    }
-
-    #receiver-card {
-      position: relative;
-      z-index: 10;
-    }
-
-    .card {
-      width: min(82vw, 760px);
-      box-sizing: border-box;
-      padding: 42px;
-      border: 1px solid rgba(255,255,255,.12);
-      border-radius: 32px;
-      background: rgba(20, 14, 38, .92);
-      box-shadow: 0 30px 100px rgba(0,0,0,.5);
-    }
-
-    .logo {
-      width: 92px;
-      height: 92px;
-      object-fit: contain;
-      margin-bottom: 18px;
-    }
-
-    .eyebrow {
-      color: #d8b4fe;
-      font-size: 12px;
-      font-weight: 900;
-      letter-spacing: .22em;
-      text-transform: uppercase;
-    }
-
-    h1 {
-      margin: 12px 0 10px;
-      font-size: 38px;
-    }
-
-    p {
-      margin: 0;
-      color: rgba(255,255,255,.62);
-      font-size: 18px;
-      line-height: 1.5;
-    }
-
-    #party-code {
-      margin-top: 24px;
-      font-size: 48px;
-      font-weight: 900;
-      letter-spacing: .12em;
-      color: #ffffff;
-    }
-
-    #status {
-      margin-top: 16px;
-      display: inline-block;
-      padding: 10px 16px;
-      border-radius: 999px;
-      background: rgba(16,185,129,.12);
-      border: 1px solid rgba(110,231,183,.2);
-      color: #a7f3d0;
-      font-size: 14px;
-      font-weight: 900;
-    }
+    *{box-sizing:border-box}
+    html,body{width:100%;height:100%;margin:0;overflow:hidden;background:var(--bg);color:white;font-family:Arial,Helvetica,sans-serif}
+    body{position:relative}
+    button{font:inherit}
+    .hidden{display:none!important}
+    .backdrop{position:fixed;inset:-8%;background-size:cover;background-position:center;filter:blur(90px);opacity:.24;transform:scale(1.12);transition:background-image .7s ease}
+    .veil{position:fixed;inset:0;background:
+      radial-gradient(circle at 28% 20%,rgba(168,85,247,.18),transparent 32%),
+      radial-gradient(circle at 82% 76%,rgba(249,115,22,.11),transparent 28%),
+      linear-gradient(180deg,rgba(5,5,13,.58),rgba(5,5,13,.96))}
+    .gridfx{position:fixed;inset:0;opacity:.035;background-image:linear-gradient(rgba(255,255,255,.6) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.6) 1px,transparent 1px);background-size:58px 58px}
+    #boot{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:36px}
+    .boot-card{width:min(720px,88vw);padding:34px;text-align:center;border:1px solid var(--border);border-radius:34px;background:rgba(11,8,22,.90);box-shadow:0 35px 110px rgba(0,0,0,.5)}
+    .boot-card img{width:90px;height:90px;object-fit:contain}
+    .boot-card h1{font-size:38px;margin:14px 0 8px}.boot-card p{color:var(--muted);margin:0}
+    .status-pill{display:inline-flex;margin-top:20px;padding:9px 14px;border:1px solid rgba(110,231,183,.18);border-radius:999px;background:rgba(16,185,129,.1);color:#a7f3d0;font-weight:900;font-size:13px}
+    #tv,#karaoke{position:fixed;inset:0;z-index:10}
+    #tv{padding:24px 34px 22px;display:flex;flex-direction:column}
+    .header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:22px;min-height:72px}
+    .brand{display:flex;align-items:center;gap:14px}.brand img{width:58px;height:58px;object-fit:contain}.brand strong{font-size:29px;letter-spacing:.12em}.brand strong span{color:#d946ef}.brand em{font-style:normal;font-size:10px;font-weight:900;letter-spacing:.2em;color:#c4b5fd;border:1px solid rgba(196,181,253,.18);border-radius:999px;padding:6px 9px}
+    .headstats{display:flex;gap:12px}.stat{min-width:145px;padding:10px 14px;border:1px solid var(--border);border-radius:16px;background:rgba(255,255,255,.045)}.stat b{display:block;font-size:20px}.stat span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
+    .sync{justify-self:end;font-size:11px;font-weight:900;color:#a7f3d0}
+    .main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.52fr) minmax(360px,.72fr);gap:22px;margin-top:16px}
+    .now,.queue-panel{border:1px solid var(--border);border-radius:30px;background:rgba(8,6,18,.58);box-shadow:0 26px 80px rgba(0,0,0,.28);backdrop-filter:blur(24px)}
+    .now{padding:24px;display:flex;flex-direction:column}.pill{width:max-content;border:1px solid rgba(236,72,153,.22);border-radius:999px;background:rgba(236,72,153,.1);padding:6px 10px;color:#f0abfc;font-size:10px;font-weight:900;letter-spacing:.16em}
+    .nowgrid{flex:1;min-height:0;display:grid;grid-template-columns:minmax(260px,.78fr) minmax(0,1.3fr);gap:30px;align-items:center}
+    .coverwrap{position:relative;display:grid;place-items:center}.coverglow{position:absolute;width:78%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,rgba(168,85,247,.35),transparent 70%);filter:blur(26px)}
+    .cover{position:relative;width:min(31vw,430px);aspect-ratio:1;object-fit:cover;border-radius:30px;border:1px solid rgba(255,255,255,.12);box-shadow:0 28px 70px rgba(0,0,0,.48)}
+    .track{min-width:0}.track h1{margin:0;font-size:clamp(34px,4vw,68px);line-height:.98;letter-spacing:-.045em;max-height:2.05em;overflow:hidden}.track .artist{margin-top:14px;font-size:clamp(18px,2vw,28px);font-weight:700;color:rgba(255,255,255,.54);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .progress-row{margin-top:28px;display:grid;grid-template-columns:54px 1fr 54px;gap:12px;align-items:center;font-size:12px;font-weight:900;color:rgba(255,255,255,.54)}
+    .progress{height:7px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#7c3aed,#ec4899,#fb923c);box-shadow:0 0 18px rgba(236,72,153,.45);transition:width .45s linear}
+    .wave{height:82px;margin-top:22px;display:flex;align-items:center;gap:5px;overflow:hidden}.wave span{flex:1;min-width:3px;border-radius:999px;background:linear-gradient(to top,#7c3aed,#ec4899,#fb923c);opacity:.62;animation:wave 1.25s ease-in-out infinite;transform-origin:center}
+    @keyframes wave{0%,100%{transform:scaleY(.36);opacity:.38}50%{transform:scaleY(1);opacity:.9}}
+    .meta{margin-top:14px;display:flex;gap:12px;flex-wrap:wrap}.chip{padding:9px 12px;border:1px solid var(--border);border-radius:999px;background:rgba(255,255,255,.04);font-size:11px;font-weight:900;color:rgba(255,255,255,.66)}
+    .queue-panel{padding:20px;overflow:hidden}.queue-head{display:flex;justify-content:space-between;gap:12px;font-size:10px;font-weight:900;letter-spacing:.16em;color:#c4b5fd}.queue-list{margin-top:15px;display:grid;gap:9px}
+    .qitem{display:grid;grid-template-columns:28px 54px minmax(0,1fr) 44px;gap:10px;align-items:center;padding:9px;border:1px solid rgba(255,255,255,.07);border-radius:17px;background:rgba(255,255,255,.025)}.qitem.next{border-color:rgba(168,85,247,.28);background:rgba(168,85,247,.08)}.qrank{font-weight:900;color:#c4b5fd}.qitem img{width:54px;height:54px;border-radius:13px;object-fit:cover}.qcopy{min-width:0}.qcopy strong,.qcopy small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qcopy strong{font-size:13px}.qcopy small{margin-top:4px;font-size:10px;color:var(--muted)}.qvote{text-align:center;font-weight:900;color:#f0abfc}
+    .footer{margin-top:16px;display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:16px}.join{font-weight:900}.join small{display:block;margin-top:4px;color:var(--muted);font-weight:700}.codebox{padding:11px 15px;border:1px solid var(--border);border-radius:16px;background:rgba(255,255,255,.045);text-align:center}.codebox small{display:block;font-size:9px;color:var(--muted);letter-spacing:.12em}.codebox b{font-size:19px;letter-spacing:.16em}.energy{padding:10px 14px;border:1px solid rgba(103,232,249,.16);border-radius:16px;background:rgba(34,211,238,.06);min-width:130px}.energy small{display:block;color:var(--muted);font-size:9px}.energy b{font-size:18px;color:#cffafe}
+    #karaoke{padding:24px 34px;display:flex;flex-direction:column}
+    .khead{display:flex;align-items:center;justify-content:space-between}.ktitle{display:flex;align-items:center;gap:14px}.ktitle img{width:58px;height:58px;border-radius:16px;object-fit:cover}.ktitle h1{margin:0;font-size:25px}.ktitle p{margin:5px 0 0;color:var(--muted);font-weight:700}
+    .lyrics{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:34px}.lyrics .prev{font-size:22px;color:rgba(255,255,255,.18);font-weight:900}.lyrics .current{margin-top:22px;font-size:clamp(48px,7vw,110px);line-height:1.02;font-weight:900;letter-spacing:-.05em;background:linear-gradient(90deg,#f0abfc,#fbcfe8,#fed7aa);-webkit-background-clip:text;background-clip:text;color:transparent;max-width:1400px}.lyrics .next{margin-top:34px;font-size:clamp(30px,4vw,58px);font-weight:900;color:rgba(245,208,254,.42);max-width:1200px}.lyric-progress{margin-top:24px;width:min(850px,70vw);height:6px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.lyric-progress i{display:block;height:100%;background:linear-gradient(90deg,#7c3aed,#ec4899,#fb923c);width:0;transition:width .12s linear}
+    .kstatus{font-size:12px;font-weight:900;color:#a7f3d0}
+    .emptylyrics{font-size:32px;font-weight:900;color:rgba(255,255,255,.54)}
   </style>
 </head>
-
 <body>
-  <main id="receiver-card" class="card">
-    <img class="logo" src="/branding/icon.png" alt="MixParty" />
-    <div class="eyebrow">MixParty · Receiver TV</div>
-    <h1>Connexion MixParty</h1>
-    <p>
-      Connexion à la soirée en cours…
-    </p>
-    <div id="party-code">—</div>
-    <div id="status">Initialisation du Receiver…</div>
-  </main>
+  <div class="backdrop" id="backdrop"></div><div class="veil"></div><div class="gridfx"></div>
 
-  <iframe
-    id="mixparty-screen"
-    title="MixParty TV"
-    allow="autoplay; fullscreen"
-  ></iframe>
+  <section id="boot">
+    <div class="boot-card">
+      <img src="/branding/icon.png" alt="MixParty">
+      <h1>MixParty Cast</h1>
+      <p>Connexion à la soirée…</p>
+      <div class="status-pill" id="boot-status">Receiver prêt</div>
+    </div>
+  </section>
+
+  <section id="tv" class="hidden">
+    <header class="header">
+      <div class="brand"><img src="/branding/icon.png"><strong>MIX<span>PARTY</span></strong><em>MODE TV</em></div>
+      <div class="headstats"><div class="stat"><b id="participants">0</b><span>participants</span></div><div class="stat"><b id="votes">0</b><span>votes en direct</span></div></div>
+      <div class="sync" id="sync-status">● SYNCHRONISÉ</div>
+    </header>
+    <main class="main">
+      <section class="now">
+        <div class="pill">EN COURS</div>
+        <div class="nowgrid">
+          <div class="coverwrap"><div class="coverglow"></div><img class="cover" id="cover" src="/branding/icon.png"></div>
+          <div class="track">
+            <h1 id="title">La soirée démarre bientôt</h1>
+            <div class="artist" id="artist">MixParty</div>
+            <div class="progress-row"><span id="time-current">0:00</span><div class="progress"><i id="progress"></i></div><span id="time-total">LIVE</span></div>
+            <div class="wave" id="wave"></div>
+            <div class="meta"><span class="chip" id="addedby">Ajouté par MixParty</span><span class="chip" id="currentvotes">0 vote</span></div>
+          </div>
+        </div>
+      </section>
+      <aside class="queue-panel"><div class="queue-head"><span>PROCHAINS MORCEAUX</span><span>VOTES EN TEMPS RÉEL</span></div><div class="queue-list" id="queue"></div></aside>
+    </main>
+    <footer class="footer"><div class="join">AJOUTEZ VOS MORCEAUX ET VOTEZ !<small>Rejoignez la soirée sur mixpartyapp.fr</small></div><div class="codebox"><small>CODE SOIRÉE</small><b id="partycode">—</b></div><div class="energy"><small>ÉNERGIE</small><b id="energy">—</b></div></footer>
+  </section>
+
+  <section id="karaoke" class="hidden">
+    <header class="khead"><div class="brand"><img src="/branding/icon.png"><strong>MIX<span>PARTY</span></strong><em>KARAOKÉ</em></div><div class="kstatus" id="kstatus">● SYNCHRONISÉ</div></header>
+    <div class="ktitle"><img id="kcover" src="/branding/icon.png"><div><h1 id="ktitle">MixParty Karaoké</h1><p id="kartist">En attente du morceau…</p></div></div>
+    <div class="lyrics"><div class="prev" id="lyric-prev">&nbsp;</div><div class="current" id="lyric-current">♪</div><div class="lyric-progress"><i id="lyric-bar"></i></div><div class="next" id="lyric-next">&nbsp;</div></div>
+  </section>
 
   <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
   <script>
-    const MIXPARTY_NAMESPACE = "urn:x-cast:fr.mixparty.display";
+    const NS = "urn:x-cast:fr.mixparty.display";
+    const $ = id => document.getElementById(id);
+    let partyCode = "";
+    let party = null;
+    let displayMode = "tv";
+    let pollTimer = null;
+    let lyrics = null;
+    let lyricsVideoId = "";
+    let playback = {videoId:"",time:0,duration:0,state:2,receivedAt:Date.now()};
 
-    try {
-      const context = cast.framework.CastReceiverContext.getInstance();
+    for(let i=0;i<56;i++){const s=document.createElement("span");s.style.height=(24+((i*23)%72))+"%";s.style.animationDelay=((i%14)*62)+"ms";$("wave").appendChild(s)}
 
-      function normalizePartyCode(value) {
-        return String(value || "")
-          .trim()
-          .toUpperCase()
-          .replace(/[^A-Z0-9]/g, "")
-          .slice(0, 12);
-      }
+    function esc(value){return String(value??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+    function fmt(sec){sec=Math.max(0,Math.floor(Number(sec)||0));return Math.floor(sec/60)+":"+String(sec%60).padStart(2,"0")}
+    function art(song){return song?.coverStatus==="found"&&song?.coverUrl?song.coverUrl:(song?.thumbnail||"/branding/icon.png")}
+    function queueOf(p){return [...(p?.songs||[])].filter(s=>!s.played).sort((a,b)=>(Number(b.votes||0)-Number(a.votes||0))||(Number(a.addedAt||0)-Number(b.addedAt||0)))}
+    function totalVotes(q){return q.reduce((t,s)=>t+Number(s.votes||0),0)}
+    function energyFor(p,q){if(!p?.currentSong)return 0;return Math.min(98,Math.max(44,54+q.length*3+Math.min(20,totalVotes(q)*2)+Math.min(12,(p.participants||[]).length)))}
 
-      function openMixPartyDisplay(code, mode) {
-        const safeCode = normalizePartyCode(code);
-        if (!safeCode) return;
-
-        const nextMode = mode === "karaoke" ? "karaoke" : "tv";
-        const iframe = document.getElementById("mixparty-screen");
-        const card = document.getElementById("receiver-card");
-
-        const nextUrl =
-          nextMode === "karaoke"
-            ? `/party/${encodeURIComponent(safeCode)}/karaoke?cast=1`
-            : `/party/${encodeURIComponent(safeCode)}?display=tv&cast=1`;
-
-        if (iframe.getAttribute("src") !== nextUrl) {
-          iframe.setAttribute("src", nextUrl);
-        }
-
-        iframe.style.display = "block";
-        card.style.display = "none";
-      }
-
-      context.addCustomMessageListener(
-        MIXPARTY_NAMESPACE,
-        (event) => {
-          const payload = event && event.data ? event.data : {};
-          const code = normalizePartyCode(payload.partyCode || payload.code);
-          const mode = payload.mode === "karaoke" ? "karaoke" : "tv";
-
-          if (!code) return;
-
-          document.getElementById("party-code").textContent = code;
-          document.getElementById("status").textContent = "Ouverture de MixParty…";
-
-          if (
-            payload.type === "mixparty_party_code" ||
-            payload.type === "mixparty_display" ||
-            !payload.type
-          ) {
-            openMixPartyDisplay(code, mode);
-          }
-
-          try {
-            if (event.senderId) {
-              context.sendCustomMessage(
-                MIXPARTY_NAMESPACE,
-                event.senderId,
-                {
-                  type:
-                    payload.type === "mixparty_display"
-                      ? "mixparty_display_ack"
-                      : "mixparty_party_code_ack",
-                  partyCode: code,
-                  mode: mode
-                }
-              );
-            }
-          } catch (error) {
-            console.warn("ACK impossible", error);
-          }
-        }
-      );
-
-      context.addEventListener(
-        cast.framework.system.EventType.READY,
-        () => {
-          document.getElementById("status").textContent = "Receiver READY";
-        }
-      );
-
-      context.addEventListener(
-        cast.framework.system.EventType.SENDER_CONNECTED,
-        () => {
-          document.getElementById("status").textContent = "Sender connecté ✅";
-        }
-      );
-
-      context.addEventListener(
-        cast.framework.system.EventType.SENDER_DISCONNECTED,
-        () => {
-          document.getElementById("status").textContent = "Sender déconnecté";
-        }
-      );
-
-      context.start({
-        customNamespaces: {
-          [MIXPARTY_NAMESPACE]: cast.framework.system.MessageType.JSON
-        },
-        disableIdleTimeout: true,
-        statusText: "MixParty Cast Party Code Test"
-      });
-    } catch (error) {
-      document.getElementById("status").textContent =
-        "Erreur Receiver : " + String(error);
-      console.error(error);
+    function showMode(mode){
+      displayMode=mode==="karaoke"?"karaoke":"tv";
+      $("boot").classList.add("hidden");
+      $("tv").classList.toggle("hidden",displayMode!=="tv");
+      $("karaoke").classList.toggle("hidden",displayMode!=="karaoke");
+      if(displayMode==="karaoke") ensureLyrics();
     }
+
+    async function loadParty(){
+      if(!partyCode)return;
+      try{
+        const r=await fetch(`/mixparty-api/party/${encodeURIComponent(partyCode)}`,{cache:"no-store",headers:{"cache-control":"no-cache"}});
+        if(!r.ok)throw new Error("API "+r.status);
+        party=await r.json();
+        renderParty();
+        $("sync-status").textContent="● SYNCHRONISÉ";
+      }catch(e){
+        console.error(e);
+        $("sync-status").textContent="● RECONNEXION…";
+        $("kstatus").textContent="● RECONNEXION…";
+      }
+    }
+
+    function renderParty(){
+      if(!party)return;
+      const q=queueOf(party), current=party.currentSong;
+      $("participants").textContent=(party.participants||[]).length;
+      $("votes").textContent=totalVotes(q);
+      $("partycode").textContent=party.code||partyCode;
+      $("energy").textContent=energyFor(party,q)+"%";
+      $("title").textContent=current?.title||"La soirée démarre bientôt";
+      $("artist").textContent=current?.artistName||current?.addedBy||"MixParty";
+      $("cover").src=art(current); $("kcover").src=art(current);
+      $("backdrop").style.backgroundImage=`url("${art(current).replace(/"/g,"%22")}")`;
+      $("addedby").textContent="Ajouté par "+(current?.addedBy||"MixParty");
+      $("currentvotes").textContent=Number(current?.votes||0)+" vote"+(Number(current?.votes||0)>1?"s":"");
+      $("ktitle").textContent=current?.title||"MixParty Karaoké";
+      $("kartist").textContent=current?.artistName||current?.addedBy||"En attente du morceau…";
+
+      $("queue").innerHTML=q.slice(0,9).map((s,i)=>`
+        <div class="qitem ${i===0?"next":""}">
+          <span class="qrank">${i+1}</span>
+          <img src="${esc(art(s))}">
+          <div class="qcopy"><strong>${esc(s.title)}</strong><small>${esc(s.artistName||s.addedBy||"MixParty")}</small></div>
+          <span class="qvote">${Number(s.votes||0)}</span>
+        </div>`).join("") || `<div style="padding:30px;text-align:center;color:rgba(255,255,255,.35)">La file DJ est vide.</div>`;
+
+      const currentVid=String(current?.videoId||"");
+      if(currentVid && currentVid!==lyricsVideoId){lyricsVideoId="";lyrics=null;if(displayMode==="karaoke")ensureLyrics()}
+    }
+
+    function currentPlaybackTime(){
+      if(!playback.videoId)return 0;
+      if(playback.state===1)return Math.max(0,playback.time+(Date.now()-playback.receivedAt)/1000);
+      return Math.max(0,playback.time);
+    }
+
+    function renderPlayback(){
+      const t=currentPlaybackTime();
+      const duration=Number(playback.duration||party?.currentSong?.durationSeconds||0);
+      $("time-current").textContent=fmt(t);
+      $("time-total").textContent=duration>0?fmt(duration):"LIVE";
+      $("progress").style.width=(duration>0?Math.min(100,Math.max(0,t/duration*100)):0)+"%";
+      renderLyrics(t);
+      requestAnimationFrame(renderPlayback);
+    }
+
+    async function ensureLyrics(){
+      const videoId=String(party?.currentSong?.videoId||"");
+      if(!videoId||videoId===lyricsVideoId)return;
+      lyricsVideoId=videoId;lyrics=null;
+      $("lyric-current").textContent="Chargement des paroles…";$("lyric-next").innerHTML="&nbsp;";
+      try{
+        const r=await fetch(`/mixparty-api/partybrain/karaoke/lyrics/${encodeURIComponent(videoId)}`,{cache:"no-store"});
+        const data=await r.json();
+        lyrics=data;
+        if(!data?.available){$("lyric-current").textContent=data?.message||"Karaoké indisponible pour ce morceau"}
+      }catch(e){lyrics={available:false};$("lyric-current").textContent="Paroles indisponibles"}
+    }
+
+    function renderLyrics(t){
+      if(displayMode!=="karaoke"||!lyrics?.available)return;
+      const lines=Array.isArray(lyrics.lines)?lyrics.lines:[];
+      let idx=-1;for(let i=0;i<lines.length;i++){if(Number(lines[i].time)<=t+.08)idx=i;else break}
+      const prev=idx>0?lines[idx-1]:null, cur=idx>=0?lines[idx]:null, next=lines[idx+1]||null;
+      $("lyric-prev").textContent=prev?.text||"\u00A0";
+      $("lyric-current").textContent=cur?.text||(next?"♪":"…");
+      $("lyric-next").textContent=next?.text||"\u00A0";
+      let p=0;if(cur&&next){const d=Math.max(.2,Number(next.time)-Number(cur.time));p=Math.min(1,Math.max(0,(t-Number(cur.time))/d))}else if(cur)p=1;
+      $("lyric-bar").style.width=Math.round(p*100)+"%";
+    }
+
+    function startParty(code,mode){
+      partyCode=String(code||"").trim().toUpperCase().replace(/[^A-Z0-9]/g,"").slice(0,12);
+      if(!partyCode)return;
+      $("boot-status").textContent="Soirée "+partyCode+" connectée";
+      showMode(mode||displayMode);
+      if(pollTimer)clearInterval(pollTimer);
+      loadParty();
+      pollTimer=setInterval(loadParty,1000);
+    }
+
+    try{
+      const context=cast.framework.CastReceiverContext.getInstance();
+      context.addCustomMessageListener(NS,event=>{
+        const p=event?.data||{};
+        if(p.type==="mixparty_party_code"||p.type==="mixparty_display"){
+          startParty(p.partyCode||p.code,p.mode||"tv");
+        }
+        if(p.type==="mixparty_playback"){
+          if(p.partyCode&&!partyCode)startParty(p.partyCode,p.mode||"tv");
+          if(p.mode&&p.mode!==displayMode)showMode(p.mode);
+          playback={
+            videoId:String(p.videoId||""),
+            time:Math.max(0,Number(p.time||0)),
+            duration:Math.max(0,Number(p.duration||0)),
+            state:Number(p.state??2),
+            receivedAt:Date.now()
+          };
+        }
+        try{
+          if(event?.senderId)context.sendCustomMessage(NS,event.senderId,{type:"mixparty_display_ack",partyCode,mode:displayMode});
+        }catch(e){}
+      });
+      context.addEventListener(cast.framework.system.EventType.SENDER_CONNECTED,()=>{$("boot-status").textContent="Sender connecté ✓"});
+      context.start({customNamespaces:{[NS]:cast.framework.system.MessageType.JSON},disableIdleTimeout:true,statusText:"MixParty TV"});
+    }catch(e){console.error(e);$("boot-status").textContent="Erreur Receiver Cast"}
+    requestAnimationFrame(renderPlayback);
   </script>
 </body>
 </html>
