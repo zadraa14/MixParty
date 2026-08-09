@@ -142,6 +142,7 @@ type PublicationQualitySummary = {
   autoValidated: number;
   autoFixable: number;
   manualReview: number;
+  secondPassValidated: number;
   karaokeAutoFixable: number;
   karaokeManualReview: number;
 };
@@ -2412,10 +2413,10 @@ export default function MusicBrainAdminPage() {
                           MusicBrain Quality V3
                         </p>
                         <h2 className="mt-1 text-2xl font-black">
-                          Le maximum est traité automatiquement
+                          MusicBrain vérifie d’abord, toi seulement en dernier
                         </h2>
                         <p className="mt-2 text-sm leading-6 text-white/50">
-                          MusicBrain compare le titre YouTube, la chaîne, les métadonnées Art Track et LRCLIB. Deux preuves indépendantes concordantes permettent une validation ou une correction automatique. Toi, tu ne gardes que les vrais cas ambigus.
+                          Première passe : titre YouTube, chaîne, Art Track et LRCLIB. Deuxième passe : alias déjà appris, QUERY_FALLBACK confirmé, artiste principal dans les featuring et concordance LRCLIB. Un morceau n’arrive dans « À vérifier par toi » qu’après l’échec des deux passes automatiques.
                         </p>
                       </div>
                     </div>
@@ -2450,7 +2451,7 @@ export default function MusicBrainAdminPage() {
                       {number.format(publicationQuality?.summary.autoValidated || 0)}
                     </p>
                     <p className="mt-1 text-xs text-emerald-100/45">
-                      aucune action nécessaire
+                      dont {number.format(publicationQuality?.summary.secondPassValidated || 0)} sauvés par la 2e passe
                     </p>
                   </article>
 
@@ -2474,7 +2475,7 @@ export default function MusicBrainAdminPage() {
                       {number.format(publicationQuality?.summary.manualReview || 0)}
                     </p>
                     <p className="mt-1 text-xs text-amber-100/45">
-                      seulement les cas ambigus
+                      uniquement après les 2 passes automatiques
                     </p>
                   </article>
 

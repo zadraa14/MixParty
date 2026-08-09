@@ -7045,7 +7045,10 @@ type MusicBrainConsensusSignal =
   | "CHANNEL"
   | "TOPIC"
   | "LRCLIB"
-  | "ART_TRACK";
+  | "ART_TRACK"
+  | "KNOWN_ALIAS"
+  | "LRCLIB_PARTICIPANT"
+  | "TITLE_CURRENT";
 
 type MusicBrainConsensusResolution =
   | "auto_validated"
@@ -7084,6 +7087,34 @@ function validConsensusArtist(value: unknown) {
     !repairArtistLooksMulti(artist) &&
     !isSuspiciousArtistName(artist)
   );
+}
+
+function artistParticipantMatch(container: unknown, artist: unknown) {
+  const containerKey = normalizeMusicQuery(String(container || ""));
+  const artistKey = normalizeMusicQuery(String(artist || ""));
+  if (!containerKey || !artistKey) return false;
+
+  if (containerKey === artistKey) return true;
+
+  const parts = String(container || "")
+    .split(/(?:,|\/|&|\bx\b|\bfeat\.?\b|\bft\.?\b|\bfeaturing\b|\bavec\b)/i)
+    .map((part) => normalizeMusicQuery(part))
+    .filter(Boolean);
+
+  return parts.includes(artistKey);
+}
+
+function knownAliasConfirmsArtist(song: MusicBrainSong, artistName: string) {
+  const artist = musicBrain.artists[song.artistKey];
+  if (!artist) return false;
+
+  const raw = `${song.rawTitle || ""} ${song.title || ""} ${song.channelTitle || ""}`;
+  const rawKey = normalizeMusicQuery(raw);
+
+  return (artist.aliases || []).some((alias) => {
+    const aliasKey = normalizeMusicQuery(alias);
+    return Boolean(aliasKey && aliasKey.length >= 3 && rawKey.includes(aliasKey));
+  });
 }
 
 function musicBrainArtistConsensus(song: MusicBrainSong): MusicBrainConsensusResult {
@@ -7160,6 +7191,32 @@ function musicBrainArtistConsensus(song: MusicBrainSong): MusicBrainConsensusRes
     if (channelConfirmsRepairArtist(song.channelTitle, currentArtist)) {
       addSignal(currentArtist, "CHANNEL", 2);
     }
+
+    // V3.1 — seconde passe :
+    // 1) le titre brut contient explicitement l'artiste actuel ;
+    // 2) un alias déjà appris de CET artiste apparaît dans le titre/chaîne.
+    // Ces signaux servent surtout à valider les QUERY_FALLBACK légitimes,
+    // jamais à remplacer seuls un artiste par un autre.
+    const rawIdentityKey = normalizeMusicQuery(
+      `${song.rawTitle || ""} ${song.title || ""}`
+    );
+    if (currentKey && rawIdentityKey.includes(currentKey)) {
+      addSignal(currentArtist, "TITLE_CURRENT", 2);
+    }
+
+    if (knownAliasConfirmsArtist(song, currentArtist)) {
+      addSignal(currentArtist, "KNOWN_ALIAS", 2);
+    }
+
+    // LRCLIB peut renvoyer "Artiste feat. X" alors que MusicBrain stocke
+    // uniquement l'artiste principal. On confirme alors l'artiste actuel
+    // sans créer un faux dossier multi-artistes.
+    if (
+      validRepairArtist(lrclibArtist) &&
+      artistParticipantMatch(lrclibArtist, currentArtist)
+    ) {
+      addSignal(currentArtist, "LRCLIB_PARTICIPANT", 3);
+    }
   }
 
   if (validConsensusArtist(titleArtist)) {
@@ -7203,6 +7260,10 @@ function musicBrainArtistConsensus(song: MusicBrainSong): MusicBrainConsensusRes
     (best.signals.has("TITLE") && best.signals.has("CHANNEL")) ||
     (best.signals.has("LRCLIB") && best.signals.has("TOPIC")) ||
     (best.signals.has("LRCLIB") && best.signals.has("CHANNEL")) ||
+    (best.signals.has("TITLE_CURRENT") && best.signals.has("LRCLIB_PARTICIPANT")) ||
+    (best.signals.has("TITLE_CURRENT") && best.signals.has("KNOWN_ALIAS")) ||
+    (best.signals.has("TITLE_CURRENT") && best.signals.has("CHANNEL")) ||
+    (best.signals.has("KNOWN_ALIAS") && best.signals.has("LRCLIB_PARTICIPANT")) ||
     best.signals.has("ART_TRACK");
 
   const confidence = Math.min(
@@ -7390,6 +7451,7 @@ function musicBrainPublicationSummary() {
     autoValidated: 0,
     autoFixable: 0,
     manualReview: 0,
+    secondPassValidated: 0,
     karaokeSyncedReady: 0,
     karaokeSyncedReview: 0,
     karaokeSyncedBlocked: 0,
@@ -7403,6 +7465,13 @@ function musicBrainPublicationSummary() {
 
     if (decision.consensusResolution === "auto_validated") {
       summary.autoValidated += 1;
+      if (
+        decision.consensusSignals.includes("KNOWN_ALIAS") ||
+        decision.consensusSignals.includes("LRCLIB_PARTICIPANT") ||
+        decision.consensusSignals.includes("TITLE_CURRENT")
+      ) {
+        summary.secondPassValidated += 1;
+      }
     } else if (decision.consensusResolution === "auto_fixable") {
       summary.autoFixable += 1;
     } else if (decision.consensusResolution === "manual_review") {
@@ -8109,6 +8178,41 @@ function musicBrainAutoFixPreview() {
       "Aucune correction n'est appliquée pendant l'aperçu. Auto-Fix exige au moins deux signaux indépendants concordants.",
   };
 }
+
+app.get("/partybrain/musicbrain-second-pass/preview", (_req, res) => {
+  const summary = musicBrainPublicationSummary();
+  const remaining = Object.values(musicBrain.songs)
+    .map((song) => {
+      const decision = musicBrainPublicationDecision(song);
+      if (decision.consensusResolution !== "manual_review") return null;
+
+      const karaokeEntry = karaokeLyricsAudit.entries[song.videoId];
+      return {
+        videoId: song.videoId,
+        title: song.title,
+        artistName: song.artistName,
+        channelTitle: song.channelTitle || "",
+        metadataSource: song.metadataSource || "",
+        metadataConfidence: Number(song.metadataConfidence || 0),
+        karaokeSynced: karaokeEntry?.kind === "synced",
+        lrclibArtistName:
+          karaokeEntry?.kind === "synced"
+            ? karaokeEntry.matchedArtistName || ""
+            : "",
+        reason: decision.reason,
+      };
+    })
+    .filter(Boolean);
+
+  return res.json({
+    generatedAt: Date.now(),
+    summary,
+    remainingManualCount: remaining.length,
+    remaining: remaining.slice(0, 300),
+    note:
+      "V3.1 applique une seconde passe locale et sûre. Aucun appel YouTube et aucune correction forcée des cas encore ambigus.",
+  });
+});
 
 app.get("/partybrain/musicbrain-autofix/preview", (_req, res) => {
   return res.json(musicBrainAutoFixPreview());
