@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { QRCodeCanvas } from "qrcode.react";
 import { io } from "socket.io-client";
@@ -277,6 +277,11 @@ export default function PartyPage() {
   const [karaokeCatalogLoading, setKaraokeCatalogLoading] = useState(false);
   const [karaokeCatalogError, setKaraokeCatalogError] = useState("");
   const [karaokeLetterFilter, setKaraokeLetterFilter] = useState("ALL");
+  const [karaokeOpenArtists, setKaraokeOpenArtists] = useState<Set<string>>(new Set());
+  const [karaokeLoadedOffset, setKaraokeLoadedOffset] = useState(0);
+  const [karaokeHasMore, setKaraokeHasMore] = useState(false);
+  const [karaokeLoadingMore, setKaraokeLoadingMore] = useState(false);
+  const [karaokeDebouncedSearch, setKaraokeDebouncedSearch] = useState("");
   const [searchInsight, setSearchInsight] = useState<null | {
     sampleSize: number;
     message: string;
@@ -1153,75 +1158,129 @@ export default function PartyPage() {
     event.target.value = "";
   }
 
-  async function loadKaraokeCatalog(query = karaokeCatalogSearch) {
-    setKaraokeCatalogLoading(true);
-    setKaraokeCatalogError("");
+  async function loadKaraokeCatalog(
+    query = karaokeCatalogSearch,
+    options?: { append?: boolean }
+  ) {
+    const append = Boolean(options?.append);
+
+    if (append) {
+      if (karaokeLoadingMore || !karaokeHasMore) return;
+      setKaraokeLoadingMore(true);
+    } else {
+      setKaraokeCatalogLoading(true);
+      setKaraokeCatalogError("");
+    }
 
     try {
-      const pageSize = 1000;
-      let offset = 0;
-      let totalReady = 0;
-      let matched = 0;
-      const allItems: KaraokeCatalogSong[] = [];
+      // V3 Performance :
+      // on ne charge plus tout le catalogue d'un coup.
+      // 250 morceaux suffisent pour l'affichage initial, puis on charge la suite
+      // uniquement si l'utilisateur la demande.
+      const pageSize = 250;
+      const offset = append ? karaokeLoadedOffset : 0;
 
-      // Charge tout le catalogue par pages de 1000.
-      // Avant, la page demandait seulement 500 morceaux : c'est pour ça
-      // qu'environ 458 titres uniques seulement apparaissaient après dédoublonnage.
-      while (true) {
-        const params = new URLSearchParams();
-        params.set("limit", String(pageSize));
-        params.set("offset", String(offset));
-        if (query.trim()) params.set("q", query.trim());
+      const params = new URLSearchParams();
+      params.set("limit", String(pageSize));
+      params.set("offset", String(offset));
+      if (query.trim()) params.set("q", query.trim());
 
-        const response = await fetch(
-          `${getApiBaseUrl()}/partybrain/karaoke-lyrics-audit/ready?${params.toString()}`,
-          { cache: "no-store" }
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/karaoke-lyrics-audit/ready?${params.toString()}`,
+        { cache: "no-store" }
+      );
+
+      const data = (await response.json()) as KaraokeCatalogResponse;
+
+      if (!response.ok) {
+        throw new Error(
+          (data as any)?.error || "Catalogue Karaoké indisponible"
         );
-
-        const data = (await response.json()) as KaraokeCatalogResponse;
-
-        if (!response.ok) {
-          throw new Error(
-            (data as any)?.error || "Catalogue Karaoké indisponible"
-          );
-        }
-
-        totalReady = Number(data.totalReady || totalReady);
-        matched = Number(data.matched || matched);
-        allItems.push(...(Array.isArray(data.items) ? data.items : []));
-
-        const returned = Number(data.returned || data.items?.length || 0);
-        const hasMore =
-          typeof data.hasMore === "boolean"
-            ? data.hasMore
-            : offset + returned < matched;
-
-        if (!hasMore || returned <= 0) break;
-
-        offset =
-          Number.isFinite(Number(data.nextOffset)) && data.nextOffset !== null
-            ? Number(data.nextOffset)
-            : offset + returned;
-
-        // Filet de sécurité : évite une boucle infinie si l'API renvoie un offset invalide.
-        if (offset >= Math.max(matched, totalReady) + pageSize) break;
       }
 
-      setKaraokeCatalog({
-        totalReady,
-        matched,
-        returned: allItems.length,
-        query,
-        items: allItems,
+      const nextItems = Array.isArray(data.items) ? data.items : [];
+      const totalReady = Number(data.totalReady || 0);
+      const matched = Number(data.matched || 0);
+      const returned = Number(data.returned || nextItems.length || 0);
+      const nextOffset =
+        Number.isFinite(Number(data.nextOffset)) && data.nextOffset !== null
+          ? Number(data.nextOffset)
+          : offset + returned;
+
+      const hasMore =
+        typeof data.hasMore === "boolean"
+          ? data.hasMore
+          : nextOffset < matched;
+
+      setKaraokeCatalog((current) => {
+        if (!append || !current) {
+          return {
+            totalReady,
+            matched,
+            returned,
+            offset,
+            limit: pageSize,
+            hasMore,
+            nextOffset: hasMore ? nextOffset : null,
+            query,
+            items: nextItems,
+          };
+        }
+
+        const merged = new Map<string, KaraokeCatalogSong>();
+        for (const item of current.items || []) merged.set(item.videoId, item);
+        for (const item of nextItems) merged.set(item.videoId, item);
+
+        const items = Array.from(merged.values());
+
+        return {
+          totalReady,
+          matched,
+          returned: items.length,
+          offset: 0,
+          limit: pageSize,
+          hasMore,
+          nextOffset: hasMore ? nextOffset : null,
+          query,
+          items,
+        };
       });
+
+      setKaraokeLoadedOffset(nextOffset);
+      setKaraokeHasMore(hasMore);
     } catch (error) {
       setKaraokeCatalogError(
         error instanceof Error ? error.message : "Catalogue Karaoké indisponible"
       );
     } finally {
-      setKaraokeCatalogLoading(false);
+      if (append) setKaraokeLoadingMore(false);
+      else setKaraokeCatalogLoading(false);
     }
   }
+
+  async function loadMoreKaraokeCatalog() {
+    await loadKaraokeCatalog(karaokeDebouncedSearch, { append: true });
+  }
+
+
+
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setKaraokeDebouncedSearch(karaokeCatalogSearch.trim());
+    }, 220);
+
+    return () => window.clearTimeout(timer);
+  }, [karaokeCatalogSearch]);
+
+  useEffect(() => {
+    if (!karaokeMode && activeMobileTab !== "karaoke") return;
+
+    // Recherche instantanée côté utilisateur, mais requête API temporisée
+    // pour ne pas envoyer une requête à chaque touche.
+    void loadKaraokeCatalog(karaokeDebouncedSearch);
+  }, [karaokeDebouncedSearch]);
+
 
 
   function activateKaraokeMode() {
@@ -1229,7 +1288,8 @@ export default function PartyPage() {
     setResults([]);
     setSearchInsight(null);
 
-    if (!karaokeCatalog) {
+    if (!karaokeCatalog && !karaokeCatalogLoading) {
+      setKaraokeDebouncedSearch("");
       void loadKaraokeCatalog("");
     }
   }
@@ -2263,7 +2323,7 @@ async function removeSong(index: number, song: Song) {
     return score;
   }
 
-  const karaokeArtistGroups = Array.from(
+  const karaokeArtistGroups = useMemo(() => Array.from(
     (karaokeCatalog?.items || []).reduce<
       Map<
         string,
@@ -2336,7 +2396,7 @@ async function removeSong(index: number, song: Song) {
         sensitivity: "base",
         numeric: true,
       })
-    );
+    ), [karaokeCatalog?.items]);
 
   const karaokeUsedLetters = new Set(
     karaokeArtistGroups.map((group) => {
@@ -2352,18 +2412,21 @@ async function removeSong(index: number, song: Song) {
     ...(karaokeUsedLetters.has("#") ? ["#"] : []),
   ];
 
-  const visibleKaraokeArtistGroups =
-    karaokeLetterFilter === "ALL"
-      ? karaokeArtistGroups
-      : karaokeArtistGroups.filter((group) => {
-          const first = normalizeKaraokeText(group.artist).charAt(0).toUpperCase();
-          const bucket = /[A-Z]/.test(first) ? first : "#";
-          return bucket === karaokeLetterFilter;
-        });
+  const visibleKaraokeArtistGroups = useMemo(
+    () =>
+      karaokeLetterFilter === "ALL"
+        ? karaokeArtistGroups
+        : karaokeArtistGroups.filter((group) => {
+            const first = normalizeKaraokeText(group.artist).charAt(0).toUpperCase();
+            const bucket = /[A-Z]/.test(first) ? first : "#";
+            return bucket === karaokeLetterFilter;
+          }),
+    [karaokeArtistGroups, karaokeLetterFilter]
+  );
 
-  const karaokeUniqueSongCount = karaokeArtistGroups.reduce(
-    (total, group) => total + group.songs.length,
-    0
+  const karaokeUniqueSongCount = useMemo(
+    () => karaokeArtistGroups.reduce((total, group) => total + group.songs.length, 0),
+    [karaokeArtistGroups]
   );
 
 
@@ -2371,6 +2434,7 @@ async function removeSong(index: number, song: Song) {
     setActiveMobileTab(nextTab);
 
     if (nextTab === "karaoke" && !karaokeCatalog && !karaokeCatalogLoading) {
+      setKaraokeDebouncedSearch("");
       void loadKaraokeCatalog("");
     }
 
@@ -2398,6 +2462,15 @@ async function removeSong(index: number, song: Song) {
       ? Math.min(mobileTabs.length - 1, currentIndex + 1)
       : Math.max(0, currentIndex - 1);
     if (nextIndex !== currentIndex) switchMobileTab(mobileTabs[nextIndex]);
+  }
+
+  function toggleKaraokeArtistFolder(artistKey: string) {
+    setKaraokeOpenArtists((current) => {
+      const next = new Set(current);
+      if (next.has(artistKey)) next.delete(artistKey);
+      else next.add(artistKey);
+      return next;
+    });
   }
 
   function renderKaraokeArtistFolders() {
@@ -2465,7 +2538,10 @@ async function removeSong(index: number, song: Song) {
           <div className="mt-4 flex w-full min-w-0 max-w-full gap-1.5 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <button
               type="button"
-              onClick={() => setKaraokeLetterFilter("ALL")}
+              onClick={() => {
+                setKaraokeLetterFilter("ALL");
+                setKaraokeOpenArtists(new Set());
+              }}
               className={`shrink-0 rounded-xl border px-3 py-2 text-[11px] font-black transition ${
                 karaokeLetterFilter === "ALL"
                   ? "border-fuchsia-300/30 bg-fuchsia-500/20 text-fuchsia-100"
@@ -2480,7 +2556,10 @@ async function removeSong(index: number, song: Song) {
                 key={letter}
                 type="button"
                 disabled={!karaokeUsedLetters.has(letter)}
-                onClick={() => setKaraokeLetterFilter(letter)}
+                onClick={() => {
+                  setKaraokeLetterFilter(letter);
+                  setKaraokeOpenArtists(new Set());
+                }}
                 className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border text-[11px] font-black transition ${
                   karaokeLetterFilter === letter
                     ? "border-fuchsia-300/30 bg-fuchsia-500/20 text-fuchsia-100"
@@ -2507,12 +2586,19 @@ async function removeSong(index: number, song: Song) {
               const mergedVariantCount = group.variants.length;
 
               return (
-                <details
+                <div
                   key={karaokeArtistFolderKey(artist)}
-                  open={Boolean(karaokeCatalogSearch.trim())}
-                  className="group w-full min-w-0 max-w-full overflow-hidden rounded-[24px] border border-white/[0.07] bg-gradient-to-br from-white/[0.04] to-black/20 shadow-[0_14px_40px_rgba(0,0,0,.14)] open:border-fuchsia-300/20 open:bg-fuchsia-500/[0.035]"
+                  className={`group w-full min-w-0 max-w-full overflow-hidden rounded-[24px] border bg-gradient-to-br from-white/[0.04] to-black/20 shadow-[0_14px_40px_rgba(0,0,0,.14)] ${
+                    karaokeOpenArtists.has(karaokeArtistFolderKey(artist))
+                      ? "border-fuchsia-300/20 bg-fuchsia-500/[0.035]"
+                      : "border-white/[0.07]"
+                  }`}
                 >
-                  <summary className="flex w-full min-w-0 max-w-full cursor-pointer list-none items-center gap-3 overflow-hidden px-3 py-3.5 sm:px-4 sm:py-4 [&::-webkit-details-marker]:hidden">
+                  <button
+                    type="button"
+                    onClick={() => toggleKaraokeArtistFolder(karaokeArtistFolderKey(artist))}
+                    className="flex w-full min-w-0 max-w-full cursor-pointer items-center gap-3 overflow-hidden px-3 py-3.5 text-left sm:px-4 sm:py-4"
+                  >
                     <div className="grid h-12 w-12 shrink-0 place-items-center rounded-[17px] border border-fuchsia-300/15 bg-gradient-to-br from-fuchsia-500/15 via-purple-500/10 to-cyan-500/[0.06] text-lg font-black text-fuchsia-100">
                       {normalizeKaraokeText(artist).charAt(0).toUpperCase() || "?"}
                     </div>
@@ -2538,14 +2624,17 @@ async function removeSong(index: number, song: Song) {
                       </p>
                     </div>
 
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.05] text-lg font-black text-fuchsia-200 transition duration-300 group-open:rotate-45">
+                    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.05] text-lg font-black text-fuchsia-200 transition duration-300 ${
+                      karaokeOpenArtists.has(karaokeArtistFolderKey(artist)) ? "rotate-45" : ""
+                    }`}>
                       +
                     </span>
-                  </summary>
+                  </button>
 
-                  <div className="w-full min-w-0 max-w-full overflow-hidden border-t border-white/[0.06] bg-black/15 p-2.5 sm:p-3">
-                    <div className="grid w-full min-w-0 max-w-full grid-cols-1 gap-2.5 lg:grid-cols-2">
-                      {artistSongs.map((song) => {
+                  {karaokeOpenArtists.has(karaokeArtistFolderKey(artist)) ? (
+                    <div className="w-full min-w-0 max-w-full overflow-hidden border-t border-white/[0.06] bg-black/15 p-2.5 sm:p-3">
+                      <div className="grid w-full min-w-0 max-w-full grid-cols-1 gap-2.5 lg:grid-cols-2">
+                        {artistSongs.map((song) => {
                         const alreadyInPlaylist =
                           party?.currentSong?.videoId === song.videoId ||
                           (party?.songs || []).some(
@@ -2615,14 +2704,41 @@ async function removeSong(index: number, song: Song) {
                             </div>
                           </article>
                         );
-                      })}
+                        })}
+                      </div>
                     </div>
-                  </div>
-                </details>
+                  ) : null}
+                </div>
               );
             })}
           </div>
         )}
+
+        {karaokeCatalog ? (
+          <div className="mt-4 flex flex-col items-center gap-3 rounded-[20px] border border-white/[0.06] bg-black/15 p-3 text-center">
+            <p className="text-[11px] font-bold text-white/38">
+              {karaokeCatalog.items.length} morceau{karaokeCatalog.items.length > 1 ? "x" : ""} chargé{karaokeCatalog.items.length > 1 ? "s" : ""}
+              {karaokeCatalog.matched > karaokeCatalog.items.length
+                ? ` sur ${karaokeCatalog.matched}`
+                : ""}
+            </p>
+
+            {karaokeHasMore ? (
+              <button
+                type="button"
+                onClick={() => void loadMoreKaraokeCatalog()}
+                disabled={karaokeLoadingMore}
+                className="w-full max-w-sm rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/10 px-4 py-3 text-xs font-black text-fuchsia-100 transition hover:bg-fuchsia-500/15 disabled:opacity-50"
+              >
+                {karaokeLoadingMore ? "Chargement…" : "Charger plus d’artistes"}
+              </button>
+            ) : (
+              <span className="rounded-full border border-emerald-300/15 bg-emerald-500/[0.08] px-3 py-1.5 text-[10px] font-black text-emerald-200">
+                Catalogue chargé
+              </span>
+            )}
+          </div>
+        ) : null}
       </div>
     );
   }
@@ -3278,7 +3394,7 @@ const canRemove =
                           onChange={(e) => setKaraokeCatalogSearch(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === "Enter") {
-                              void loadKaraokeCatalog(karaokeCatalogSearch);
+                              setKaraokeDebouncedSearch(karaokeCatalogSearch.trim());
                             }
                           }}
                           placeholder="Filtrer le catalogue : artiste, titre..."
@@ -3288,7 +3404,7 @@ const canRemove =
 
                       <button
                         type="button"
-                        onClick={() => void loadKaraokeCatalog(karaokeCatalogSearch)}
+                        onClick={() => setKaraokeDebouncedSearch(karaokeCatalogSearch.trim())}
                         disabled={karaokeCatalogLoading}
                         className="party-action party-action--purple group rounded-2xl px-7 py-4 disabled:opacity-50"
                       >
@@ -3312,8 +3428,8 @@ const canRemove =
                           type="button"
                           onClick={() => {
                             setKaraokeCatalogSearch("");
+                            setKaraokeDebouncedSearch("");
                             setKaraokeLetterFilter("ALL");
-                            void loadKaraokeCatalog("");
                           }}
                           className="text-white/40 transition hover:text-white/75"
                         >
@@ -3460,7 +3576,7 @@ const canRemove =
                     onChange={(e) => setKaraokeCatalogSearch(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        void loadKaraokeCatalog(karaokeCatalogSearch);
+                        setKaraokeDebouncedSearch(karaokeCatalogSearch.trim());
                       }
                     }}
                     placeholder="Rechercher un artiste ou un titre..."
@@ -3471,7 +3587,7 @@ const canRemove =
                 <div className="mt-2 grid w-full min-w-0 max-w-full grid-cols-[minmax(0,1fr)_auto] gap-2">
                   <button
                     type="button"
-                    onClick={() => void loadKaraokeCatalog(karaokeCatalogSearch)}
+                    onClick={() => setKaraokeDebouncedSearch(karaokeCatalogSearch.trim())}
                     disabled={karaokeCatalogLoading}
                     className="rounded-2xl bg-gradient-to-r from-fuchsia-600 to-purple-600 px-4 py-3 text-xs font-black text-white disabled:opacity-50"
                   >
@@ -3483,7 +3599,7 @@ const canRemove =
                       type="button"
                       onClick={() => {
                         setKaraokeCatalogSearch("");
-                        void loadKaraokeCatalog("");
+                        setKaraokeDebouncedSearch("");
                       }}
                       className="rounded-2xl border border-white/10 bg-white/[0.05] px-3 py-3 text-xs font-black text-white/60"
                     >
