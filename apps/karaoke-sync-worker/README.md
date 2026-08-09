@@ -1,21 +1,14 @@
-# MixParty Karaoke Sync Worker V1.4.1 — API Compatible
+# MixParty Karaoke Sync Worker V1.4.2 — requests fix
 
-Correction du HTTP 422 observé après le passage à faster-whisper.
+Correction de l'erreur Railway :
 
-## Cause
-L'API MixParty actuelle envoyait :
-- `payload` : JSON contenant notamment `lyrics.plainLyrics` / `lyrics.syncedLyrics`
-- `audio` : MP3
+`ModuleNotFoundError: No module named 'requests'`
 
-La V1.4 attendait :
-- `transcript`
-- `audio`
+La dépendance `requests` est maintenant installée explicitement.
 
-FastAPI rejetait donc la requête avec `422 Unprocessable Entity`.
+Aucun changement de contrat :
+- `/health`
+- `/align`
+- `/align-upload`
 
-## Correction
-`/align-upload` et `/align` acceptent maintenant les deux contrats :
-- `payload + audio` (MixParty actuel)
-- `transcript + audio` (debug/direct)
-
-Aucune modification de l'API MixParty ou de MusicBrain n'est nécessaire.
+Remplace le contenu de `apps/karaoke-sync-worker`, puis pousse sur GitHub.
