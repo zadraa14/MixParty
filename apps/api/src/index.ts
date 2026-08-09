@@ -6221,8 +6221,13 @@ function resolveKaraokeArtistName(song: MusicBrainSong, entry: KaraokeLyricsAudi
 
 app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
   const q = normalizeMusicQuery(String(req.query?.q || ""));
-  const rawLimit = Number(req.query?.limit || 300);
-  const limit = Math.max(1, Math.min(1000, Number.isFinite(rawLimit) ? rawLimit : 300));
+  const rawLimit = Number(req.query?.limit || 500);
+  const rawOffset = Number(req.query?.offset || 0);
+
+  // On garde des pages raisonnables pour éviter une réponse JSON énorme,
+  // mais le front peut maintenant parcourir TOUT le catalogue.
+  const limit = Math.max(1, Math.min(1000, Number.isFinite(rawLimit) ? rawLimit : 500));
+  const offset = Math.max(0, Number.isFinite(rawOffset) ? Math.floor(rawOffset) : 0);
 
   const items = Object.values(karaokeLyricsAudit.entries)
     .filter((entry) => entry.kind === "synced")
@@ -6285,14 +6290,23 @@ app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
       });
     });
 
+  const pageItems = items.slice(offset, offset + limit);
+
   return res.json({
     totalReady: Object.values(karaokeLyricsAudit.entries).filter(
       (entry) => entry.kind === "synced" && Boolean(musicBrain.songs[entry.videoId])
     ).length,
     matched: items.length,
-    returned: Math.min(items.length, limit),
+    returned: pageItems.length,
+    offset,
+    limit,
+    hasMore: offset + pageItems.length < items.length,
+    nextOffset:
+      offset + pageItems.length < items.length
+        ? offset + pageItems.length
+        : null,
     query: String(req.query?.q || ""),
-    items: items.slice(0, limit),
+    items: pageItems,
   });
 });
 

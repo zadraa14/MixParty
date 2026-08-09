@@ -173,6 +173,10 @@ type KaraokeCatalogResponse = {
   totalReady: number;
   matched: number;
   returned: number;
+  offset?: number;
+  limit?: number;
+  hasMore?: boolean;
+  nextOffset?: number | null;
   query: string;
   items: KaraokeCatalogSong[];
 };
@@ -1154,22 +1158,62 @@ export default function PartyPage() {
     setKaraokeCatalogError("");
 
     try {
-      const params = new URLSearchParams();
-      params.set("limit", "500");
-      if (query.trim()) params.set("q", query.trim());
+      const pageSize = 1000;
+      let offset = 0;
+      let totalReady = 0;
+      let matched = 0;
+      const allItems: KaraokeCatalogSong[] = [];
 
-      const response = await fetch(
-        `${getApiBaseUrl()}/partybrain/karaoke-lyrics-audit/ready?${params.toString()}`,
-        { cache: "no-store" }
-      );
+      // Charge tout le catalogue par pages de 1000.
+      // Avant, la page demandait seulement 500 morceaux : c'est pour ça
+      // qu'environ 458 titres uniques seulement apparaissaient après dédoublonnage.
+      while (true) {
+        const params = new URLSearchParams();
+        params.set("limit", String(pageSize));
+        params.set("offset", String(offset));
+        if (query.trim()) params.set("q", query.trim());
 
-      const data = await response.json();
+        const response = await fetch(
+          `${getApiBaseUrl()}/partybrain/karaoke-lyrics-audit/ready?${params.toString()}`,
+          { cache: "no-store" }
+        );
 
-      if (!response.ok) {
-        throw new Error(data?.error || "Catalogue Karaoké indisponible");
+        const data = (await response.json()) as KaraokeCatalogResponse;
+
+        if (!response.ok) {
+          throw new Error(
+            (data as any)?.error || "Catalogue Karaoké indisponible"
+          );
+        }
+
+        totalReady = Number(data.totalReady || totalReady);
+        matched = Number(data.matched || matched);
+        allItems.push(...(Array.isArray(data.items) ? data.items : []));
+
+        const returned = Number(data.returned || data.items?.length || 0);
+        const hasMore =
+          typeof data.hasMore === "boolean"
+            ? data.hasMore
+            : offset + returned < matched;
+
+        if (!hasMore || returned <= 0) break;
+
+        offset =
+          Number.isFinite(Number(data.nextOffset)) && data.nextOffset !== null
+            ? Number(data.nextOffset)
+            : offset + returned;
+
+        // Filet de sécurité : évite une boucle infinie si l'API renvoie un offset invalide.
+        if (offset >= Math.max(matched, totalReady) + pageSize) break;
       }
 
-      setKaraokeCatalog(data);
+      setKaraokeCatalog({
+        totalReady,
+        matched,
+        returned: allItems.length,
+        query,
+        items: allItems,
+      });
     } catch (error) {
       setKaraokeCatalogError(
         error instanceof Error ? error.message : "Catalogue Karaoké indisponible"
@@ -1178,6 +1222,7 @@ export default function PartyPage() {
       setKaraokeCatalogLoading(false);
     }
   }
+
 
   function activateKaraokeMode() {
     setKaraokeMode(true);
