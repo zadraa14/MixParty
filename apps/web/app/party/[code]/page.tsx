@@ -298,6 +298,7 @@ export default function PartyPage() {
   const [castConnected, setCastConnected] = useState(false);
   const [castConnecting, setCastConnecting] = useState(false);
   const [castStateLabel, setCastStateLabel] = useState("INITIALISATION");
+  const [castReceiverStatus, setCastReceiverStatus] = useState("En attente");
   const [castDeviceName, setCastDeviceName] = useState("");
   const [castDisplayMode, setCastDisplayMode] = useState<"tv" | "karaoke">("tv");
   const [tvPlayback, setTvPlayback] = useState({ time: 0, duration: 0, state: 2 });
@@ -415,6 +416,7 @@ export default function PartyPage() {
 
       const payload = {
         type: "mixparty_display",
+        version: "cast-v2",
         partyCode: code,
         mode: castDisplayModeRef.current,
       };
@@ -468,6 +470,29 @@ export default function PartyPage() {
             setCastConnected(true);
             setCastConnecting(false);
             setCastDeviceName(String(device?.friendlyName || "TV"));
+            setCastReceiverStatus("Session ouverte");
+
+            try {
+              session.addMessageListener?.(
+                MIXPARTY_CAST_NAMESPACE,
+                (_namespace: string, message: string) => {
+                  try {
+                    const payload = JSON.parse(message || "{}");
+                    if (payload?.type === "mixparty_display_ack") {
+                      setCastReceiverStatus(
+                        `Receiver OK · ${payload.partyCode || code} · ${payload.mode || "tv"}`
+                      );
+                      console.log("📺 ACK Receiver MixParty", payload);
+                    }
+                  } catch {
+                    console.log("📺 Message Receiver MixParty", message);
+                  }
+                }
+              );
+            } catch (error) {
+              console.warn("Listener ACK Receiver indisponible", error);
+            }
+
             sendInitialDisplayToSession(session);
 
             // Certains Chromecast / Android TV mettent plus d'une seconde
@@ -578,6 +603,7 @@ export default function PartyPage() {
     try {
       await session.sendMessage(MIXPARTY_CAST_NAMESPACE, {
         type: "mixparty_display",
+        version: "cast-v2",
         partyCode: code,
         mode,
       });
@@ -3666,6 +3692,9 @@ const canRemove =
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/20 bg-emerald-500/10 px-2.5 py-1.5 text-[10px] font-black text-emerald-200">
                         <Cast className="h-3 w-3" />
                         {castDeviceName || "TV"} connectée
+                      </span>
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-cyan-300/15 bg-cyan-500/[0.08] px-2.5 py-1.5 text-[10px] font-black text-cyan-100/80">
+                        {castReceiverStatus}
                       </span>
 
                       <button
