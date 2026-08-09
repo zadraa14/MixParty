@@ -3836,13 +3836,14 @@ function academyQuotaSnapshot() {
 function logYoutubeSearchDiagnostic(params: {
   query: string;
   normalizedQuery: string;
-  source: "YOUTUBE" | "CACHE" | "FUZZY_CACHE" | "ALIAS_CACHE" | "IN_FLIGHT";
+  source: "YOUTUBE" | "MUSICBRAIN" | "CACHE" | "FUZZY_CACHE" | "ALIAS_CACHE" | "IN_FLIGHT";
   durationMs: number;
   resultCount: number;
   matchedQuery?: string;
 }) {
   const sourceLabel = {
     YOUTUBE: "🔵 YouTube API",
+    MUSICBRAIN: "🧠 MusicBrain",
     CACHE: "🟢 Cache exact",
     FUZZY_CACHE: "🟣 Cache faute corrigée",
     ALIAS_CACHE: "🟠 Cache variante",
@@ -4265,8 +4266,22 @@ function musicBrainResultsForQuery(query: string) {
 
 async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResult[]> {
   const known = musicBrainResultsForQuery(query);
-  // Même lorsque PartyBrain connaît déjà beaucoup de titres, YouTube est interrogé
-  // pour récupérer les nouveautés et les versions encore absentes de la base locale.
+
+  // MusicBrain devient la source principale dès qu'il connaît plus de 20 titres
+  // pertinents pour la recherche. Dans ce cas, aucun appel YouTube n'est effectué.
+  // YouTube reste le secours pour les recherches qui ont 20 résultats connus ou moins,
+  // afin de ne jamais brider le catalogue et de continuer à enrichir MusicBrain.
+  if (known.length > 20) {
+    const results = deduplicateMusicResults(known)
+      .sort((a, b) => scoreMusicResult(b, query) - scoreMusicResult(a, query))
+      .slice(0, 40);
+
+    youtubeSearchStats.quotaSaved += 1;
+    console.log(`🧠 MusicBrain "${query}" : ${known.length} titre(s) connu(s), YouTube évité.`);
+    return results;
+  }
+
+  console.log(`🧠 MusicBrain "${query}" : ${known.length} titre(s) connu(s), complément YouTube.`);
   const primary = await requestYoutubeMusic(query, "user");
   let combined = [...known, ...primary];
 
@@ -7739,6 +7754,9 @@ app.get("/search/youtube", async (req, res) => {
 
   let inFlight = youtubeSearchesInFlight.get(normalizedQuery);
   const reusedInFlight = Boolean(inFlight);
+  const knownBeforeSearch = musicBrainResultsForQuery(query);
+  const musicBrainOnly = !reusedInFlight && knownBeforeSearch.length > 20;
+
   if (!inFlight) {
     inFlight = smartYoutubeMusicSearch(query);
     youtubeSearchesInFlight.set(normalizedQuery, inFlight);
@@ -7762,12 +7780,15 @@ app.get("/search/youtube", async (req, res) => {
     logYoutubeSearchDiagnostic({
       query,
       normalizedQuery,
-      source: reusedInFlight ? "IN_FLIGHT" : "YOUTUBE",
+      source: reusedInFlight ? "IN_FLIGHT" : musicBrainOnly ? "MUSICBRAIN" : "YOUTUBE",
       durationMs: Date.now() - startedAt,
       resultCount: results.length,
     });
 
-    res.setHeader("X-MixParty-Cache", reusedInFlight ? "IN-FLIGHT" : "MISS");
+    res.setHeader(
+      "X-MixParty-Cache",
+      reusedInFlight ? "IN-FLIGHT" : musicBrainOnly ? "MUSICBRAIN" : "MISS"
+    );
     return res.json(results);
   } catch (error: any) {
     console.error("ERREUR YOUTUBE :", error?.details || error);
