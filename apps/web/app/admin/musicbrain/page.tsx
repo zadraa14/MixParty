@@ -166,6 +166,7 @@ type PublicationQualityItem = {
   consensusResolution: "auto_validated" | "auto_fixable" | "manual_review" | "blocked";
   consensusConfidence: number;
   consensusSignals: string[];
+  automaticAction?: "none" | "validate" | "correct";
   karaokeSynced: boolean;
   lrclibArtistName?: string;
   lrclibTrackName?: string;
@@ -2410,10 +2411,10 @@ export default function MusicBrainAdminPage() {
                       </div>
                       <div>
                         <p className="text-xs font-black uppercase tracking-[.22em] text-violet-300">
-                          MusicBrain Quality V3
+                          MusicBrain Quality V3.2
                         </p>
                         <h2 className="mt-1 text-2xl font-black">
-                          MusicBrain vérifie d’abord, toi seulement en dernier
+                          MusicBrain applique ses décisions sûres, toi seulement en dernier
                         </h2>
                         <p className="mt-2 text-sm leading-6 text-white/50">
                           Première passe : titre YouTube, chaîne, Art Track et LRCLIB. Deuxième passe : alias déjà appris, QUERY_FALLBACK confirmé, artiste principal dans les featuring et concordance LRCLIB. Un morceau n’arrive dans « À vérifier par toi » qu’après l’échec des deux passes automatiques.
@@ -2529,10 +2530,10 @@ export default function MusicBrainAdminPage() {
                       >
                         <Sparkles className="h-4 w-4" />
                         {autoFixLoading
-                          ? "Auto-Fix en cours…"
-                          : `Corriger automatiquement ${number.format(
+                          ? "Application des décisions…"
+                          : `Appliquer les ${number.format(
                               publicationQuality?.summary.autoFixable || 0
-                            )} morceau(x)`}
+                            )} décisions sûres`}
                       </button>
                     </div>
                   </div>
@@ -2676,7 +2677,7 @@ export default function MusicBrainAdminPage() {
                                   {item.consensusResolution === "auto_validated"
                                     ? "Auto-validé"
                                     : item.consensusResolution === "auto_fixable"
-                                      ? "Auto-corrigeable"
+                                      ? "Sera corrigé par Auto-Fix"
                                       : item.consensusResolution === "manual_review"
                                         ? "À vérifier"
                                         : "Bloqué"}
@@ -2700,6 +2701,12 @@ export default function MusicBrainAdminPage() {
                                 <span className="text-white/55">Confiance :</span>{" "}
                                 {Math.round(item.consensusConfidence || 0)} %
                               </p>
+
+                              {item.automaticAction === "correct" ? (
+                                <p className="font-black text-cyan-200/80">
+                                  ✓ Cette correction utilise exactement la logique qu’Auto-Fix appliquera.
+                                </p>
+                              ) : null}
 
                               {item.proposedArtistName ? (
                                 <p className={`font-bold ${

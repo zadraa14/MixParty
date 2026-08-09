@@ -7322,6 +7322,60 @@ function musicBrainArtistConsensus(song: MusicBrainSong): MusicBrainConsensusRes
   };
 }
 
+type MusicBrainAutomaticAction =
+  | "none"
+  | "validate"
+  | "correct";
+
+type MusicBrainAutomaticActionDecision = {
+  action: MusicBrainAutomaticAction;
+  reason: string;
+  proposedArtistName?: string;
+  confidence: number;
+  signals: MusicBrainConsensusSignal[];
+};
+
+function musicBrainAutomaticActionDecision(
+  song: MusicBrainSong
+): MusicBrainAutomaticActionDecision {
+  const publication = musicBrainPublicationDecision(song);
+
+  // Déjà validé par consensus : aucune écriture nécessaire.
+  if (publication.consensusResolution === "auto_validated") {
+    return {
+      action: "validate",
+      reason: publication.reason,
+      confidence: publication.consensusConfidence,
+      signals: publication.consensusSignals,
+    };
+  }
+
+  // V3.2 : si l'interface sait déjà afficher "Auto-corrigeable",
+  // le backend utilise EXACTEMENT cette même décision pour agir.
+  if (
+    publication.consensusResolution === "auto_fixable" &&
+    publication.proposedArtistName &&
+    publication.consensusConfidence >= 90 &&
+    publication.consensusSignals.length >= 2
+  ) {
+    return {
+      action: "correct",
+      reason: publication.reason,
+      proposedArtistName: publication.proposedArtistName,
+      confidence: publication.consensusConfidence,
+      signals: publication.consensusSignals,
+    };
+  }
+
+  return {
+    action: "none",
+    reason: publication.reason,
+    proposedArtistName: publication.proposedArtistName,
+    confidence: publication.consensusConfidence,
+    signals: publication.consensusSignals,
+  };
+}
+
 function musicBrainPublicationDecision(song: MusicBrainSong): MusicBrainPublicationDecision {
   const learning = musicBrainLearningDecision({
     artistName: song.artistName,
@@ -8075,12 +8129,13 @@ function applyMusicBrainConsensusArtistCorrection(
   const song = musicBrain.songs[videoId];
   if (!song) return false;
 
-  const freshConsensus = musicBrainArtistConsensus(song);
+  const automaticAction = musicBrainAutomaticActionDecision(song);
+
   if (
-    freshConsensus.resolution !== "auto_fixable" ||
-    !freshConsensus.proposedArtistName ||
+    automaticAction.action !== "correct" ||
+    !automaticAction.proposedArtistName ||
     !sameMusicBrainArtist(
-      freshConsensus.proposedArtistName,
+      automaticAction.proposedArtistName,
       proposedArtistName
     )
   ) {
@@ -8088,7 +8143,7 @@ function applyMusicBrainConsensusArtistCorrection(
   }
 
   const oldArtistKey = song.artistKey;
-  const newArtistName = cleanArtistName(freshConsensus.proposedArtistName);
+  const newArtistName = cleanArtistName(automaticAction.proposedArtistName);
   const newArtistKey = normalizeMusicQuery(newArtistName);
 
   if (!newArtistKey || newArtistKey === oldArtistKey) return false;
@@ -8104,7 +8159,7 @@ function applyMusicBrainConsensusArtistCorrection(
   song.metadataConfidence = Math.max(
     Number(song.metadataConfidence || 0),
     Number(confidence || 0),
-    freshConsensus.confidence,
+    automaticAction.confidence,
     95
   );
   song.lastSeenAt = Date.now();
@@ -8138,44 +8193,92 @@ function applyMusicBrainConsensusArtistCorrection(
 
 function musicBrainAutoFixPreview() {
   const before = musicBrainPublicationSummary();
-  const corrections = Object.values(musicBrain.songs)
-    .map((song) => {
-      const consensus = musicBrainArtistConsensus(song);
-      if (
-        consensus.resolution !== "auto_fixable" ||
-        !consensus.proposedArtistName
-      ) {
-        return null;
-      }
 
-      return {
+  const actionable: Array<{
+    videoId: string;
+    title: string;
+    rawTitle: string;
+    currentArtistName: string;
+    proposedArtistName: string;
+    confidence: number;
+    signals: MusicBrainConsensusSignal[];
+    karaokeSynced: boolean;
+    reason: string;
+  }> = [];
+
+  const manual: Array<{
+    videoId: string;
+    title: string;
+    artistName: string;
+    proposedArtistName?: string;
+    confidence: number;
+    signals: MusicBrainConsensusSignal[];
+    karaokeSynced: boolean;
+    reason: string;
+  }> = [];
+
+  for (const song of Object.values(musicBrain.songs)) {
+    const action = musicBrainAutomaticActionDecision(song);
+    const karaokeSynced =
+      karaokeLyricsAudit.entries[song.videoId]?.kind === "synced";
+
+    if (action.action === "correct" && action.proposedArtistName) {
+      actionable.push({
         videoId: song.videoId,
         title: song.title,
         rawTitle: song.rawTitle || song.title,
         currentArtistName: song.artistName,
-        proposedArtistName: consensus.proposedArtistName,
-        confidence: consensus.confidence,
-        signals: consensus.signals,
-        karaokeSynced:
-          karaokeLyricsAudit.entries[song.videoId]?.kind === "synced",
-        reason: consensus.reason,
-      };
-    })
-    .filter(Boolean)
-    .sort((a: any, b: any) => {
-      if (a.karaokeSynced !== b.karaokeSynced) {
-        return Number(b.karaokeSynced) - Number(a.karaokeSynced);
-      }
-      return Number(b.confidence || 0) - Number(a.confidence || 0);
-    });
+        proposedArtistName: action.proposedArtistName,
+        confidence: action.confidence,
+        signals: action.signals,
+        karaokeSynced,
+        reason: action.reason,
+      });
+      continue;
+    }
+
+    const publication = musicBrainPublicationDecision(song);
+    if (publication.consensusResolution === "manual_review") {
+      manual.push({
+        videoId: song.videoId,
+        title: song.title,
+        artistName: song.artistName,
+        proposedArtistName: publication.proposedArtistName,
+        confidence: publication.consensusConfidence,
+        signals: publication.consensusSignals,
+        karaokeSynced,
+        reason: publication.reason,
+      });
+    }
+  }
+
+  actionable.sort((a, b) => {
+    if (a.karaokeSynced !== b.karaokeSynced) {
+      return Number(b.karaokeSynced) - Number(a.karaokeSynced);
+    }
+    return b.confidence - a.confidence;
+  });
+
+  manual.sort((a, b) => {
+    if (a.karaokeSynced !== b.karaokeSynced) {
+      return Number(b.karaokeSynced) - Number(a.karaokeSynced);
+    }
+    return b.confidence - a.confidence;
+  });
 
   return {
     generatedAt: Date.now(),
     before,
-    autoFixableCount: corrections.length,
-    corrections: corrections.slice(0, 500),
-    note:
-      "Aucune correction n'est appliquée pendant l'aperçu. Auto-Fix exige au moins deux signaux indépendants concordants.",
+    autoFixableCount: actionable.length,
+    manualReviewCount: manual.length,
+    corrections: actionable.slice(0, 1000),
+    manualPreview: manual.slice(0, 300),
+    policy: {
+      minimumConfidence: 90,
+      minimumIndependentSignals: 2,
+      note:
+        "V3.2 applique exactement la décision déjà affichée comme Auto-corrigeable dans l'onglet Qualité.",
+    },
   };
 }
 
@@ -8221,18 +8324,46 @@ app.get("/partybrain/musicbrain-autofix/preview", (_req, res) => {
 app.post("/partybrain/maintenance/musicbrain-autofix/run", (req, res) => {
   if (!requirePartyBrainAdmin(req, res)) return;
 
-  const preview = musicBrainAutoFixPreview();
-  let corrected = 0;
+  const before = musicBrainPublicationSummary();
+  const candidates = Object.values(musicBrain.songs)
+    .map((song) => {
+      const action = musicBrainAutomaticActionDecision(song);
+      return { song, action };
+    })
+    .filter(
+      (entry) =>
+        entry.action.action === "correct" &&
+        Boolean(entry.action.proposedArtistName)
+    );
 
-  for (const correction of preview.corrections as any[]) {
+  let corrected = 0;
+  const correctedItems: Array<{
+    videoId: string;
+    from: string;
+    to: string;
+    confidence: number;
+    signals: MusicBrainConsensusSignal[];
+  }> = [];
+
+  for (const { song, action } of candidates) {
+    const fromArtist = song.artistName;
+    const proposed = String(action.proposedArtistName || "");
+
     if (
       applyMusicBrainConsensusArtistCorrection(
-        correction.videoId,
-        correction.proposedArtistName,
-        correction.confidence
+        song.videoId,
+        proposed,
+        action.confidence
       )
     ) {
       corrected += 1;
+      correctedItems.push({
+        videoId: song.videoId,
+        from: fromArtist,
+        to: proposed,
+        confidence: action.confidence,
+        signals: action.signals,
+      });
     }
   }
 
@@ -8245,11 +8376,12 @@ app.post("/partybrain/maintenance/musicbrain-autofix/run", (req, res) => {
   return res.json({
     ok: true,
     corrected,
-    before: preview.before,
+    correctedItems: correctedItems.slice(0, 500),
+    before,
     after,
     message:
-      `${corrected} correction(s) automatique(s) appliquée(s). ` +
-      `${after.manualReview} morceau(x) restent réellement à vérifier manuellement.`,
+      `${corrected} correction(s) sûre(s) appliquée(s) automatiquement. ` +
+      `${after.manualReview} morceau(x) restent réellement à vérifier par toi.`,
   });
 });
 
@@ -8305,6 +8437,7 @@ app.get("/partybrain/musicbrain-publication/items", (req, res) => {
         consensusResolution: publication.consensusResolution,
         consensusConfidence: publication.consensusConfidence,
         consensusSignals: publication.consensusSignals,
+        automaticAction: musicBrainAutomaticActionDecision(song).action,
         karaokeSynced: karaokeEntry?.kind === "synced",
         lrclibArtistName: karaokeEntry?.matchedArtistName || "",
         lrclibTrackName: karaokeEntry?.matchedTrackName || "",
