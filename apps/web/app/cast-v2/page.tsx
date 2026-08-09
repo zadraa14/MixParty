@@ -38,6 +38,7 @@ export default function MixPartyCastV2ReceiverPage() {
   const [lastMessageAt, setLastMessageAt] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const contextRef = useRef<any>(null);
+  const readyPingedSendersRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -108,13 +109,48 @@ export default function MixPartyCastV2ReceiverPage() {
           }
         );
 
+        function announceReceiverReady() {
+          const senders = context.getSenders?.() || [];
+          const connected = senders.length > 0;
+
+          setSenderConnected(connected);
+
+          if (connected) {
+            setStage((current) =>
+              current === "MESSAGE_RECEIVED" || current === "DISPLAY_OPEN"
+                ? current
+                : "SENDER_CONNECTED"
+            );
+          }
+
+          for (const sender of senders) {
+            const senderId = String(sender?.id || "");
+            if (!senderId || readyPingedSendersRef.current.has(senderId)) continue;
+
+            readyPingedSendersRef.current.add(senderId);
+
+            try {
+              context.sendCustomMessage(
+                CAST_NAMESPACE,
+                senderId,
+                {
+                  type: "mixparty_receiver_ready",
+                  receiver: "cast-v2",
+                }
+              );
+              console.log("📺 Receiver ready envoyé au Sender", senderId);
+            } catch (error) {
+              console.warn("Impossible d'annoncer le Receiver au Sender", error);
+            }
+          }
+        }
+
         context.addEventListener(system.EventType.SENDER_CONNECTED, () => {
-          setSenderConnected(true);
-          setStage((current) =>
-            current === "MESSAGE_RECEIVED" || current === "DISPLAY_OPEN"
-              ? current
-              : "SENDER_CONNECTED"
-          );
+          announceReceiverReady();
+        });
+
+        context.addEventListener(system.EventType.READY, () => {
+          announceReceiverReady();
         });
 
         context.addEventListener(system.EventType.SENDER_DISCONNECTED, () => {
@@ -130,11 +166,21 @@ export default function MixPartyCastV2ReceiverPage() {
         });
 
         context.start({
+          customNamespaces: {
+            [CAST_NAMESPACE]: system.MessageType.JSON,
+          },
           disableIdleTimeout: true,
           statusText: "MixParty Cast V2",
         });
 
         setStage("WAITING_SENDER");
+
+        // Certains appareils Android TV ne rejouent pas toujours SENDER_CONNECTED
+        // si le sender est déjà présent au moment où le Receiver finit de démarrer.
+        // On vérifie donc directement getSenders() pendant les premières secondes.
+        announceReceiverReady();
+        const senderProbe = window.setInterval(announceReceiverReady, 500);
+        window.setTimeout(() => window.clearInterval(senderProbe), 10000);
       } catch (error) {
         console.error("Receiver Cast V2 init error", error);
         setStage("ERROR");

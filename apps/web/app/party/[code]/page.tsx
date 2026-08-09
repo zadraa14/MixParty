@@ -478,6 +478,28 @@ export default function PartyPage() {
                 (_namespace: string, message: string) => {
                   try {
                     const payload = JSON.parse(message || "{}");
+                    if (payload?.type === "mixparty_receiver_ready") {
+                      setCastReceiverStatus("Receiver prêt · envoi de la soirée");
+                      console.log("📺 Receiver prêt, envoi immédiat de la soirée", payload);
+
+                      const currentSession =
+                        castContextRef.current?.getCurrentSession?.() ||
+                        (window as any).cast?.framework?.CastContext
+                          ?.getInstance?.()
+                          ?.getCurrentSession?.();
+
+                      currentSession
+                        ?.sendMessage(MIXPARTY_CAST_NAMESPACE, {
+                          type: "mixparty_display",
+                          version: "cast-v2-handshake",
+                          partyCode: code,
+                          mode: castDisplayModeRef.current,
+                        })
+                        .catch((error: unknown) => {
+                          console.warn("Réponse au Receiver prête non envoyée", error);
+                        });
+                    }
+
                     if (payload?.type === "mixparty_display_ack") {
                       setCastReceiverStatus(
                         `Receiver OK · ${payload.partyCode || code} · ${payload.mode || "tv"}`
