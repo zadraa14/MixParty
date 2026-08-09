@@ -5375,6 +5375,76 @@ function karaokeLyricsArtistReliable(song: MusicBrainSong) {
   return true;
 }
 
+
+const KARAOKE_STRICT_DURATION_TOLERANCE_SECONDS = 1.5;
+const KARAOKE_STRICT_MIN_TIMED_LINES = 5;
+
+function karaokeLyricsStrictIdentityMatch(song: MusicBrainSong, item: any) {
+  const targetTitle = karaokeLyricsComparable(song.title || song.rawTitle || "");
+  const targetArtist = karaokeLyricsComparable(song.artistName || "");
+  const resultTitle = karaokeLyricsComparable(item?.trackName || "");
+  const resultArtist = karaokeLyricsComparable(item?.artistName || "");
+
+  if (!targetTitle || !targetArtist || !resultTitle || !resultArtist) return false;
+
+  // Mode fiabilité maximale : titre et artiste doivent correspondre exactement.
+  if (resultTitle !== targetTitle) return false;
+  if (resultArtist !== targetArtist) return false;
+
+  const sourceDuration = Number(song.durationSeconds || 0);
+  const resultDuration = Number(item?.duration || 0);
+
+  // Sans durée des deux côtés, on ne publie pas.
+  if (!(sourceDuration > 0) || !(resultDuration > 0)) return false;
+
+  return (
+    Math.abs(sourceDuration - resultDuration) <=
+    KARAOKE_STRICT_DURATION_TOLERANCE_SECONDS
+  );
+}
+
+function karaokeLyricsStrictTimedLines(raw: unknown, expectedDuration?: number) {
+  const lines = parseLrclibSyncedLyrics(raw);
+  const nonEmpty = lines.filter((line) => String(line.text || "").trim());
+
+  if (nonEmpty.length < KARAOKE_STRICT_MIN_TIMED_LINES) return false;
+
+  const lastTimedLine = nonEmpty[nonEmpty.length - 1]?.time || 0;
+  if (!(lastTimedLine > 0)) return false;
+
+  const duration = Number(expectedDuration || 0);
+  if (duration > 0) {
+    // Fichier manifestement tronqué ou timestamps dépassant l'audio = rejet.
+    if (lastTimedLine > duration + 2) return false;
+    if (lastTimedLine < duration * 0.35) return false;
+  }
+
+  return true;
+}
+
+function karaokeLyricsStrictCandidateMatch(song: MusicBrainSong, item: any) {
+  if (!karaokeLyricsStrictIdentityMatch(song, item)) return false;
+  if (!String(item?.syncedLyrics || "").trim()) return false;
+
+  return karaokeLyricsStrictTimedLines(
+    item.syncedLyrics,
+    Number(item?.duration || song.durationSeconds || 0)
+  );
+}
+
+function karaokeLyricsAuditEntryIsStrictlyVerified(
+  song: MusicBrainSong | undefined,
+  entry: KaraokeLyricsAuditEntry | undefined
+) {
+  if (!song || !entry || entry.kind !== "synced" || !entry.lrclibId) return false;
+
+  return karaokeLyricsStrictIdentityMatch(song, {
+    trackName: entry.matchedTrackName,
+    artistName: entry.matchedArtistName,
+    duration: entry.matchedDuration,
+  });
+}
+
 function karaokeLyricsCandidateScore(song: MusicBrainSong, item: any) {
   const targetTitle = karaokeLyricsComparable(song.title || song.rawTitle || "");
   const targetArtist = karaokeLyricsComparable(song.artistName || "");
@@ -5452,11 +5522,11 @@ async function requestLrclibForSong(song: MusicBrainSong) {
     const items = Array.isArray(data) ? data : [];
 
     const ranked = items
+      .filter((item: any) => karaokeLyricsStrictCandidateMatch(song, item))
       .map((item: any) => ({
         item,
         score: karaokeLyricsCandidateScore(song, item),
       }))
-      .filter((entry) => entry.score >= 0)
       .sort((a, b) => b.score - a.score);
 
     return ranked[0]?.item || null;
@@ -5471,7 +5541,14 @@ function karaokeLyricsAuditSummary() {
     (entry) => Boolean(musicBrain.songs[entry.videoId])
   );
 
-  const synced = entries.filter((entry) => entry.kind === "synced").length;
+  const rawSynced = entries.filter((entry) => entry.kind === "synced").length;
+  const synced = entries.filter((entry) =>
+    karaokeLyricsAuditEntryIsStrictlyVerified(
+      musicBrain.songs[entry.videoId],
+      entry
+    )
+  ).length;
+  const heldForSyncVerification = Math.max(0, rawSynced - synced);
   const plain = entries.filter((entry) => entry.kind === "plain").length;
   const instrumental = entries.filter((entry) => entry.kind === "instrumental").length;
   const notFound = entries.filter((entry) => entry.kind === "not_found").length;
@@ -5489,6 +5566,8 @@ function karaokeLyricsAuditSummary() {
     checked,
     unchecked,
     synced,
+    rawSynced,
+    heldForSyncVerification,
     plain,
     instrumental,
     notFound,
@@ -5499,7 +5578,7 @@ function karaokeLyricsAuditSummary() {
     batchSizeMax: 100,
     delayMs: 300,
     note:
-      "Audit LRCLIB séparé : 100 morceaux maximum par lot, requêtes séquentielles, résultats sauvegardés pour éviter de rescanner les mêmes morceaux.",
+      "Karaoké Sync Strict V4 : seuls titre exact + artiste exact + durée ±1,5 s + paroles horodatées valides sont publiables. Les anciens synced non conformes restent bloqués jusqu’à revérification.",
   };
 }
 
@@ -5524,8 +5603,12 @@ function automaticLrclibNeedsCheck(song: MusicBrainSong) {
   const existing = karaokeLyricsAudit.entries[song.videoId];
   if (!existing) return true;
 
-  if (existing.kind === "synced" || existing.kind === "instrumental") {
+  if (existing.kind === "instrumental") {
     return false;
+  }
+
+  if (existing.kind === "synced") {
+    return !karaokeLyricsAuditEntryIsStrictlyVerified(song, existing);
   }
 
   // Si MusicBrain a corrigé l'artiste depuis l'ancien audit, on retente.
@@ -5597,6 +5680,7 @@ async function runAutomaticLrclibWorker() {
         };
 
         saveKaraokeLyricsAudit();
+        karaokeLyricsRuntimeCache.delete(song.videoId);
 
         if (kind === "synced") {
           console.log(
@@ -5696,7 +5780,14 @@ async function runKaraokeLyricsAuditBatch(limit: number) {
 
   const candidates = Object.values(musicBrain.songs)
     .filter(karaokeLyricsArtistReliable)
-    .filter((song) => !karaokeLyricsAudit.entries[song.videoId])
+    .filter((song) => {
+      const existing = karaokeLyricsAudit.entries[song.videoId];
+      if (!existing) return true;
+      return (
+        existing.kind === "synced" &&
+        !karaokeLyricsAuditEntryIsStrictlyVerified(song, existing)
+      );
+    })
     .sort((a, b) => {
       const resolutionA = localResolution.resolutionByVideoId.get(a.videoId);
       const resolutionB = localResolution.resolutionByVideoId.get(b.videoId);
@@ -5773,6 +5864,7 @@ async function runKaraokeLyricsAuditBatch(limit: number) {
           `Audit LRCLIB en cours : ${karaokeLyricsAuditJob.searched} / ${candidates.length}`;
 
         saveKaraokeLyricsAudit();
+        karaokeLyricsRuntimeCache.delete(song.videoId);
         await new Promise((resolve) => setTimeout(resolve, 300));
       } catch (error: any) {
         karaokeLyricsAuditJob.errors += 1;
@@ -5836,7 +5928,14 @@ let karaokeLyricsAuditSchedulerLastSkipReason = "";
 function karaokeLyricsAuditPendingCount() {
   return Object.values(musicBrain.songs)
     .filter(karaokeLyricsArtistReliable)
-    .filter((song) => !karaokeLyricsAudit.entries[song.videoId])
+    .filter((song) => {
+      const existing = karaokeLyricsAudit.entries[song.videoId];
+      if (!existing) return true;
+      return (
+        existing.kind === "synced" &&
+        !karaokeLyricsAuditEntryIsStrictlyVerified(song, existing)
+      );
+    })
     .length;
 }
 
@@ -6041,6 +6140,33 @@ app.get("/partybrain/karaoke/lyrics/:videoId", async (req, res) => {
     return res.json(payload);
   }
 
+  const sourceSong = musicBrain.songs[videoId];
+
+  if (
+    audit.kind === "synced" &&
+    !karaokeLyricsAuditEntryIsStrictlyVerified(sourceSong, audit)
+  ) {
+    const payload: KaraokeLyricsRuntimeResponse = {
+      videoId,
+      available: false,
+      kind: "unchecked",
+      lrclibId: audit.lrclibId,
+      trackName: audit.matchedTrackName,
+      artistName: audit.matchedArtistName,
+      albumName: audit.matchedAlbumName,
+      duration: audit.matchedDuration,
+      message:
+        "Paroles bloquées par Karaoké Sync Strict V4 : version audio non certifiée.",
+    };
+
+    karaokeLyricsRuntimeCache.set(videoId, {
+      expiresAt: Date.now() + 60_000,
+      payload,
+    });
+
+    return res.json(payload);
+  }
+
   if (audit.kind !== "synced" || !audit.lrclibId) {
     const payload: KaraokeLyricsRuntimeResponse = {
       videoId,
@@ -6069,6 +6195,36 @@ app.get("/partybrain/karaoke/lyrics/:videoId", async (req, res) => {
 
   try {
     const record = await fetchLrclibLyricsById(audit.lrclibId);
+
+    if (
+      !sourceSong ||
+      !karaokeLyricsStrictIdentityMatch(sourceSong, record) ||
+      !karaokeLyricsStrictTimedLines(
+        record?.syncedLyrics,
+        Number(record?.duration || sourceSong.durationSeconds || 0)
+      )
+    ) {
+      const payload: KaraokeLyricsRuntimeResponse = {
+        videoId,
+        available: false,
+        kind: "unchecked",
+        lrclibId: audit.lrclibId,
+        trackName: record?.trackName || audit.matchedTrackName,
+        artistName: record?.artistName || audit.matchedArtistName,
+        albumName: record?.albumName || audit.matchedAlbumName,
+        duration: Number(record?.duration || audit.matchedDuration || 0) || undefined,
+        message:
+          "Contrôle Karaoké strict échoué au moment de la lecture : paroles non servies.",
+      };
+
+      karaokeLyricsRuntimeCache.set(videoId, {
+        expiresAt: Date.now() + 60_000,
+        payload,
+      });
+
+      return res.json(payload);
+    }
+
     const lines = parseLrclibSyncedLyrics(record?.syncedLyrics);
 
     if (!lines.length) {
@@ -6237,9 +6393,16 @@ app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
     Number.isFinite(rawOffset) ? Math.floor(rawOffset) : 0
   );
 
-  const syncedEntries = Object.values(karaokeLyricsAudit.entries)
+  const rawSyncedEntries = Object.values(karaokeLyricsAudit.entries)
     .filter((entry) => entry.kind === "synced")
     .filter((entry) => Boolean(musicBrain.songs[entry.videoId]));
+
+  const syncedEntries = rawSyncedEntries.filter((entry) =>
+    karaokeLyricsAuditEntryIsStrictlyVerified(
+      musicBrain.songs[entry.videoId],
+      entry
+    )
+  );
 
   let heldForReview = 0;
   let blockedByMusicBrain = 0;
@@ -6304,9 +6467,12 @@ app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
 
   return res.json({
     // Nombre LRCLIB brut : utile pour l'admin.
-    totalSynced: syncedEntries.length,
+    totalSynced: rawSyncedEntries.length,
 
-    // Nombre réellement publié dans MixParty après validation MusicBrain.
+    // Nombre qui passe réellement le filtre synchro strict.
+    totalStrictlyVerified: syncedEntries.length,
+
+    // Nombre réellement publié dans MixParty après synchro stricte + validation MusicBrain.
     totalReady: items.length,
     heldForReview,
     blockedByMusicBrain,
