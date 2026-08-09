@@ -58,8 +58,16 @@
       line-height: 1.5;
     }
 
-    #status {
+    #party-code {
       margin-top: 24px;
+      font-size: 48px;
+      font-weight: 900;
+      letter-spacing: .12em;
+      color: #ffffff;
+    }
+
+    #status {
+      margin-top: 16px;
       display: inline-block;
       padding: 10px 16px;
       border-radius: 999px;
@@ -81,13 +89,46 @@
       Cette page ne contient ni Next.js côté client, ni Socket.IO,
       ni PartyBrain, ni Karaoké.
     </p>
+    <div id="party-code">—</div>
     <div id="status">Initialisation du Receiver…</div>
   </main>
 
   <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
   <script>
+    const MIXPARTY_NAMESPACE = "urn:x-cast:fr.mixparty.display";
+
     try {
       const context = cast.framework.CastReceiverContext.getInstance();
+
+      context.addCustomMessageListener(
+        MIXPARTY_NAMESPACE,
+        (event) => {
+          const payload = event && event.data ? event.data : {};
+          const code = String(payload.partyCode || payload.code || "")
+            .trim()
+            .toUpperCase();
+
+          if (!code) return;
+
+          document.getElementById("party-code").textContent = code;
+          document.getElementById("status").textContent = "Code soirée reçu ✅";
+
+          try {
+            if (event.senderId) {
+              context.sendCustomMessage(
+                MIXPARTY_NAMESPACE,
+                event.senderId,
+                {
+                  type: "mixparty_party_code_ack",
+                  partyCode: code
+                }
+              );
+            }
+          } catch (error) {
+            console.warn("ACK impossible", error);
+          }
+        }
+      );
 
       context.addEventListener(
         cast.framework.system.EventType.READY,
@@ -111,8 +152,11 @@
       );
 
       context.start({
+        customNamespaces: {
+          [MIXPARTY_NAMESPACE]: cast.framework.system.MessageType.JSON
+        },
         disableIdleTimeout: true,
-        statusText: "MixParty Cast Basic Test"
+        statusText: "MixParty Cast Party Code Test"
       });
     } catch (error) {
       document.getElementById("status").textContent =

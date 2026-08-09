@@ -479,9 +479,9 @@ export default function PartyPage() {
                 (_namespace: string, message: string) => {
                   try {
                     const payload = JSON.parse(message || "{}");
-                    if (payload?.type === "mixparty_pong") {
-                      setCastReceiverStatus("PONG reçu ✅");
-                      console.log("📺 PONG Receiver MixParty", payload);
+                    if (payload?.type === "mixparty_party_code_ack") {
+                      setCastReceiverStatus(`Code ${payload.partyCode || code} reçu ✅`);
+                      console.log("📺 ACK code soirée Receiver MixParty", payload);
                     }
                   } catch {
                     console.log("📺 Message Receiver MixParty", message);
@@ -648,47 +648,24 @@ export default function PartyPage() {
     }
   }
 
-  async function sendDiagnosticPing(session: any) {
+  async function sendPartyCodeToCast(session: any) {
     const payload = {
-      type: "mixparty_ping",
-      sentAt: Date.now(),
+      type: "mixparty_party_code",
       partyCode: code,
-      source: "caf",
+      sentAt: Date.now(),
     };
 
     describeCastSession(session);
 
     try {
-      const result = await session.sendMessage(MIXPARTY_CAST_NAMESPACE, payload);
-      console.log("📺 CAF sendMessage résolu", result);
-      setCastReceiverStatus("PING CAF envoyé");
+      await session.sendMessage(MIXPARTY_CAST_NAMESPACE, payload);
+      setCastReceiverStatus(`Code ${code} envoyé`);
+      console.log("📺 Code soirée envoyé au Receiver", payload);
     } catch (error: any) {
-      console.warn("📺 CAF sendMessage erreur", error);
-      setCastReceiverStatus(`PING CAF erreur: ${String(error?.code || error)}`);
-    }
-
-    const legacy = session?.getSessionObj?.();
-    if (legacy?.sendMessage) {
-      try {
-        legacy.sendMessage(
-          MIXPARTY_CAST_NAMESPACE,
-          { ...payload, source: "legacy" },
-          () => {
-            console.log("📺 Legacy sendMessage envoyé");
-            setCastReceiverStatus((current) =>
-              current.includes("PONG") ? current : "PING legacy envoyé"
-            );
-          },
-          (error: any) => {
-            console.warn("📺 Legacy sendMessage erreur", error);
-            setCastReceiverStatus(
-              `PING legacy erreur: ${String(error?.code || error?.description || "unknown")}`
-            );
-          }
-        );
-      } catch (error) {
-        console.warn("Legacy sendMessage exception", error);
-      }
+      console.warn("📺 Envoi code soirée erreur", error);
+      setCastReceiverStatus(
+        `Code en erreur: ${String(error?.code || error?.description || error)}`
+      );
     }
   }
 
@@ -722,13 +699,13 @@ export default function PartyPage() {
 
       // Le Receiver vient d’être lancé : on lui transmet la soirée et
       // l’affichage demandé. Un second envoi sécurise les appareils plus lents.
-      await sendDiagnosticPing(session);
+      await sendPartyCodeToCast(session);
       [700, 1600, 3000, 5000].forEach((delay) => {
         window.setTimeout(() => {
           const activeSession =
             castContextRef.current?.getCurrentSession?.() ||
             (window as any).cast?.framework?.CastContext?.getInstance?.()?.getCurrentSession?.();
-          if (activeSession) void sendDiagnosticPing(activeSession);
+          if (activeSession) void sendPartyCodeToCast(activeSession);
         }, delay);
       });
     } catch (error: any) {
