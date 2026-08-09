@@ -33,7 +33,7 @@ class AlignedLine(BaseModel):
 
 class AlignResponse(BaseModel):
     ok: bool = True
-    engine: str = "faster-whisper-v1.8"
+    engine: str = "faster-whisper-v1.9"
     publishable: bool
     confidence: float
     lines: list[AlignedLine]
@@ -507,6 +507,264 @@ def robust_global_lrclib_offset(delta_diag: dict[str, Any]) -> Optional[float]:
     return float(statistics.median(trusted))
 
 
+
+def recover_intro_lines(
+    words: list[dict[str, Any]],
+    lines: list[AlignedLine],
+    transcript: str,
+    reference_lines: list[dict[str, Any]],
+) -> tuple[list[AlignedLine], dict[str, Any]]:
+    """
+    V1.9 Intro Recovery
+
+    Cible uniquement le début du morceau (0-15 s), là où Faster-Whisper
+    peut rater les fragments très courts (ex: "A-B, C-D").
+
+    Règles :
+    - ne touche qu'aux 3 premières lignes LRCLIB
+    - seulement si la ligne moteur est absente ou très éloignée (> 2,5 s)
+    - recherche audio limitée à 0-15 s
+    - accepte mieux les fragments courts, mais impose une cohérence stricte
+      avec la ligne suivante
+    - n'écrase jamais une ligne déjà correcte
+    """
+    import difflib
+
+    if not words or not reference_lines:
+        return lines, {
+            "enabled": False,
+            "reason": "no-words-or-reference",
+            "attemptedCount": 0,
+            "recoveredCount": 0,
+        }
+
+    working = [AlignedLine(time=float(line.time), text=line.text) for line in lines]
+    details = []
+    attempted = 0
+    recovered = 0
+
+    # index text -> list of line indices in current output
+    current_by_text: dict[str, list[int]] = {}
+    for idx, line in enumerate(working):
+        current_by_text.setdefault(normalize_text(line.text), []).append(idx)
+
+    intro_refs = [
+        ref for ref in reference_lines[:3]
+        if float(ref["time"]) <= 15.0
+    ]
+
+    for ref in intro_refs:
+        ref_text = str(ref["text"])
+        ref_norm = normalize_text(ref_text)
+        ref_time = float(ref["time"])
+
+        existing_indices = current_by_text.get(ref_norm) or []
+        existing_idx = existing_indices[0] if existing_indices else None
+        existing_time = (
+            float(working[existing_idx].time)
+            if existing_idx is not None
+            else None
+        )
+
+        # Already good enough: keep it.
+        if existing_time is not None and abs(existing_time - ref_time) <= 2.5:
+            continue
+
+        attempted += 1
+
+        expected_tokens = ref_norm.split()
+        if not expected_tokens:
+            continue
+
+        # Short fragments need a different strategy.
+        is_short = len(expected_tokens) <= 4 or len(ref_norm) <= 14
+        strong_tokens = [t for t in expected_tokens if len(t) >= 2] or expected_tokens
+
+        # Search only in first 15 seconds.
+        candidate_indices = [
+            i for i, w in enumerate(words)
+            if 0.0 <= float(w["start"]) <= 15.0
+        ]
+
+        if not candidate_indices:
+            details.append({
+                "text": ref_text,
+                "changed": False,
+                "reason": "no-intro-words",
+            })
+            continue
+
+        start_min = min(candidate_indices)
+        start_max = max(candidate_indices)
+        min_len = max(1, len(expected_tokens) - 2)
+        max_len = len(expected_tokens) + (3 if is_short else 4)
+
+        best = None
+
+        for start_idx in range(start_min, start_max + 1):
+            start_time = float(words[start_idx]["start"])
+
+            # The first lyric should not drift wildly from LRCLIB,
+            # but allow a few seconds because LRCLIB itself may be imperfect.
+            if abs(start_time - ref_time) > 4.5:
+                continue
+
+            for length in range(min_len, max_len + 1):
+                end_idx = start_idx + length
+                if end_idx > len(words):
+                    break
+
+                candidate_tokens = [
+                    normalize_text(str(w["word"]))
+                    for w in words[start_idx:end_idx]
+                ]
+                candidate_text = " ".join(candidate_tokens)
+
+                text_score = difflib.SequenceMatcher(
+                    None, ref_norm, candidate_text
+                ).ratio()
+
+                candidate_set = set(candidate_tokens)
+                anchor_score = (
+                    sum(1 for t in strong_tokens if t in candidate_set)
+                    / len(strong_tokens)
+                    if strong_tokens
+                    else 0.0
+                )
+
+                time_distance = abs(start_time - ref_time)
+                timing_score = max(0.0, 1.0 - time_distance / 4.5)
+
+                # For very short lyric fragments, lexical evidence is noisy.
+                # Give a little more weight to timing and anchors.
+                if is_short:
+                    combined = (
+                        text_score * 0.38
+                        + anchor_score * 0.34
+                        + timing_score * 0.28
+                    )
+                else:
+                    combined = (
+                        text_score * 0.50
+                        + anchor_score * 0.30
+                        + timing_score * 0.20
+                    )
+
+                if best is None or combined > best[0]:
+                    best = (
+                        combined,
+                        text_score,
+                        anchor_score,
+                        timing_score,
+                        start_idx,
+                    )
+
+        if not best:
+            details.append({
+                "text": ref_text,
+                "changed": False,
+                "reason": "no-intro-match",
+                "lrclibTime": round(ref_time, 3),
+            })
+            continue
+
+        combined, text_score, anchor_score, timing_score, start_idx = best
+        new_time = float(words[start_idx]["start"])
+
+        # Find the next current line after this intro item.
+        next_times = sorted(
+            float(line.time)
+            for line in working
+            if float(line.time) > new_time + 0.20
+        )
+        next_time = next_times[0] if next_times else None
+
+        # Prevent overlap / impossible ordering.
+        next_safe = next_time is None or new_time < next_time - 0.35
+
+        if is_short:
+            lexical_ok = (
+                combined >= 0.48
+                and (text_score >= 0.30 or anchor_score >= 0.34)
+            )
+        else:
+            lexical_ok = (
+                combined >= 0.60
+                and (text_score >= 0.48 or anchor_score >= 0.50)
+            )
+
+        should_apply = lexical_ok and next_safe and new_time <= 15.0
+
+        if not should_apply:
+            details.append({
+                "text": ref_text,
+                "changed": False,
+                "reason": "intro-candidate-rejected",
+                "lrclibTime": round(ref_time, 3),
+                "candidateTime": round(new_time, 3),
+                "combinedScore": round(combined, 4),
+                "textScore": round(text_score, 4),
+                "anchorScore": round(anchor_score, 4),
+                "timingScore": round(timing_score, 4),
+                "nextSafe": next_safe,
+            })
+            continue
+
+        if existing_idx is not None:
+            old_time = float(working[existing_idx].time)
+            working[existing_idx] = AlignedLine(
+                time=round(new_time, 3),
+                text=working[existing_idx].text,
+            )
+            action = "repositioned"
+        else:
+            old_time = None
+            working.append(
+                AlignedLine(time=round(new_time, 3), text=ref_text)
+            )
+            action = "inserted"
+
+        recovered += 1
+        details.append({
+            "text": ref_text,
+            "changed": True,
+            "action": action,
+            "oldTime": round(old_time, 3) if old_time is not None else None,
+            "newTime": round(new_time, 3),
+            "lrclibTime": round(ref_time, 3),
+            "deltaSeconds": round(new_time - ref_time, 3),
+            "combinedScore": round(combined, 4),
+            "textScore": round(text_score, 4),
+            "anchorScore": round(anchor_score, 4),
+            "timingScore": round(timing_score, 4),
+        })
+
+    # Re-sort after possible insertion.
+    working = sorted(working, key=lambda line: float(line.time))
+
+    monotonic = all(
+        working[i].time < working[i + 1].time
+        for i in range(len(working) - 1)
+    )
+
+    if not monotonic:
+        return lines, {
+            "enabled": True,
+            "applied": False,
+            "reason": "intro-recovery-broke-monotonicity",
+            "attemptedCount": attempted,
+            "recoveredCount": 0,
+            "details": details,
+        }
+
+    return working, {
+        "enabled": True,
+        "applied": recovered > 0,
+        "attemptedCount": attempted,
+        "recoveredCount": recovered,
+        "details": details,
+    }
+
 def local_refine_lines(
     words: list[dict[str, Any]],
     lines: list[AlignedLine],
@@ -898,16 +1156,30 @@ def process_audio(audio_path: Path, transcript: str, synced_lyrics: str = "") ->
     # 1) diagnostic initial
     lrclib_delta_before = compare_with_lrclib(lines, lrclib_reference)
 
-    # 2) correction locale uniquement sur les gros écarts
-    refined_lines, refinement = local_refine_lines(
+    # 2) récupération spéciale intro 0-15 s
+    intro_lines, intro_recovery = recover_intro_lines(
         words,
         lines,
         transcript,
         lrclib_reference,
-        lrclib_delta_before,
     )
 
-    # 3) diagnostics finaux après éventuelle correction
+    # 3) nouveau diagnostic après récupération intro
+    lrclib_delta_after_intro = compare_with_lrclib(
+        intro_lines,
+        lrclib_reference,
+    )
+
+    # 4) correction locale uniquement sur les gros écarts restants
+    refined_lines, refinement = local_refine_lines(
+        words,
+        intro_lines,
+        transcript,
+        lrclib_reference,
+        lrclib_delta_after_intro,
+    )
+
+    # 5) diagnostics finaux après éventuelle correction
     lines = refined_lines
     lrclib_delta = compare_with_lrclib(lines, lrclib_reference)
     duplicates = detect_duplicate_aligned_lines(lines)
@@ -953,10 +1225,12 @@ def process_audio(audio_path: Path, transcript: str, synced_lyrics: str = "") ->
         "lowMemory": True,
         "pyannote": False,
         "whisperx": False,
-        "timingValidationVersion": "v1.8",
+        "timingValidationVersion": "v1.9",
         "lrclibTimingScore": round(lrclib_score, 4),
         "lrclibDeltaBeforeRefinement": lrclib_delta_before,
+        "lrclibDeltaAfterIntroRecovery": lrclib_delta_after_intro,
         "lrclibDelta": lrclib_delta,
+        "introRecovery": intro_recovery,
         "localRefinement": refinement,
         "finalConfidence": final_confidence_diag,
         "duplicateLines": duplicates,
@@ -979,7 +1253,7 @@ def root():
         "ok": True,
         "service": "mixparty-karaoke-sync-worker",
         "engine": "faster-whisper",
-        "version": "1.8",
+        "version": "1.9",
     }
 
 

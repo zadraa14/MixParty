@@ -1,23 +1,22 @@
-# MixParty Karaoke Sync Worker V1.8 — Safe Refinement
+# MixParty Karaoke Sync Worker V1.9 — Intro Recovery
 
-V1.8 rend la correction locale beaucoup plus stricte.
+Cette version cible uniquement un défaut observé sur ABCD :
+Faster-Whisper ratait la toute première ligne courte ("A-B, C-D") et
+l'accrochait beaucoup trop tard.
 
-## Sécurité
-- aucun déplacement supérieur à 2,0 secondes
-- cohérence obligatoire avec la ligne précédente et suivante
-- amélioration minimale de 0,25 seconde
-- matching lexical minimum
-- si l'ordre des timestamps casse, toutes les corrections locales sont annulées
+## Intro Recovery
+- analyse uniquement les 0 à 15 premières secondes
+- cible seulement les 3 premières lignes LRCLIB
+- ne touche pas à une ligne déjà à moins de 2,5 s de LRCLIB
+- stratégie spéciale pour les fragments très courts
+- contrôle obligatoire avec la ligne suivante
+- impossible d'insérer une ligne après 15 s
 
-## Confiance
-La confiance est maintenant recalculée APRÈS les corrections.
+## Pipeline
+1. alignement Faster-Whisper normal
+2. Intro Recovery
+3. Local Refinement V1.8
+4. recalcul complet de la confiance
+5. certification seulement si score >= 92 %
 
-Le score final combine :
-- couverture
-- continuité temporelle finale
-- progression
-- mots-ancres
-- similarité textuelle
-- validation croisée LRCLIB
-
-Le seuil reste 92 % et le Shadow Mode reste actif.
+Shadow Mode inchangé.
