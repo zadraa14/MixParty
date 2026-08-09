@@ -4274,9 +4274,74 @@ function normalizedPhraseTokens(value: string) {
   return normalizeMusicQuery(value).split(" ").filter(Boolean);
 }
 
+function normalizePreciseMatchText(value: string) {
+  return stripDiacritics(String(value || ""))
+    .toLowerCase()
+    .replace(/[’'`´]/g, "")
+    .replace(/\b(feat|featuring|ft|avec)\.?\b.*$/i, " ")
+    .replace(/\b(official|officiel|official audio|audio officiel|official video|clip officiel|lyrics?|paroles|topic|art track|remaster(?:ed)?)\b/gi, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizedPreciseTokens(value: string) {
+  return normalizePreciseMatchText(value).split(" ").filter(Boolean);
+}
+
 function tokensEqual(left: string[], right: string[]) {
   if (left.length !== right.length) return false;
   return left.every((token, index) => token === right[index]);
+}
+
+function tokenOverlapRatio(left: string[], right: string[]) {
+  if (!left.length || !right.length) return 0;
+
+  const rightCounts = new Map<string, number>();
+  for (const token of right) {
+    rightCounts.set(token, (rightCounts.get(token) || 0) + 1);
+  }
+
+  let overlap = 0;
+  for (const token of left) {
+    const count = rightCounts.get(token) || 0;
+    if (count <= 0) continue;
+    overlap += 1;
+    rightCounts.set(token, count - 1);
+  }
+
+  return overlap / Math.max(left.length, right.length);
+}
+
+function preciseTitleMatch(queryTitleTokens: string[], songTitle: string) {
+  const titleTokens = normalizedPreciseTokens(songTitle);
+  if (!queryTitleTokens.length || !titleTokens.length) return false;
+
+  if (tokensEqual(queryTitleTokens, titleTokens)) return true;
+
+  const queryJoined = queryTitleTokens.join(" ");
+  const titleJoined = titleTokens.join(" ");
+
+  // Tolère uniquement de petites différences de ponctuation / formes contractées /
+  // variantes mineures, jamais une simple ressemblance vague.
+  if (
+    queryJoined.length >= 6 &&
+    titleJoined.length >= 6 &&
+    (queryJoined === titleJoined ||
+      queryJoined.includes(titleJoined) ||
+      titleJoined.includes(queryJoined))
+  ) {
+    const lengthRatio =
+      Math.min(queryJoined.length, titleJoined.length) /
+      Math.max(queryJoined.length, titleJoined.length);
+
+    if (lengthRatio >= 0.92) return true;
+  }
+
+  const overlap = tokenOverlapRatio(queryTitleTokens, titleTokens);
+  const sameLengthWindow = Math.abs(queryTitleTokens.length - titleTokens.length) <= 1;
+
+  return overlap >= 0.92 && sameLengthWindow;
 }
 
 function removeArtistTokensFromQuery(query: string, artistName: string) {
@@ -4321,15 +4386,10 @@ function musicBrainStrongArtistTitleMatches(
     const remainingQueryTokens = removeArtistTokensFromQuery(query, artistName);
     if (!remainingQueryTokens?.length) continue;
 
-    const titleTokens = normalizedPhraseTokens(title);
-    if (!titleTokens.length) continue;
-
-    // Règle volontairement stricte :
-    // on évite YouTube seulement si la recherche correspond réellement
-    // à "artiste + titre" (ou "titre + artiste").
-    // Une recherche approximative continue vers YouTube afin de ne jamais
-    // rendre le catalogue MixParty plus pauvre que YouTube.
-    if (tokensEqual(remainingQueryTokens, titleTokens)) {
+    // Règle volontairement stricte mais tolérante aux petites différences :
+    // ponctuation, apostrophes, tirets et variantes techniques YouTube.
+    // Une recherche approximative continue toujours vers YouTube.
+    if (preciseTitleMatch(remainingQueryTokens, title)) {
       matches.push(result);
     }
   }
