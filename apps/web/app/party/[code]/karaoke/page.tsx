@@ -55,8 +55,8 @@ type PlaybackState = {
 
 const DEFAULT_COVER = "/branding/icon.png";
 const KARAOKE_FLOW_LEAD_SECONDS = 0.38;
-const KARAOKE_FLOW_WINDOW = 4;
-const KARAOKE_FLOW_LINE_GAP_PX = 118;
+const KARAOKE_FLOW_WINDOW = 3;
+const KARAOKE_FLOW_LINE_GAP_PX = 205;
 
 function songArtwork(song?: Song | null) {
   return song?.coverStatus === "found" && song.coverUrl
@@ -501,7 +501,7 @@ export default function KaraokePartyPage() {
                         </div>
                       ) : null}
 
-                      <div className="relative flex-1 overflow-hidden px-5 sm:px-8">
+                      <div className="relative flex-1 overflow-hidden px-5 py-6 sm:px-8 sm:py-8">
                         <div className="pointer-events-none absolute inset-x-0 top-0 z-20 h-24 bg-gradient-to-b from-[#08060f] via-[#08060f]/65 to-transparent" />
                         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-24 bg-gradient-to-t from-[#05050d] via-[#05050d]/70 to-transparent" />
 
@@ -524,10 +524,10 @@ export default function KaraokePartyPage() {
                                   }}
                                 >
                                   <p
-                                    className={`mx-auto w-full max-w-[88%] break-words text-center text-balance font-black leading-[1.08] tracking-[-0.035em] ${
+                                    className={`mx-auto w-full max-w-[82%] break-words text-center text-balance font-black leading-[1.12] tracking-[-0.035em] ${
                                       isCenter
-                                        ? "bg-gradient-to-r from-fuchsia-300 via-pink-100 to-orange-200 bg-clip-text text-[clamp(2.5rem,5vw,5.7rem)] text-transparent drop-shadow-[0_0_28px_rgba(236,72,153,.20)]"
-                                        : "text-[clamp(1.35rem,2.45vw,2.45rem)] text-white/55"
+                                        ? "bg-gradient-to-r from-fuchsia-300 via-pink-100 to-orange-200 bg-clip-text text-[clamp(2.15rem,4.2vw,4.6rem)] text-transparent drop-shadow-[0_0_28px_rgba(236,72,153,.20)]"
+                                        : "text-[clamp(1.15rem,2vw,1.95rem)] text-white/55"
                                     }`}
                                   >
                                     {line.text}
