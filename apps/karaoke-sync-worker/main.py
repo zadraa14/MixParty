@@ -1,4 +1,5 @@
 import gc
+import json
 import os
 import re
 import subprocess
@@ -265,10 +266,55 @@ def health():
 @app.post("/align-upload", response_model=AlignResponse)
 async def align_upload(
     audio: UploadFile = File(...),
-    transcript: str = Form(...),
+    payload: Optional[str] = Form(default=None),
+    transcript: Optional[str] = Form(default=None),
     authorization: Optional[str] = Header(default=None),
 ):
+    """
+    Compatible avec l'API MixParty actuelle.
+
+    Formats acceptés :
+    1) payload=<JSON> + audio=<fichier>
+       -> payload.lyrics.plainLyrics ou payload.lyrics.syncedLyrics
+    2) transcript=<texte> + audio=<fichier>
+       -> mode direct / debug
+    """
     require_token(authorization)
+
+    resolved_transcript = (transcript or "").strip()
+    payload_data: dict[str, Any] = {}
+
+    if payload:
+        try:
+            payload_data = json.loads(payload)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Payload JSON invalide: {exc}",
+            )
+
+        lyrics = payload_data.get("lyrics") or {}
+        plain = str(lyrics.get("plainLyrics") or "").strip()
+        synced = str(lyrics.get("syncedLyrics") or "").strip()
+
+        if plain:
+            resolved_transcript = plain
+        elif synced:
+            # Retire les timestamps LRC afin que faster-whisper compare
+            # uniquement les paroles, puis recalcule ses propres timings.
+            cleaned_lines = []
+            for raw_line in synced.splitlines():
+                cleaned = re.sub(r"^\s*\[[0-9]{1,3}:[0-9]{2}(?:\.[0-9]{1,3})?\]\s*", "", raw_line)
+                cleaned = cleaned.strip()
+                if cleaned:
+                    cleaned_lines.append(cleaned)
+            resolved_transcript = "\n".join(cleaned_lines)
+
+    if not resolved_transcript:
+        raise HTTPException(
+            status_code=400,
+            detail="Aucune parole exploitable reçue (payload.lyrics ou transcript).",
+        )
 
     suffix = Path(audio.filename or "audio.mp3").suffix or ".mp3"
     with tempfile.TemporaryDirectory(prefix="mixparty-karaoke-") as td:
@@ -285,14 +331,31 @@ async def align_upload(
                     raise HTTPException(status_code=413, detail="Audio file too large")
                 f.write(chunk)
 
-        return process_audio(source, transcript)
+        result = process_audio(source, resolved_transcript)
+
+        # Ajoute quelques infos utiles de MixParty dans les diagnostics
+        # sans modifier le contrat de sortie.
+        if payload_data:
+            result.diagnostics["videoId"] = payload_data.get("videoId")
+            result.diagnostics["title"] = payload_data.get("title")
+            result.diagnostics["artistName"] = payload_data.get("artistName")
+            lyrics = payload_data.get("lyrics") or {}
+            result.diagnostics["lrclibId"] = lyrics.get("lrclibId")
+
+        return result
 
 
 @app.post("/align", response_model=AlignResponse)
 async def align_compat(
     audio: UploadFile = File(...),
-    transcript: str = Form(...),
+    payload: Optional[str] = Form(default=None),
+    transcript: Optional[str] = Form(default=None),
     authorization: Optional[str] = Header(default=None),
 ):
-    # Compatibility endpoint: same multipart contract as /align-upload.
-    return await align_upload(audio, transcript, authorization)
+    return await align_upload(
+        audio=audio,
+        payload=payload,
+        transcript=transcript,
+        authorization=authorization,
+    )
+

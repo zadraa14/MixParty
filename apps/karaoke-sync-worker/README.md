@@ -1,37 +1,21 @@
-# MixParty Karaoke Sync Worker V1.4
+# MixParty Karaoke Sync Worker V1.4.1 — API Compatible
 
-Remplacement du worker WhisperX/Pyannote par `faster-whisper`.
+Correction du HTTP 422 observé après le passage à faster-whisper.
 
-## Pourquoi
-Le worker Railway était tué pendant le chargement de WhisperX/Pyannote (`Killed`).
-Cette version supprime complètement Pyannote et WhisperX du runtime.
+## Cause
+L'API MixParty actuelle envoyait :
+- `payload` : JSON contenant notamment `lyrics.plainLyrics` / `lyrics.syncedLyrics`
+- `audio` : MP3
 
-## Pipeline
-1. FFmpeg -> mono PCM 16 kHz
-2. faster-whisper CPU/int8
-3. timestamps mot par mot
-4. alignement monotone avec les lignes LRCLIB
-5. score de confiance
-6. `publishable=true` uniquement si :
-   - confiance >= 92 %
-   - couverture >= 90 %
-   - timestamps strictement croissants
+La V1.4 attendait :
+- `transcript`
+- `audio`
 
-## Endpoints
-- `GET /`
-- `GET /health`
-- `POST /align`
-- `POST /align-upload`
+FastAPI rejetait donc la requête avec `422 Unprocessable Entity`.
 
-`/align` et `/align-upload` acceptent :
-- `audio` : fichier multipart
-- `transcript` : texte LRCLIB multipart
+## Correction
+`/align-upload` et `/align` acceptent maintenant les deux contrats :
+- `payload + audio` (MixParty actuel)
+- `transcript + audio` (debug/direct)
 
-## Railway
-Root Directory :
-`/apps/karaoke-sync-worker`
-
-Port :
-`8080`
-
-Les variables actuelles de MixParty peuvent rester identiques.
+Aucune modification de l'API MixParty ou de MusicBrain n'est nécessaire.
