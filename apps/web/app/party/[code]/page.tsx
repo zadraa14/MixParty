@@ -3067,11 +3067,11 @@ const canRemove =
                             </span>
                           </div>
 
-                          <div className={`mt-3 grid w-full min-w-0 max-w-full gap-2 md:hidden ${canRemove ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-1"}`}>
+                          <div className={`mt-3 grid w-full min-w-0 max-w-full gap-2 ${canRemove ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-1"}`}>
                             <button
                               type="button"
                               onClick={() => vote(originalIndex)}
-                              className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""} flex min-w-0 w-full items-center justify-center`}
+                              className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""} flex w-full min-w-0 max-w-full items-center justify-center overflow-hidden`}
                             >
                               <span className="vote-button__glow" aria-hidden="true" />
                               <span className="vote-button__plus">+1</span>
@@ -3095,45 +3095,6 @@ const canRemove =
                           </div>
                         </div>
 
-                        <div className="v53-queue-actions hidden min-w-0 shrink-0 md:flex">
-
-                          <div className="v53-vote-score">
-
-                            <p>
-                              {song.votes}
-                            </p>
-
-                            <p className="text-[10px] uppercase tracking-wider text-white/35">
-                              votes
-                            </p>
-
-                          </div>
-
-                          <button
-  onClick={() => vote(originalIndex)}
-  className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""} max-w-full`}
->
-  <span className="vote-button__glow" aria-hidden="true" />
-  <span className="vote-button__plus">+1</span>
-  <span className="relative z-10 flex items-center gap-1.5">
-    <ArrowBigUp className="h-4 w-4" />
-    Voter
-  </span>
-</button>
-
-{canRemove && (
-  <button
-    type="button"
-    onClick={() => removeSong(originalIndex, song)}
-    className="grid h-11 w-11 place-items-center rounded-xl border border-red-400/20 bg-red-500/10 text-red-200 transition hover:border-red-400/40 hover:bg-red-500/20"
-    aria-label={`Supprimer ${song.title}`}
-    title="Supprimer cette musique"
-  >
-    <Trash2 className="h-4 w-4" />
-  </button>
-)}
-
-                        </div>
 
                       </div>
                     );
@@ -4533,6 +4494,7 @@ const canRemove =
             grid-template-columns: auto auto minmax(0, 1fr) !important;
             column-gap: .65rem !important;
             align-items: start !important;
+            overflow: hidden !important;
           }
 
           .v53-queue-rank,
