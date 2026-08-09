@@ -282,6 +282,7 @@ export default function PartyPage() {
   const [karaokeHasMore, setKaraokeHasMore] = useState(false);
   const [karaokeLoadingMore, setKaraokeLoadingMore] = useState(false);
   const [karaokeDebouncedSearch, setKaraokeDebouncedSearch] = useState("");
+  const [karaokeUserInteracting, setKaraokeUserInteracting] = useState(false);
   const [searchInsight, setSearchInsight] = useState<null | {
     sampleSize: number;
     message: string;
@@ -1178,7 +1179,8 @@ export default function PartyPage() {
       // on ne charge plus tout le catalogue d'un coup.
       // 250 morceaux suffisent pour l'affichage initial, puis on charge la suite
       // uniquement si l'utilisateur la demande.
-      const pageSize = 250;
+      const isMobile = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+      const pageSize = isMobile ? 180 : 300;
       const offset = append ? karaokeLoadedOffset : 0;
 
       const params = new URLSearchParams();
@@ -1288,17 +1290,29 @@ export default function PartyPage() {
   useEffect(() => {
     if (!karaokeCatalog) return;
     if (!karaokeHasMore || karaokeLoadingMore || karaokeCatalogLoading) return;
+    if (karaokeUserInteracting) return;
 
-    // On charge le catalogue complet EN ARRIÈRE-PLAN, page par page.
-    // L'interface reste légère car les chansons des dossiers fermés
-    // ne sont toujours pas montées dans le DOM.
     if (karaokeBackgroundLoadTimerRef.current !== null) {
       window.clearTimeout(karaokeBackgroundLoadTimerRef.current);
     }
 
+    const isMobile = window.matchMedia("(max-width: 767px)").matches;
+    const delay = isMobile ? 900 : 260;
+
     karaokeBackgroundLoadTimerRef.current = window.setTimeout(() => {
-      void loadMoreKaraokeCatalog();
-    }, 180);
+      const run = () => {
+        if (!karaokeUserInteracting) {
+          void loadMoreKaraokeCatalog();
+        }
+      };
+
+      const requestIdle = (window as any).requestIdleCallback;
+      if (typeof requestIdle === "function") {
+        requestIdle(run, { timeout: 1200 });
+      } else {
+        run();
+      }
+    }, delay);
 
     return () => {
       if (karaokeBackgroundLoadTimerRef.current !== null) {
@@ -1312,6 +1326,7 @@ export default function PartyPage() {
     karaokeLoadingMore,
     karaokeCatalogLoading,
     karaokeDebouncedSearch,
+    karaokeUserInteracting,
   ]);
 
   function activateKaraokeMode() {
@@ -2473,6 +2488,10 @@ async function removeSong(index: number, song: Song) {
   function handleMobileTouchStart(event: React.TouchEvent<HTMLElement>) {
     const target = event.target as HTMLElement | null;
 
+    if (activeMobileTab === "karaoke") {
+      setKaraokeUserInteracting(true);
+    }
+
     // Les zones de défilement horizontal (ex. alphabet Karaoké A-Z)
     // doivent garder le geste pour elles-mêmes et ne jamais changer d'onglet.
     if (target?.closest?.('[data-mixparty-horizontal-scroll="true"]')) {
@@ -2486,6 +2505,10 @@ async function removeSong(index: number, song: Song) {
 
   function handleMobileTouchEnd(event: React.TouchEvent<HTMLElement>) {
     const target = event.target as HTMLElement | null;
+
+    if (activeMobileTab === "karaoke") {
+      window.setTimeout(() => setKaraokeUserInteracting(false), 220);
+    }
 
     if (target?.closest?.('[data-mixparty-horizontal-scroll="true"]')) {
       mobileSwipeStartRef.current = null;
@@ -2637,6 +2660,7 @@ async function removeSong(index: number, song: Song) {
               return (
                 <div
                   key={karaokeArtistFolderKey(artist)}
+                  data-karaoke-artist-folder="true"
                   className={`group w-full min-w-0 max-w-full overflow-hidden rounded-[24px] border bg-gradient-to-br from-white/[0.04] to-black/20 shadow-[0_14px_40px_rgba(0,0,0,.14)] ${
                     karaokeOpenArtists.has(karaokeArtistFolderKey(artist))
                       ? "border-fuchsia-300/20 bg-fuchsia-500/[0.035]"
@@ -2809,7 +2833,7 @@ async function removeSong(index: number, song: Song) {
 
   return (
     <main
-      className="v54-mobile-app relative isolate min-h-screen w-full max-w-full overflow-x-hidden bg-[#070711] font-[family:var(--font-geist-sans)] text-white"
+      className={`v54-mobile-app relative isolate min-h-screen w-full max-w-full overflow-x-hidden bg-[#070711] font-[family:var(--font-geist-sans)] text-white ${activeMobileTab === "karaoke" ? "v54-karaoke-mobile-active" : ""}`}
       onTouchStart={handleMobileTouchStart}
       onTouchEnd={handleMobileTouchEnd}
     >
@@ -4632,6 +4656,26 @@ const canRemove =
 
         .v53-queue-actions {
           flex-shrink: 0;
+        }
+
+        @media (max-width: 767px) {
+          .v54-karaoke-mobile-active .premium-glass-card::before,
+          .v54-karaoke-mobile-active .premium-glass-card::after {
+            animation: none !important;
+            display: none !important;
+          }
+
+          .v54-karaoke-mobile-active .premium-glass-card {
+            backdrop-filter: none !important;
+            -webkit-backdrop-filter: none !important;
+            box-shadow: 0 18px 48px rgba(0,0,0,.22) !important;
+          }
+
+          .v54-karaoke-mobile-active details,
+          .v54-karaoke-mobile-active [data-karaoke-artist-folder="true"] {
+            content-visibility: auto;
+            contain-intrinsic-size: 76px;
+          }
         }
 
         @media (max-width: 767px) {
