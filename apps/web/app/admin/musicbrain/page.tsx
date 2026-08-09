@@ -442,6 +442,7 @@ export default function MusicBrainAdminPage() {
   const [syncEngineTestMessage, setSyncEngineTestMessage] = useState("");
   const [syncEngineTestError, setSyncEngineTestError] = useState("");
   const [syncEngineResults, setSyncEngineResults] = useState<Record<string, any>>({});
+  const [syncEngineDiagnosticOpen, setSyncEngineDiagnosticOpen] = useState<Record<string, boolean>>({});
 
 
 
@@ -862,7 +863,7 @@ export default function MusicBrainAdminPage() {
     setSyncEngineTestVideoId(song.videoId);
     setSyncEngineTestError("");
     setSyncEngineTestMessage(
-      `WhisperX analyse ${song.artistName} — ${song.title}… Cela peut prendre plusieurs minutes sur CPU.`
+      `Faster-Whisper analyse ${song.artistName} — ${song.title}… Cela peut prendre quelques minutes sur CPU.`
     );
 
     try {
@@ -2622,8 +2623,9 @@ export default function MusicBrainAdminPage() {
                 {(karaokeReadySongs?.items || []).map((song) => (
                   <article
                     key={song.videoId}
-                    className="flex items-center gap-3 rounded-2xl border border-white/8 bg-black/20 p-3"
+                    className="rounded-2xl border border-white/8 bg-black/20 p-3"
                   >
+                    <div className="flex items-center gap-3">
                     <div className="h-14 w-14 shrink-0 overflow-hidden rounded-xl border border-white/8 bg-white/[0.03]">
                       {song.thumbnail ? (
                         <img
@@ -2656,12 +2658,36 @@ export default function MusicBrainAdminPage() {
                         ) : null}
                         {song.lrclibId ? <span>LRCLIB #{song.lrclibId}</span> : null}
                         {syncEngineResults[song.videoId] ? (
-                          <span className="rounded-full border border-cyan-300/15 bg-cyan-500/10 px-2 py-0.5 text-cyan-200">
-                            Sync Engine : {syncEngineResults[song.videoId]?.status}
-                            {Number.isFinite(Number(syncEngineResults[song.videoId]?.confidence))
-                              ? ` • ${Math.round(Number(syncEngineResults[song.videoId].confidence))}%`
-                              : ""}
-                          </span>
+                          <>
+                            <span
+                              className={`rounded-full border px-2 py-0.5 ${
+                                syncEngineResults[song.videoId]?.status === "certified"
+                                  ? "border-emerald-300/20 bg-emerald-500/10 text-emerald-200"
+                                  : syncEngineResults[song.videoId]?.status === "needs_review"
+                                    ? "border-amber-300/20 bg-amber-500/10 text-amber-200"
+                                    : "border-rose-300/20 bg-rose-500/10 text-rose-200"
+                              }`}
+                            >
+                              Sync Engine : {syncEngineResults[song.videoId]?.status}
+                              {Number.isFinite(Number(syncEngineResults[song.videoId]?.confidence))
+                                ? ` • ${Math.round(Number(syncEngineResults[song.videoId].confidence))}%`
+                                : ""}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setSyncEngineDiagnosticOpen((current) => ({
+                                  ...current,
+                                  [song.videoId]: !current[song.videoId],
+                                }))
+                              }
+                              className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-white/55 transition hover:bg-white/[0.08] hover:text-white/80"
+                            >
+                              {syncEngineDiagnosticOpen[song.videoId]
+                                ? "Masquer diagnostic"
+                                : "Voir diagnostic"}
+                            </button>
+                          </>
                         ) : null}
                       </div>
                     </div>
@@ -2687,6 +2713,173 @@ export default function MusicBrainAdminPage() {
                         }}
                       />
                     </label>
+                    </div>
+
+                    {syncEngineResults[song.videoId] &&
+                    syncEngineDiagnosticOpen[song.videoId] ? (
+                      <div className="mt-3 border-t border-white/8 pt-3">
+                        {(() => {
+                          const result = syncEngineResults[song.videoId];
+                          const diagnostics = result?.diagnostics || {};
+                          const alignedLines = Array.isArray(result?.alignedLines)
+                            ? result.alignedLines
+                            : [];
+
+                          const coveragePercent = Number.isFinite(
+                            Number(diagnostics.coverage)
+                          )
+                            ? Math.round(Number(diagnostics.coverage) * 1000) / 10
+                            : null;
+
+                          const similarityPercent = Number.isFinite(
+                            Number(diagnostics.averageSimilarity)
+                          )
+                            ? Math.round(
+                                Number(diagnostics.averageSimilarity) * 1000
+                              ) / 10
+                            : null;
+
+                          const wordProbabilityPercent = Number.isFinite(
+                            Number(diagnostics.averageWordProbability)
+                          )
+                            ? Math.round(
+                                Number(diagnostics.averageWordProbability) * 1000
+                              ) / 10
+                            : null;
+
+                          const cards = [
+                            [
+                              "Confiance",
+                              Number.isFinite(Number(result?.confidence))
+                                ? `${Math.round(Number(result.confidence) * 10) / 10}%`
+                                : "—",
+                            ],
+                            [
+                              "Couverture",
+                              coveragePercent !== null
+                                ? `${coveragePercent}%`
+                                : "—",
+                            ],
+                            [
+                              "Lignes alignées",
+                              Number.isFinite(
+                                Number(diagnostics.alignedLineCount)
+                              ) &&
+                              Number.isFinite(Number(diagnostics.lyricLineCount))
+                                ? `${diagnostics.alignedLineCount} / ${diagnostics.lyricLineCount}`
+                                : alignedLines.length
+                                  ? String(alignedLines.length)
+                                  : "—",
+                            ],
+                            [
+                              "Similarité moyenne",
+                              similarityPercent !== null
+                                ? `${similarityPercent}%`
+                                : "—",
+                            ],
+                            [
+                              "Timestamps",
+                              diagnostics.monotonic === true
+                                ? "✅ Croissants"
+                                : diagnostics.monotonic === false
+                                  ? "❌ Incohérents"
+                                  : "—",
+                            ],
+                            [
+                              "Probabilité mots",
+                              wordProbabilityPercent !== null
+                                ? `${wordProbabilityPercent}%`
+                                : "—",
+                            ],
+                            [
+                              "Moteur",
+                              String(result?.engine || "faster-whisper"),
+                            ],
+                            [
+                              "Modèle",
+                              String(diagnostics.model || "—"),
+                            ],
+                          ];
+
+                          return (
+                            <>
+                              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                                {cards.map(([label, value]) => (
+                                  <div
+                                    key={label}
+                                    className="rounded-xl border border-white/8 bg-black/25 px-3 py-2"
+                                  >
+                                    <p className="text-[9px] font-black uppercase tracking-[.14em] text-white/30">
+                                      {label}
+                                    </p>
+                                    <p className="mt-1 text-xs font-black text-white/80">
+                                      {value}
+                                    </p>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-bold text-white/35">
+                                {diagnostics.language ? (
+                                  <span>Langue : {String(diagnostics.language)}</span>
+                                ) : null}
+                                {Number.isFinite(Number(diagnostics.wordCount)) ? (
+                                  <span>• {diagnostics.wordCount} mots détectés</span>
+                                ) : null}
+                                {Number.isFinite(Number(diagnostics.durationSeconds)) ? (
+                                  <span>
+                                    • audio {Math.round(Number(diagnostics.durationSeconds))} s
+                                  </span>
+                                ) : null}
+                                {diagnostics.computeType ? (
+                                  <span>• {String(diagnostics.computeType)}</span>
+                                ) : null}
+                                {diagnostics.device ? (
+                                  <span>• {String(diagnostics.device)}</span>
+                                ) : null}
+                              </div>
+
+                              {alignedLines.length ? (
+                                <div className="mt-3 rounded-xl border border-cyan-300/10 bg-cyan-500/[0.04] p-3">
+                                  <p className="text-[9px] font-black uppercase tracking-[.16em] text-cyan-200/60">
+                                    Aperçu timings recalculés
+                                  </p>
+                                  <div className="mt-2 space-y-1">
+                                    {alignedLines.slice(0, 8).map(
+                                      (line: any, index: number) => (
+                                        <div
+                                          key={`${line?.time}-${index}`}
+                                          className="flex gap-3 text-[10px]"
+                                        >
+                                          <span className="w-14 shrink-0 font-mono font-black text-cyan-200/70">
+                                            {Number.isFinite(Number(line?.time))
+                                              ? `${Number(line.time).toFixed(2)}s`
+                                              : "—"}
+                                          </span>
+                                          <span className="min-w-0 flex-1 truncate text-white/55">
+                                            {String(line?.text || "")}
+                                          </span>
+                                        </div>
+                                      )
+                                    )}
+                                  </div>
+                                  {alignedLines.length > 8 ? (
+                                    <p className="mt-2 text-[9px] font-bold text-white/25">
+                                      + {alignedLines.length - 8} ligne(s) alignée(s)
+                                    </p>
+                                  ) : null}
+                                </div>
+                              ) : null}
+
+                              <p className="mt-3 text-[10px] leading-4 text-white/30">
+                                Shadow Mode : ces timings sont uniquement diagnostiqués.
+                                Ils ne remplacent pas encore les paroles du Karaoké public.
+                              </p>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    ) : null}
                   </article>
                 ))}
 
