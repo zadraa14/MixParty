@@ -5,60 +5,87 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
   <title>MixParty Cast</title>
   <style>
-    :root {
-      color-scheme: dark;
+    :root{
+      color-scheme:dark;
       --bg:#05050d;
-      --panel:rgba(12,9,24,.82);
+      --panel:rgba(9,7,20,.72);
+      --panel2:rgba(15,10,30,.62);
       --border:rgba(255,255,255,.10);
       --muted:rgba(255,255,255,.46);
-      --purple:#a855f7;
+      --purple:#8b5cf6;
       --pink:#ec4899;
       --orange:#fb923c;
       --cyan:#67e8f9;
       --green:#6ee7b7;
+      --safe-x:2.4vw;
+      --safe-y:2.1vh;
     }
     *{box-sizing:border-box}
-    html,body{width:100%;height:100%;margin:0;overflow:hidden;background:var(--bg);color:white;font-family:Arial,Helvetica,sans-serif}
+    html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#05050d;color:#fff;font-family:Arial,Helvetica,sans-serif}
     body{position:relative}
-    button{font:inherit}
     .hidden{display:none!important}
-    .backdrop{position:fixed;inset:-8%;background-size:cover;background-position:center;filter:blur(90px);opacity:.24;transform:scale(1.12);transition:background-image .7s ease}
+    .backdrop{position:fixed;inset:-3%;background-size:cover;background-position:center;filter:blur(28px) saturate(1.18);opacity:.22;transform:scale(1.06);transition:background-image .7s ease}
     .veil{position:fixed;inset:0;background:
-      radial-gradient(circle at 28% 20%,rgba(168,85,247,.18),transparent 32%),
-      radial-gradient(circle at 82% 76%,rgba(249,115,22,.11),transparent 28%),
-      linear-gradient(180deg,rgba(5,5,13,.58),rgba(5,5,13,.96))}
-    .gridfx{position:fixed;inset:0;opacity:.035;background-image:linear-gradient(rgba(255,255,255,.6) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.6) 1px,transparent 1px);background-size:58px 58px}
-    #boot{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:36px}
-    .boot-card{width:min(720px,88vw);padding:34px;text-align:center;border:1px solid var(--border);border-radius:34px;background:rgba(11,8,22,.90);box-shadow:0 35px 110px rgba(0,0,0,.5)}
-    .boot-card img{width:90px;height:90px;object-fit:contain}
-    .boot-card h1{font-size:38px;margin:14px 0 8px}.boot-card p{color:var(--muted);margin:0}
-    .status-pill{display:inline-flex;margin-top:20px;padding:9px 14px;border:1px solid rgba(110,231,183,.18);border-radius:999px;background:rgba(16,185,129,.1);color:#a7f3d0;font-weight:900;font-size:13px}
-    #tv,#karaoke{position:fixed;inset:0;z-index:10}
-    #tv{padding:24px 34px 22px;display:flex;flex-direction:column}
-    .header{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:22px;min-height:72px}
-    .brand{display:flex;align-items:center;gap:14px}.brand img{width:58px;height:58px;object-fit:contain}.brand strong{font-size:29px;letter-spacing:.12em}.brand strong span{color:#d946ef}.brand em{font-style:normal;font-size:10px;font-weight:900;letter-spacing:.2em;color:#c4b5fd;border:1px solid rgba(196,181,253,.18);border-radius:999px;padding:6px 9px}
-    .headstats{display:flex;gap:12px}.stat{min-width:145px;padding:10px 14px;border:1px solid var(--border);border-radius:16px;background:rgba(255,255,255,.045)}.stat b{display:block;font-size:20px}.stat span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.12em}
-    .sync{justify-self:end;font-size:11px;font-weight:900;color:#a7f3d0}
-    .main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1.52fr) minmax(360px,.72fr);gap:22px;margin-top:16px}
-    .now,.queue-panel{border:1px solid var(--border);border-radius:30px;background:rgba(8,6,18,.58);box-shadow:0 26px 80px rgba(0,0,0,.28);backdrop-filter:blur(24px)}
-    .now{padding:24px;display:flex;flex-direction:column}.pill{width:max-content;border:1px solid rgba(236,72,153,.22);border-radius:999px;background:rgba(236,72,153,.1);padding:6px 10px;color:#f0abfc;font-size:10px;font-weight:900;letter-spacing:.16em}
-    .nowgrid{flex:1;min-height:0;display:grid;grid-template-columns:minmax(260px,.78fr) minmax(0,1.3fr);gap:30px;align-items:center}
-    .coverwrap{position:relative;display:grid;place-items:center}.coverglow{position:absolute;width:78%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,rgba(168,85,247,.35),transparent 70%);filter:blur(26px)}
-    .cover{position:relative;width:min(31vw,430px);aspect-ratio:1;object-fit:cover;border-radius:30px;border:1px solid rgba(255,255,255,.12);box-shadow:0 28px 70px rgba(0,0,0,.48)}
-    .track{min-width:0}.track h1{margin:0;font-size:clamp(34px,4vw,68px);line-height:.98;letter-spacing:-.045em;max-height:2.05em;overflow:hidden}.track .artist{margin-top:14px;font-size:clamp(18px,2vw,28px);font-weight:700;color:rgba(255,255,255,.54);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-    .progress-row{margin-top:28px;display:grid;grid-template-columns:54px 1fr 54px;gap:12px;align-items:center;font-size:12px;font-weight:900;color:rgba(255,255,255,.54)}
-    .progress{height:7px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#7c3aed,#ec4899,#fb923c);box-shadow:0 0 18px rgba(236,72,153,.45);transition:width .45s linear}
-    .wave{height:82px;margin-top:22px;display:flex;align-items:center;gap:5px;overflow:hidden}.wave span{flex:1;min-width:3px;border-radius:999px;background:linear-gradient(to top,#7c3aed,#ec4899,#fb923c);opacity:.62;animation:wave 1.25s ease-in-out infinite;transform-origin:center}
-    @keyframes wave{0%,100%{transform:scaleY(.36);opacity:.38}50%{transform:scaleY(1);opacity:.9}}
-    .meta{margin-top:14px;display:flex;gap:12px;flex-wrap:wrap}.chip{padding:9px 12px;border:1px solid var(--border);border-radius:999px;background:rgba(255,255,255,.04);font-size:11px;font-weight:900;color:rgba(255,255,255,.66)}
-    .queue-panel{padding:20px;overflow:hidden}.queue-head{display:flex;justify-content:space-between;gap:12px;font-size:10px;font-weight:900;letter-spacing:.16em;color:#c4b5fd}.queue-list{margin-top:15px;display:grid;gap:9px}
-    .qitem{display:grid;grid-template-columns:28px 54px minmax(0,1fr) 44px;gap:10px;align-items:center;padding:9px;border:1px solid rgba(255,255,255,.07);border-radius:17px;background:rgba(255,255,255,.025)}.qitem.next{border-color:rgba(168,85,247,.28);background:rgba(168,85,247,.08)}.qrank{font-weight:900;color:#c4b5fd}.qitem img{width:54px;height:54px;border-radius:13px;object-fit:cover}.qcopy{min-width:0}.qcopy strong,.qcopy small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qcopy strong{font-size:13px}.qcopy small{margin-top:4px;font-size:10px;color:var(--muted)}.qvote{text-align:center;font-weight:900;color:#f0abfc}
-    .footer{margin-top:16px;display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:16px}.join{font-weight:900}.join small{display:block;margin-top:4px;color:var(--muted);font-weight:700}.codebox{padding:11px 15px;border:1px solid var(--border);border-radius:16px;background:rgba(255,255,255,.045);text-align:center}.codebox small{display:block;font-size:9px;color:var(--muted);letter-spacing:.12em}.codebox b{font-size:19px;letter-spacing:.16em}.energy{padding:10px 14px;border:1px solid rgba(103,232,249,.16);border-radius:16px;background:rgba(34,211,238,.06);min-width:130px}.energy small{display:block;color:var(--muted);font-size:9px}.energy b{font-size:18px;color:#cffafe}
-    #karaoke{padding:24px 34px;display:flex;flex-direction:column}
-    .khead{display:flex;align-items:center;justify-content:space-between}.ktitle{display:flex;align-items:center;gap:14px}.ktitle img{width:58px;height:58px;border-radius:16px;object-fit:cover}.ktitle h1{margin:0;font-size:25px}.ktitle p{margin:5px 0 0;color:var(--muted);font-weight:700}
-    .lyrics{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:34px}.lyrics .prev{font-size:22px;color:rgba(255,255,255,.18);font-weight:900}.lyrics .current{margin-top:22px;font-size:clamp(48px,7vw,110px);line-height:1.02;font-weight:900;letter-spacing:-.05em;background:linear-gradient(90deg,#f0abfc,#fbcfe8,#fed7aa);-webkit-background-clip:text;background-clip:text;color:transparent;max-width:1400px}.lyrics .next{margin-top:34px;font-size:clamp(30px,4vw,58px);font-weight:900;color:rgba(245,208,254,.42);max-width:1200px}.lyric-progress{margin-top:24px;width:min(850px,70vw);height:6px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.lyric-progress i{display:block;height:100%;background:linear-gradient(90deg,#7c3aed,#ec4899,#fb923c);width:0;transition:width .12s linear}
-    .kstatus{font-size:12px;font-weight:900;color:#a7f3d0}
-    .emptylyrics{font-size:32px;font-weight:900;color:rgba(255,255,255,.54)}
+      radial-gradient(circle at 18% 20%,rgba(80,70,255,.22),transparent 30%),
+      radial-gradient(circle at 64% 18%,rgba(236,72,153,.16),transparent 30%),
+      linear-gradient(180deg,rgba(5,5,13,.28),rgba(5,5,13,.90))}
+    .gridfx{position:fixed;inset:0;opacity:.032;background-image:linear-gradient(rgba(255,255,255,.55) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.55) 1px,transparent 1px);background-size:4vw 4vw}
+    #boot{position:fixed;inset:0;z-index:50;display:grid;place-items:center;padding:5vh 5vw}
+    .boot-card{width:min(46vw,760px);padding:4vh 3vw;text-align:center;border:1px solid var(--border);border-radius:2vw;background:rgba(10,7,22,.88);box-shadow:0 4vh 10vh rgba(0,0,0,.5)}
+    .boot-card img{width:min(8vw,96px);height:min(8vw,96px);object-fit:contain}
+    .boot-card h1{font-size:clamp(26px,2.5vw,44px);margin:1.6vh 0 .7vh}
+    .boot-card p{color:var(--muted);margin:0;font-size:clamp(14px,1.1vw,20px)}
+    .status-pill{display:inline-flex;margin-top:2.1vh;padding:.8vh .9vw;border:1px solid rgba(110,231,183,.18);border-radius:999px;background:rgba(16,185,129,.1);color:#a7f3d0;font-weight:900;font-size:clamp(11px,.8vw,14px)}
+
+    #tv{position:fixed;inset:0;z-index:10;padding:var(--safe-y) var(--safe-x);display:grid;grid-template-rows:auto 1fr auto;gap:1.4vh}
+    .header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:2vw;min-height:7.6vh}
+    .brand{display:flex;align-items:center;gap:1vw;min-width:0}.brand img{width:4.4vw;max-width:72px;aspect-ratio:1;object-fit:contain}.brand strong{font-size:clamp(24px,2.2vw,42px);letter-spacing:.11em;white-space:nowrap}.brand strong span{color:#d946ef}.brand em{font-style:normal;font-size:clamp(9px,.68vw,12px);font-weight:900;letter-spacing:.18em;color:#ddd6fe;border:1px solid rgba(196,181,253,.20);border-radius:999px;padding:.65vh .7vw;white-space:nowrap}
+    .header-right{display:flex;align-items:center;gap:.9vw}
+    .headstats{display:flex;gap:.7vw}.stat{min-width:9.6vw;padding:.75vh .85vw;border:1px solid var(--border);border-radius:1vw;background:rgba(255,255,255,.045)}.stat b{display:block;font-size:clamp(18px,1.45vw,28px)}.stat span{font-size:clamp(8px,.55vw,10px);color:var(--muted);text-transform:uppercase;letter-spacing:.11em}
+    .sync{font-size:clamp(9px,.64vw,11px);font-weight:900;color:#a7f3d0;white-space:nowrap}
+
+    .main{min-height:0;display:grid;grid-template-columns:minmax(0,1.9fr) minmax(290px,.72fr);gap:1.3vw}
+    .stage,.queue-panel{min-height:0;border:1px solid var(--border);border-radius:1.55vw;background:rgba(7,5,17,.48);box-shadow:0 2.2vh 7vh rgba(0,0,0,.26);backdrop-filter:blur(18px)}
+    .stage{position:relative;overflow:hidden;padding:1.3vw}
+    .stage-bg{position:absolute;inset:0;background:
+      linear-gradient(90deg,rgba(8,5,18,.82),rgba(8,5,18,.24) 46%,rgba(8,5,18,.54)),
+      radial-gradient(circle at 35% 30%,rgba(99,102,241,.32),transparent 34%),
+      radial-gradient(circle at 62% 58%,rgba(236,72,153,.20),transparent 30%)}
+    .stage-grid{position:relative;z-index:2;height:100%;display:grid;grid-template-columns:minmax(220px,.42fr) minmax(0,1.05fr);gap:1.7vw;align-items:center}
+    .cover-zone{display:grid;place-items:center;min-width:0}.cover-glow{position:absolute;width:22vw;height:22vw;border-radius:50%;background:radial-gradient(circle,rgba(236,72,153,.28),transparent 70%);filter:blur(2.5vw)}
+    .cover{position:relative;width:min(25vw,34vh);aspect-ratio:1;object-fit:cover;border-radius:1.35vw;border:1px solid rgba(255,255,255,.12);box-shadow:0 2.4vh 5.5vh rgba(0,0,0,.5)}
+    .track{min-width:0;padding-right:.5vw}.eyebrow{display:inline-flex;padding:.55vh .7vw;border:1px solid rgba(236,72,153,.18);border-radius:999px;background:rgba(236,72,153,.08);color:#f0abfc;font-size:clamp(8px,.56vw,10px);font-weight:900;letter-spacing:.16em}
+    .track h1{margin:1.1vh 0 0;font-size:clamp(34px,3.9vw,72px);line-height:.97;letter-spacing:-.05em;max-height:1.95em;overflow:hidden;text-wrap:balance}
+    .track .artist{margin-top:1vh;font-size:clamp(18px,1.65vw,30px);font-weight:800;color:rgba(255,255,255,.68);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .progress-row{margin-top:3vh;display:grid;grid-template-columns:4.3vw 1fr 4.3vw;gap:.7vw;align-items:center;font-size:clamp(9px,.62vw,12px);font-weight:900;color:rgba(255,255,255,.6)}
+    .progress{height:.48vh;min-height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.progress i{display:block;height:100%;width:0;background:linear-gradient(90deg,#7c3aed,#ec4899,#fb923c);box-shadow:0 0 1.2vw rgba(236,72,153,.42);transition:width .18s linear}
+    .wave{height:8.2vh;margin-top:1.8vh;display:flex;align-items:center;gap:.22vw;overflow:hidden}.wave span{flex:1;min-width:2px;border-radius:999px;background:linear-gradient(to top,#7c3aed,#ec4899,#fb923c);opacity:.60;animation:wave 1.05s ease-in-out infinite;transform-origin:center}
+    @keyframes wave{0%,100%{transform:scaleY(.30);opacity:.34}50%{transform:scaleY(1);opacity:.92}}
+    .meta{margin-top:1.4vh;display:flex;gap:.6vw;flex-wrap:wrap}.chip{padding:.72vh .75vw;border:1px solid var(--border);border-radius:999px;background:rgba(255,255,255,.045);font-size:clamp(8px,.58vw,11px);font-weight:900;color:rgba(255,255,255,.68)}
+
+    .queue-panel{padding:1.1vw;overflow:hidden}.queue-head{display:flex;justify-content:space-between;gap:.6vw;font-size:clamp(8px,.55vw,10px);font-weight:900;letter-spacing:.14em;color:#ddd6fe}.queue-list{margin-top:1vh;display:grid;gap:.75vh;max-height:calc(100% - 2.2vh);overflow:hidden}
+    .qitem{display:grid;grid-template-columns:2vw 3.4vw minmax(0,1fr) 3vw;gap:.55vw;align-items:center;padding:.65vh .55vw;border:1px solid rgba(255,255,255,.07);border-radius:.95vw;background:rgba(255,255,255,.025);min-height:5.4vh}.qitem.next{border-color:rgba(168,85,247,.32);background:rgba(168,85,247,.085)}.qrank{font-weight:900;color:#c4b5fd;font-size:clamp(10px,.72vw,14px)}.qitem img{width:3.4vw;max-width:54px;aspect-ratio:1;border-radius:.68vw;object-fit:cover}.qcopy{min-width:0}.qcopy strong,.qcopy small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.qcopy strong{font-size:clamp(10px,.72vw,14px)}.qcopy small{margin-top:.25vh;font-size:clamp(8px,.52vw,10px);color:var(--muted)}.qvote{text-align:center;font-weight:900;color:#f0abfc;font-size:clamp(10px,.72vw,14px)}
+
+    .footer{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;align-items:center;gap:.8vw;min-height:7vh;padding:0 .25vw}.join{font-weight:900;font-size:clamp(10px,.7vw,13px)}.join small{display:block;margin-top:.35vh;color:var(--muted);font-weight:700;font-size:clamp(8px,.54vw,10px)}.codebox,.energy,.ambiance{padding:.7vh .8vw;border:1px solid var(--border);border-radius:.85vw;background:rgba(255,255,255,.04);min-width:7.5vw}.codebox{text-align:center}.codebox small,.energy small,.ambiance small{display:block;font-size:clamp(7px,.47vw,9px);color:var(--muted);letter-spacing:.1em}.codebox b{font-size:clamp(15px,1.1vw,20px);letter-spacing:.14em}.energy b,.ambiance b{font-size:clamp(14px,1.0vw,19px)}.energy b{color:#cffafe}.ambiance b{color:#d8b4fe}
+
+    #karaoke{position:fixed;inset:0;z-index:10;padding:var(--safe-y) var(--safe-x);display:grid;grid-template-rows:auto auto 1fr;gap:1.6vh}
+    .khead{display:flex;align-items:center;justify-content:space-between}
+    .ktitle{display:grid;grid-template-columns:5.2vw minmax(0,1fr);align-items:center;gap:1vw;padding:1vh 1vw;border:1px solid var(--border);border-radius:1.1vw;background:rgba(255,255,255,.035)}.ktitle img{width:5.2vw;max-width:80px;aspect-ratio:1;border-radius:.8vw;object-fit:cover}.ktitle h1{margin:0;font-size:clamp(22px,2vw,36px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.ktitle p{margin:.4vh 0 0;color:var(--muted);font-weight:800;font-size:clamp(12px,.9vw,16px)}
+    .lyrics{min-height:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:2vh 4vw}
+    .lyrics .prev{font-size:clamp(16px,1.45vw,26px);color:rgba(255,255,255,.16);font-weight:900;max-width:88vw}
+    .lyrics .current{margin-top:2vh;font-size:clamp(42px,5.6vw,100px);line-height:1.02;font-weight:900;letter-spacing:-.045em;background:linear-gradient(90deg,#f0abfc,#fbcfe8,#fed7aa);-webkit-background-clip:text;background-clip:text;color:transparent;max-width:88vw;max-height:2.05em;overflow:hidden;text-wrap:balance}
+    .lyrics .next{margin-top:2.6vh;font-size:clamp(26px,3vw,54px);line-height:1.05;font-weight:900;color:rgba(245,208,254,.38);max-width:84vw;max-height:2.1em;overflow:hidden;text-wrap:balance}
+    .lyric-progress{margin-top:2.2vh;width:min(62vw,900px);height:.48vh;min-height:5px;border-radius:999px;background:rgba(255,255,255,.08);overflow:hidden}.lyric-progress i{display:block;height:100%;background:linear-gradient(90deg,#7c3aed,#ec4899,#fb923c);width:0;transition:width .06s linear}
+    .kstatus{font-size:clamp(9px,.62vw,11px);font-weight:900;color:#a7f3d0}
+
+    @media (max-aspect-ratio: 16/10){
+      :root{--safe-x:2.1vw;--safe-y:1.8vh}
+      .main{grid-template-columns:minmax(0,1.72fr) minmax(270px,.72fr)}
+      .cover{width:min(24vw,31vh)}
+      .track h1{font-size:clamp(30px,3.4vw,62px)}
+      .footer{grid-template-columns:minmax(0,1fr) auto auto}
+      .ambiance{display:none}
+    }
   </style>
 </head>
 <body>
@@ -75,27 +102,58 @@
 
   <section id="tv" class="hidden">
     <header class="header">
-      <div class="brand"><img src="/branding/icon.png"><strong>MIX<span>PARTY</span></strong><em>MODE TV</em></div>
-      <div class="headstats"><div class="stat"><b id="participants">0</b><span>participants</span></div><div class="stat"><b id="votes">0</b><span>votes en direct</span></div></div>
-      <div class="sync" id="sync-status">● SYNCHRONISÉ</div>
+      <div class="brand">
+        <img src="/branding/icon.png" alt="MixParty">
+        <strong>MIX<span>PARTY</span></strong>
+        <em>MODE TV</em>
+      </div>
+      <div class="header-right">
+        <div class="headstats">
+          <div class="stat"><b id="participants">0</b><span>participants</span></div>
+          <div class="stat"><b id="votes">0</b><span>votes en direct</span></div>
+        </div>
+        <div class="sync" id="sync-status">● SYNCHRONISÉ</div>
+      </div>
     </header>
+
     <main class="main">
-      <section class="now">
-        <div class="pill">EN COURS</div>
-        <div class="nowgrid">
-          <div class="coverwrap"><div class="coverglow"></div><img class="cover" id="cover" src="/branding/icon.png"></div>
+      <section class="stage">
+        <div class="stage-bg"></div>
+        <div class="stage-grid">
+          <div class="cover-zone">
+            <div class="cover-glow"></div>
+            <img class="cover" id="cover" src="/branding/icon.png" alt="">
+          </div>
           <div class="track">
+            <span class="eyebrow">EN COURS</span>
             <h1 id="title">La soirée démarre bientôt</h1>
             <div class="artist" id="artist">MixParty</div>
-            <div class="progress-row"><span id="time-current">0:00</span><div class="progress"><i id="progress"></i></div><span id="time-total">LIVE</span></div>
+            <div class="progress-row">
+              <span id="time-current">0:00</span>
+              <div class="progress"><i id="progress"></i></div>
+              <span id="time-total">LIVE</span>
+            </div>
             <div class="wave" id="wave"></div>
-            <div class="meta"><span class="chip" id="addedby">Ajouté par MixParty</span><span class="chip" id="currentvotes">0 vote</span></div>
+            <div class="meta">
+              <span class="chip" id="addedby">Ajouté par MixParty</span>
+              <span class="chip" id="currentvotes">0 vote</span>
+            </div>
           </div>
         </div>
       </section>
-      <aside class="queue-panel"><div class="queue-head"><span>PROCHAINS MORCEAUX</span><span>VOTES EN TEMPS RÉEL</span></div><div class="queue-list" id="queue"></div></aside>
+
+      <aside class="queue-panel">
+        <div class="queue-head"><span>PROCHAINS MORCEAUX</span><span>VOTES EN TEMPS RÉEL</span></div>
+        <div class="queue-list" id="queue"></div>
+      </aside>
     </main>
-    <footer class="footer"><div class="join">AJOUTEZ VOS MORCEAUX ET VOTEZ !<small>Rejoignez la soirée sur mixpartyapp.fr</small></div><div class="codebox"><small>CODE SOIRÉE</small><b id="partycode">—</b></div><div class="energy"><small>ÉNERGIE</small><b id="energy">—</b></div></footer>
+
+    <footer class="footer">
+      <div class="join">AJOUTEZ VOS MORCEAUX ET VOTEZ !<small>Rejoignez la soirée sur mixpartyapp.fr</small></div>
+      <div class="codebox"><small>CODE SOIRÉE</small><b id="partycode">—</b></div>
+      <div class="energy"><small>ÉNERGIE</small><b id="energy">—</b></div>
+      <div class="ambiance"><small>AMBIANCE</small><b id="ambiance">MixParty</b></div>
+    </footer>
   </section>
 
   <section id="karaoke" class="hidden">
@@ -115,6 +173,7 @@
     let lyrics = null;
     let lyricsVideoId = "";
     let playback = {videoId:"",time:0,duration:0,state:2,receivedAt:Date.now()};
+    let displayClock = {time:0,lastAt:performance.now(),initialized:false};
 
     for(let i=0;i<56;i++){const s=document.createElement("span");s.style.height=(24+((i*23)%72))+"%";s.style.animationDelay=((i%14)*62)+"ms";$("wave").appendChild(s)}
 
@@ -155,6 +214,11 @@
       $("votes").textContent=totalVotes(q);
       $("partycode").textContent=party.code||partyCode;
       $("energy").textContent=energyFor(party,q)+"%";
+      $("ambiance").textContent =
+        party?.intelligence?.dominantStyle ||
+        party?.partyBrain?.dominantStyle ||
+        party?.currentSong?.artistName ||
+        "MixParty";
       $("title").textContent=current?.title||"La soirée démarre bientôt";
       $("artist").textContent=current?.artistName||current?.addedBy||"MixParty";
       $("cover").src=art(current); $("kcover").src=art(current);
@@ -164,7 +228,7 @@
       $("ktitle").textContent=current?.title||"MixParty Karaoké";
       $("kartist").textContent=current?.artistName||current?.addedBy||"En attente du morceau…";
 
-      $("queue").innerHTML=q.slice(0,9).map((s,i)=>`
+      $("queue").innerHTML=q.slice(0,8).map((s,i)=>`
         <div class="qitem ${i===0?"next":""}">
           <span class="qrank">${i+1}</span>
           <img src="${esc(art(s))}">
@@ -176,10 +240,38 @@
       if(currentVid && currentVid!==lyricsVideoId){lyricsVideoId="";lyrics=null;if(displayMode==="karaoke")ensureLyrics()}
     }
 
-    function currentPlaybackTime(){
+    function targetPlaybackTime(){
       if(!playback.videoId)return 0;
       if(playback.state===1)return Math.max(0,playback.time+(Date.now()-playback.receivedAt)/1000);
       return Math.max(0,playback.time);
+    }
+
+    function currentPlaybackTime(){
+      const now=performance.now();
+      const dt=Math.max(0,(now-displayClock.lastAt)/1000);
+      displayClock.lastAt=now;
+
+      const target=targetPlaybackTime();
+
+      if(!displayClock.initialized){
+        displayClock.time=target;
+        displayClock.initialized=true;
+        return displayClock.time;
+      }
+
+      if(playback.state===1){
+        displayClock.time+=dt;
+      }
+
+      const drift=target-displayClock.time;
+
+      if(Math.abs(drift)>1.4){
+        displayClock.time=target;
+      }else{
+        displayClock.time+=drift*Math.min(.18,dt*4.2);
+      }
+
+      return Math.max(0,displayClock.time);
     }
 
     function renderPlayback(){
@@ -237,8 +329,13 @@
         if(p.type==="mixparty_playback"){
           if(p.partyCode&&!partyCode)startParty(p.partyCode,p.mode||"tv");
           if(p.mode&&p.mode!==displayMode)showMode(p.mode);
+          const nextVideoId=String(p.videoId||"");
+          if(nextVideoId!==playback.videoId){
+            displayClock.initialized=false;
+          }
+
           playback={
-            videoId:String(p.videoId||""),
+            videoId:nextVideoId,
             time:Math.max(0,Number(p.time||0)),
             duration:Math.max(0,Number(p.duration||0)),
             state:Number(p.state??2),
