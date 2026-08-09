@@ -6296,6 +6296,12 @@ const karaokeSyncEngineQueue: string[] = [];
 const karaokeSyncEngineQueuedIds = new Set<string>();
 let karaokeSyncEngineWorkerRunning = false;
 
+// V1.2 TEST AUDIO
+// URL audio autorisée fournie manuellement pour UN test.
+// Elle reste uniquement en mémoire et n'est jamais écrite dans
+// karaoke-sync-engine.json.
+const karaokeSyncEngineAudioUrlOverrides = new Map<string, string>();
+
 const KARAOKE_SYNC_ENGINE_MIN_CONFIDENCE = Math.max(
   0,
   Math.min(
@@ -6315,6 +6321,32 @@ function karaokeSyncEngineUrl() {
 
 function karaokeSyncEngineEnabled() {
   return Boolean(karaokeSyncEngineUrl());
+}
+
+function karaokeSyncEngineAuthorizedAudioUrl(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+
+  try {
+    const parsed = new URL(raw);
+    if (!["http:", "https:"].includes(parsed.protocol)) return "";
+
+    // On refuse localhost / loopback pour éviter qu'un endpoint admin
+    // devienne une porte SSRF vers le service Railway lui-même.
+    const host = parsed.hostname.toLowerCase();
+    if (
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host === "::1" ||
+      host.endsWith(".local")
+    ) {
+      return "";
+    }
+
+    return parsed.toString();
+  } catch {
+    return "";
+  }
 }
 
 function karaokeSyncEngineSanitizeLines(raw: unknown): KaraokeTimedLine[] {
@@ -6404,7 +6436,8 @@ function karaokeSyncEngineQueueSong(videoId: string) {
 
 async function requestKaraokeSyncAlignment(
   song: MusicBrainSong,
-  audit: KaraokeLyricsAuditEntry
+  audit: KaraokeLyricsAuditEntry,
+  audioUrl?: string
 ) {
   const endpoint = karaokeSyncEngineUrl();
 
@@ -6452,6 +6485,10 @@ async function requestKaraokeSyncAlignment(
           syncedLyrics: String(record?.syncedLyrics || ""),
           plainLyrics: String(record?.plainLyrics || ""),
         },
+
+        // V1.2 : seulement une URL audio que l'administrateur MixParty
+        // est autorisé à faire analyser.
+        audioUrl: audioUrl || undefined,
       }),
       signal: controller.signal,
     });
@@ -6507,9 +6544,13 @@ async function runKaraokeSyncEngineWorker() {
       saveKaraokeSyncEngineState();
 
       try {
+        const authorizedAudioUrl =
+          karaokeSyncEngineAudioUrlOverrides.get(videoId);
+
         const result: any = await requestKaraokeSyncAlignment(
           candidate.song,
-          candidate.audit
+          candidate.audit,
+          authorizedAudioUrl
         );
 
         const resultStatus = String(result?.status || "").toLowerCase();
@@ -6574,6 +6615,9 @@ async function runKaraokeSyncEngineWorker() {
         entry.reason =
           error?.message || "Erreur inconnue du moteur d’alignement.";
       } finally {
+        // L'URL audio de test n'est conservée ni sur disque ni après l'analyse.
+        karaokeSyncEngineAudioUrlOverrides.delete(videoId);
+
         entry.finishedAt = Date.now();
         entry.updatedAt = Date.now();
         saveKaraokeSyncEngineState();
@@ -6613,6 +6657,8 @@ function karaokeSyncEngineSummary() {
     engineUrlConfigured: karaokeSyncEngineEnabled(),
     workerRunning: karaokeSyncEngineWorkerRunning,
     queued: karaokeSyncEngineQueue.length,
+    temporaryAuthorizedAudioUrls:
+      karaokeSyncEngineAudioUrlOverrides.size,
     thresholds: {
       minimumConfidence: KARAOKE_SYNC_ENGINE_MIN_CONFIDENCE,
       maximumAbsoluteOffsetSeconds:
@@ -6660,6 +6706,28 @@ app.get("/partybrain/karaoke-sync-engine/entries", (req, res) => {
     ...karaokeSyncEngineSummary(),
     returned: items.length,
     items,
+  });
+});
+
+
+app.get("/partybrain/karaoke-sync-engine/entry/:videoId", (req, res) => {
+  const videoId = String(req.params.videoId || "").trim();
+  const entry = karaokeSyncEngineState.entries[videoId];
+
+  if (!entry) {
+    return res.status(404).json({
+      error: "Aucune analyse Karaoke Sync Engine pour ce morceau.",
+      videoId,
+    });
+  }
+
+  return res.json({
+    entry,
+    temporaryAudioUrlLoaded:
+      karaokeSyncEngineAudioUrlOverrides.has(videoId),
+    shadowMode: true,
+    note:
+      "Le résultat n'est pas encore utilisé par le lecteur Karaoké public.",
   });
 });
 
@@ -6725,6 +6793,93 @@ app.post("/partybrain/karaoke-sync-engine/queue", (req, res) => {
     ok: true,
     queued,
     requested: limit,
+    summary: karaokeSyncEngineSummary(),
+  });
+});
+
+
+app.post("/partybrain/karaoke-sync-engine/test/:videoId", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  const videoId = String(req.params.videoId || "").trim();
+  const audioUrl = karaokeSyncEngineAuthorizedAudioUrl(req.body?.audioUrl);
+
+  if (!videoId) {
+    return res.status(400).json({
+      error: "videoId manquant.",
+    });
+  }
+
+  if (!audioUrl) {
+    return res.status(400).json({
+      error:
+        "audioUrl invalide. Utilise une URL HTTP/HTTPS directe vers un fichier audio que tu es autorisé à faire analyser.",
+    });
+  }
+
+  if (!karaokeSyncEngineEnabled()) {
+    return res.status(503).json({
+      error:
+        "KARAOKE_SYNC_ENGINE_URL n'est pas configuré sur l'API MixParty.",
+    });
+  }
+
+  const candidate = karaokeSyncEngineCandidate(videoId);
+
+  if (!candidate) {
+    return res.status(409).json({
+      error:
+        "Ce morceau n'est pas encore éligible au test : il doit déjà avoir une entrée LRCLIB synchronisée et validée par le filtre V5.",
+    });
+  }
+
+  const existing = karaokeSyncEngineState.entries[videoId];
+
+  if (existing?.status === "analyzing") {
+    return res.status(409).json({
+      error: "Ce morceau est déjà en cours d'analyse.",
+    });
+  }
+
+  // On force une nouvelle passe de test, même si un ancien résultat Shadow existe.
+  if (existing) {
+    existing.status = "pending";
+    existing.reason = "Test audio autorisé demandé manuellement.";
+    existing.updatedAt = Date.now();
+    existing.alignedLines = undefined;
+    existing.confidence = undefined;
+    existing.offsetSeconds = undefined;
+    existing.engine = undefined;
+    existing.diagnostics = undefined;
+    saveKaraokeSyncEngineState();
+  }
+
+  karaokeSyncEngineAudioUrlOverrides.set(videoId, audioUrl);
+
+  // karaokeSyncEngineQueueSong refuse un morceau déjà certifié.
+  // Pour un test explicite on réinitialise donc le statut avant la mise en file.
+  const queued = karaokeSyncEngineQueueSong(videoId);
+
+  if (!queued) {
+    karaokeSyncEngineAudioUrlOverrides.delete(videoId);
+
+    return res.status(409).json({
+      error:
+        "Impossible de mettre ce morceau en file. Vérifie qu'il n'est pas déjà en attente ou en cours.",
+      summary: karaokeSyncEngineSummary(),
+    });
+  }
+
+  return res.status(202).json({
+    ok: true,
+    videoId,
+    title: candidate.song.title,
+    artistName: candidate.song.artistName,
+    message:
+      "Test audio lancé en Shadow Mode. L'URL audio ne sera pas sauvegardée.",
+    statusUrl: `/partybrain/karaoke-sync-engine/entries?q=${encodeURIComponent(
+      candidate.song.title
+    )}`,
     summary: karaokeSyncEngineSummary(),
   });
 });
