@@ -235,6 +235,12 @@ type AcademyArtistProgress = {
   attempts: number;
   lastAttemptAt?: number;
   lastQueryVariant?: number;
+  totalSongsAdded?: number;
+  successfulAttempts?: number;
+  consecutiveZeroAdds?: number;
+  lastSongsAdded?: number;
+  recentAdds?: number[];
+  cooldownUntil?: number;
 };
 
 type AcademyState = {
@@ -4569,6 +4575,72 @@ const ACADEMY_QUERY_VARIANTS = [
   (artist: string) => `${artist} meilleurs titres`,
 ];
 
+// PARTYBRAIN ACADEMY V2 — rendement adaptatif
+// Deux recherches consécutives sans nouveau morceau mettent temporairement
+// l'artiste de côté pour éviter de gaspiller le quota YouTube.
+const academyZeroCooldownHours = Math.max(
+  12,
+  Number(process.env.PARTYBRAIN_ACADEMY_ZERO_COOLDOWN_HOURS || 72)
+);
+const academyZeroCooldownMs = academyZeroCooldownHours * 60 * 60 * 1000;
+const academyRecentYieldWindow = 4;
+
+function academyProgressForArtist(artistKey: string): AcademyArtistProgress {
+  const existing = academyState.artistProgress[artistKey];
+  if (existing) {
+    existing.recentAdds = Array.isArray(existing.recentAdds)
+      ? existing.recentAdds.slice(-academyRecentYieldWindow)
+      : [];
+    existing.consecutiveZeroAdds = Number(existing.consecutiveZeroAdds || 0);
+    existing.totalSongsAdded = Number(existing.totalSongsAdded || 0);
+    existing.successfulAttempts = Number(existing.successfulAttempts || 0);
+    existing.lastSongsAdded = Number(existing.lastSongsAdded || 0);
+    return existing;
+  }
+
+  const created: AcademyArtistProgress = {
+    attempts: 0,
+    recentAdds: [],
+    consecutiveZeroAdds: 0,
+    totalSongsAdded: 0,
+    successfulAttempts: 0,
+    lastSongsAdded: 0,
+  };
+  academyState.artistProgress[artistKey] = created;
+  return created;
+}
+
+function academyRecentYield(progress: AcademyArtistProgress) {
+  const values = Array.isArray(progress.recentAdds)
+    ? progress.recentAdds.slice(-academyRecentYieldWindow)
+    : [];
+  if (!values.length) return null;
+  return values.reduce((sum, value) => sum + Number(value || 0), 0) / values.length;
+}
+
+function recordAcademyDiscoveryYield(artistKey: string, songsAdded: number) {
+  const progress = academyProgressForArtist(artistKey);
+  const added = Math.max(0, Number(songsAdded || 0));
+
+  progress.lastSongsAdded = added;
+  progress.totalSongsAdded = Number(progress.totalSongsAdded || 0) + added;
+  progress.recentAdds = [...(progress.recentAdds || []), added].slice(-academyRecentYieldWindow);
+
+  if (added > 0) {
+    progress.successfulAttempts = Number(progress.successfulAttempts || 0) + 1;
+    progress.consecutiveZeroAdds = 0;
+    progress.cooldownUntil = undefined;
+  } else {
+    progress.consecutiveZeroAdds = Number(progress.consecutiveZeroAdds || 0) + 1;
+    if (progress.consecutiveZeroAdds >= 2) {
+      progress.cooldownUntil = Date.now() + academyZeroCooldownMs;
+    }
+  }
+
+  academyState.artistProgress[artistKey] = progress;
+  return progress;
+}
+
 function academyResultIsTrusted(result: YoutubeSearchResult, expectedArtist: string) {
   const titleText = `${result.rawTitle || ""} ${result.title || ""}`.toLowerCase();
   const channelText = String(result.channelTitle || "").toLowerCase();
@@ -4696,32 +4768,74 @@ function nextAcademyKaraokeMission() {
   };
 }
 
-function academyMissionCandidates() {
+function academyMissionCandidates(excludedArtistKeys: Set<string> = new Set()) {
   const now = Date.now();
+
   return Object.values(musicBrain.artists)
     .filter((artist) => artist.key && artist.name && artist.key !== "unknown")
+    .filter((artist) => !excludedArtistKeys.has(artist.key))
     .map((artist) => {
       const songCount = Object.keys(artist.songs || {}).length;
-      const progress = academyState.artistProgress[artist.key] || { attempts: 0 };
+      const progress = academyProgressForArtist(artist.key);
+      const cooldownUntil = Number(progress.cooldownUntil || 0);
+      const inCooldown = cooldownUntil > now;
       const searchedRecently = now - Number(artist.lastSeenAt || 0) < 7 * 24 * 60 * 60 * 1000;
+      const lastAttemptAgeMs = progress.lastAttemptAt ? now - Number(progress.lastAttemptAt) : Number.POSITIVE_INFINITY;
+
       const incompleteBonus = Math.max(0, academyTargetSongs - songCount) * 12;
       const demandScore = Number(artist.searchCount || 0) * 20;
       const recencyScore = searchedRecently ? 80 : 0;
-      const retryPenalty = Number(progress.attempts || 0) * 7;
+
+      // V2 : le rendement observé devient un signal majeur.
+      const recentYield = academyRecentYield(progress);
+      const yieldScore = recentYield === null
+        ? 45 // exploration : on laisse une vraie chance aux artistes jamais mesurés
+        : Math.min(260, recentYield * 42);
+
+      const zeroPenalty = Number(progress.consecutiveZeroAdds || 0) * 95;
+      const retryPenalty = Math.min(120, Number(progress.attempts || 0) * 4);
+      const veryRecentAttemptPenalty = lastAttemptAgeMs < 5 * 60_000
+        ? 120
+        : lastAttemptAgeMs < 30 * 60_000
+          ? 55
+          : 0;
+
       return {
         key: artist.key,
         name: artist.name,
         songCount,
-        priority: demandScore + incompleteBonus + recencyScore - retryPenalty,
+        priority:
+          demandScore +
+          incompleteBonus +
+          recencyScore +
+          yieldScore -
+          zeroPenalty -
+          retryPenalty -
+          veryRecentAttemptPenalty,
         progress,
+        recentYield,
+        cooldownUntil,
+        inCooldown,
       };
     })
-    .filter((candidate) => candidate.songCount < academyTargetSongs || candidate.progress.attempts < 2)
-    .sort((a, b) => b.priority - a.priority || a.songCount - b.songCount);
+    .filter((candidate) => !candidate.inCooldown)
+    .filter((candidate) => {
+      // On continue à explorer un artiste déjà riche seulement s'il rapporte encore
+      // réellement des nouveautés. Cela évite de boucler éternellement sur les stars.
+      if (candidate.songCount < academyTargetSongs) return true;
+      return Number(candidate.recentYield || 0) >= 1;
+    })
+    .sort((a, b) => {
+      if (b.priority !== a.priority) return b.priority - a.priority;
+      const aLastAttempt = Number(a.progress.lastAttemptAt || 0);
+      const bLastAttempt = Number(b.progress.lastAttemptAt || 0);
+      if (aLastAttempt !== bLastAttempt) return aLastAttempt - bLastAttempt;
+      return a.songCount - b.songCount;
+    });
 }
 
-function nextAcademyDiscoveryMission() {
-  const candidates = academyMissionCandidates();
+function nextAcademyDiscoveryMission(excludedArtistKeys: Set<string> = new Set()) {
+  const candidates = academyMissionCandidates(excludedArtistKeys);
   if (!candidates.length) return null;
 
   const candidate = candidates[0];
@@ -4762,6 +4876,10 @@ async function runPartyBrainAcademy(trigger: "scheduler" | "manual" = "scheduler
     `Session lancée : ${initialSnapshot.remaining} appel(s) disponible(s) avant la réinitialisation.`,
   );
 
+  // V2 : on fait tourner les artistes avant de revenir sur le même.
+  // Si tous les artistes utiles ont été testés, on ouvre un nouveau tour.
+  const artistsUsedThisRound = new Set<string>();
+
   try {
     while (true) {
       const snapshot = academyQuotaSnapshot();
@@ -4776,30 +4894,44 @@ async function runPartyBrainAcademy(trigger: "scheduler" | "manual" = "scheduler
         break;
       }
 
-      // 3 appels sur 4 servent en priorité à chercher une version Topic /
-      // Official Audio précise d'un morceau déjà connu. Le 4e garde une place
-      // à la découverte générale du catalogue.
-      const preferKaraoke = session.callsUsed % 4 !== 3;
-      const karaokeMission = preferKaraoke ? nextAcademyKaraokeMission() : null;
-      const discoveryMission = karaokeMission ? null : nextAcademyDiscoveryMission();
+      // Karaoké OFF : 100 % du quota Academy sert maintenant à enrichir
+      // le catalogue musical normal. Si le Karaoké est réactivé un jour,
+      // son ancien chemin reste conservé ci-dessous.
+      let karaokeMission = karaokeFeatureEnabled && session.callsUsed % 4 !== 3
+        ? nextAcademyKaraokeMission()
+        : null;
+      let discoveryMission = karaokeMission
+        ? null
+        : nextAcademyDiscoveryMission(artistsUsedThisRound);
+
+      // Tous les artistes utiles ont déjà été visités dans ce tour : on recommence
+      // avec les priorités recalculées grâce au rendement fraîchement observé.
+      if (!karaokeMission && !discoveryMission && artistsUsedThisRound.size > 0) {
+        artistsUsedThisRound.clear();
+        discoveryMission = nextAcademyDiscoveryMission(artistsUsedThisRound);
+      }
+
       const fallbackKaraokeMission =
-        !karaokeMission && !discoveryMission ? nextAcademyKaraokeMission() : null;
+        karaokeFeatureEnabled && !karaokeMission && !discoveryMission
+          ? nextAcademyKaraokeMission()
+          : null;
       const mission = karaokeMission || discoveryMission || fallbackKaraokeMission;
 
       if (!mission) {
         session.status = "completed";
-        session.reason = "Aucune mission utile restante.";
+        session.reason = "Aucune mission utile restante : artistes saturés ou temporairement en cooldown.";
         break;
       }
 
       const beforeSongs = Object.keys(musicBrain.songs).length;
 
       if (mission.mode !== "karaoke") {
-        const progress = academyState.artistProgress[mission.key] || { attempts: 0 };
+        const progress = academyProgressForArtist(mission.key);
         progress.attempts += 1;
         progress.lastAttemptAt = Date.now();
         progress.lastQueryVariant = mission.variantIndex;
         academyState.artistProgress[mission.key] = progress;
+        artistsUsedThisRound.add(mission.key);
       }
 
       addAcademyLog(
@@ -4885,11 +5017,23 @@ async function runPartyBrainAcademy(trigger: "scheduler" | "manual" = "scheduler
         session.songsAdded += added;
         if (!session.artistsTouched.includes(mission.name)) session.artistsTouched.push(mission.name);
 
+        let discoveryProgress: AcademyArtistProgress | null = null;
+        if (mission.mode !== "karaoke") {
+          discoveryProgress = recordAcademyDiscoveryYield(mission.key, added);
+          if (Number(discoveryProgress.cooldownUntil || 0) > Date.now()) {
+            addAcademyLog(
+              "warning",
+              `${mission.name} mis en pause ${academyZeroCooldownHours} h après ${discoveryProgress.consecutiveZeroAdds} recherche(s) consécutive(s) à +0.`,
+              { artist: mission.name, query: mission.query, songsAdded: added }
+            );
+          }
+        }
+
         addAcademyLog(
           acceptedCount > 0 ? "success" : "info",
           mission.mode === "karaoke"
             ? `${mission.name} — ${mission.sourceSong.title} : ${acceptedCount ? "version audio officielle trouvée" : "aucune version audio fiable trouvée"}.`
-            : `${mission.name} enrichi : +${added} nouveau(x) morceau(x), ${rejectedCount} résultat(s) douteux écarté(s).`,
+            : `${mission.name} enrichi : +${added} nouveau(x) morceau(x), ${rejectedCount} résultat(s) douteux écarté(s) • rendement récent ${academyRecentYield(discoveryProgress || academyProgressForArtist(mission.key))?.toFixed(1) || "0.0"}/appel.`,
           {
             artist: mission.name,
             query: mission.query,
@@ -4939,10 +5083,18 @@ function academyDashboard() {
     targetSongs: academyTargetSongs,
     priority: Math.max(0, Math.round(mission.priority)),
     attempts: Number(mission.progress.attempts || 0),
+    lastSongsAdded: Number(mission.progress.lastSongsAdded || 0),
+    totalSongsAdded: Number(mission.progress.totalSongsAdded || 0),
+    recentYield: mission.recentYield === null ? null : Math.round(mission.recentYield * 10) / 10,
+    consecutiveZeroAdds: Number(mission.progress.consecutiveZeroAdds || 0),
+    cooldownUntil: Number(mission.progress.cooldownUntil || 0) || null,
     nextQuery: ACADEMY_QUERY_VARIANTS[(Number(mission.progress.lastQueryVariant ?? -1) + 1) % ACADEMY_QUERY_VARIANTS.length](mission.name),
   }));
   return {
     ...snapshot,
+    strategy: "adaptive-yield-v2",
+    karaokeDiscoveryEnabled: karaokeFeatureEnabled,
+    zeroCooldownHours: academyZeroCooldownHours,
     lastCheckAt: academyState.lastCheckAt,
     lastSessionAt: academyState.lastSessionAt,
     missions,
