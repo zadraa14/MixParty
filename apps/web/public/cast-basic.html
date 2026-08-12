@@ -191,12 +191,11 @@
     function totalVotes(q){return q.reduce((t,s)=>t+Number(s.votes||0),0)}
     function energyFor(p,q){if(!p?.currentSong)return 0;return Math.min(98,Math.max(44,54+q.length*3+Math.min(20,totalVotes(q)*2)+Math.min(12,(p.participants||[]).length)))}
 
-    function showMode(mode){
-      displayMode=mode==="karaoke"?"karaoke":"tv";
+    function showMode(_mode){
+      displayMode="tv";
       $("boot").classList.add("hidden");
-      $("tv").classList.toggle("hidden",displayMode!=="tv");
-      $("karaoke").classList.toggle("hidden",displayMode!=="karaoke");
-      if(displayMode==="karaoke") ensureLyrics();
+      $("tv").classList.remove("hidden");
+      $("karaoke").classList.add("hidden");
     }
 
     async function loadParty(){

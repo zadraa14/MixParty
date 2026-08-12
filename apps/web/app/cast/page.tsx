@@ -39,7 +39,7 @@ export default function MixPartyCastReceiverPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const queryCode = normalizePartyCode(params.get("code"));
-    const queryMode = params.get("mode") === "karaoke" ? "karaoke" : "tv";
+    const queryMode: DisplayMode = "tv";
 
     if (queryCode) setPartyCode(queryCode);
     setMode(queryMode);
@@ -60,8 +60,7 @@ export default function MixPartyCastReceiverPage() {
           (event: any) => {
             const payload = event?.data || {};
             const nextCode = normalizePartyCode(payload.partyCode || payload.code);
-            const nextMode: DisplayMode =
-              payload.mode === "karaoke" ? "karaoke" : "tv";
+            const nextMode: DisplayMode = "tv";
 
             console.log("📺 MixParty Receiver message", {
               senderId: event?.senderId,
@@ -149,10 +148,6 @@ export default function MixPartyCastReceiverPage() {
 
   const displayUrl = useMemo(() => {
     if (!partyCode) return "";
-
-    if (mode === "karaoke") {
-      return `/party/${encodeURIComponent(partyCode)}/karaoke?cast=1`;
-    }
 
     return `/party/${encodeURIComponent(
       partyCode
@@ -245,22 +240,14 @@ export default function MixPartyCastReceiverPage() {
       <iframe
         key={displayUrl}
         src={displayUrl}
-        title={
-          mode === "karaoke"
-            ? `MixParty Karaoké ${partyCode}`
-            : `MixParty Mode TV ${partyCode}`
-        }
+        title={`MixParty Mode TV ${partyCode}`}
         className="absolute inset-0 h-full w-full border-0 bg-[#05050d]"
         allow="autoplay; fullscreen"
       />
 
       <div className="pointer-events-none absolute right-5 top-5 z-50 flex items-center gap-2 rounded-full border border-white/10 bg-black/55 px-3 py-2 text-[10px] font-black uppercase tracking-[.14em] text-white/60 backdrop-blur-xl">
-        {mode === "karaoke" ? (
-          <Mic2 className="h-3.5 w-3.5 text-fuchsia-300" />
-        ) : (
-          <MonitorUp className="h-3.5 w-3.5 text-purple-300" />
-        )}
-        {mode === "karaoke" ? "Karaoké" : "Mode TV"}
+        <MonitorUp className="h-3.5 w-3.5 text-purple-300" />
+        Mode TV
         <span className="text-white/20">•</span>
         {partyCode}
       </div>

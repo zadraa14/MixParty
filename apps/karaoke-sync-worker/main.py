@@ -22,6 +22,7 @@ MIN_CONFIDENCE = float(os.getenv("KARAOKE_MIN_CONFIDENCE", "92"))
 MAX_AUDIO_MB = int(os.getenv("KARAOKE_MAX_AUDIO_MB", "40"))
 MAX_AUDIO_MINUTES = float(os.getenv("KARAOKE_MAX_AUDIO_MINUTES", "8"))
 TOKEN = os.getenv("KARAOKE_SYNC_ENGINE_TOKEN", "").strip()
+KARAOKE_ENABLED = os.getenv("KARAOKE_ENABLED", "false").strip().lower() == "true"
 
 _model = None
 
@@ -38,6 +39,11 @@ class AlignResponse(BaseModel):
     confidence: float
     lines: list[AlignedLine]
     diagnostics: dict[str, Any] = Field(default_factory=dict)
+
+
+def require_karaoke_enabled() -> None:
+    if not KARAOKE_ENABLED:
+        raise HTTPException(status_code=503, detail="KARAOKE_PAUSED")
 
 
 def require_token(authorization: Optional[str]) -> None:
@@ -2202,6 +2208,7 @@ def root():
     return {
         "ok": True,
         "service": "mixparty-karaoke-sync-worker",
+        "enabled": KARAOKE_ENABLED,
         "engine": "faster-whisper",
         "version": "2.3",
     }
@@ -2212,6 +2219,7 @@ def health():
     return {
         "ok": True,
         "service": "mixparty-karaoke-sync-worker",
+        "enabled": KARAOKE_ENABLED,
         "engine": "faster-whisper",
         "model": MODEL_NAME,
         "device": DEVICE,
@@ -2230,6 +2238,7 @@ async def benchmark_upload(
     transcript: Optional[str] = Form(default=None),
     authorization: Optional[str] = Header(default=None),
 ):
+    require_karaoke_enabled()
     require_token(authorization)
 
     resolved_transcript = (transcript or "").strip()
@@ -2301,6 +2310,7 @@ async def align_upload(
     2) transcript=<texte> + audio=<fichier>
        -> mode direct / debug
     """
+    require_karaoke_enabled()
     require_token(authorization)
 
     resolved_transcript = (transcript or "").strip()

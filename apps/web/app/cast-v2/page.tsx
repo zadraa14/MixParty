@@ -43,8 +43,7 @@ export default function MixPartyCastV2ReceiverPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const queryCode = normalizePartyCode(params.get("code"));
-    const queryMode: DisplayMode =
-      params.get("mode") === "karaoke" ? "karaoke" : "tv";
+    const queryMode: DisplayMode = "tv";
 
     if (queryCode) {
       setPartyCode(queryCode);
@@ -81,8 +80,7 @@ export default function MixPartyCastV2ReceiverPage() {
             const nextCode = normalizePartyCode(
               payload.partyCode || payload.code
             );
-            const nextMode: DisplayMode =
-              payload.mode === "karaoke" ? "karaoke" : "tv";
+            const nextMode: DisplayMode = "tv";
 
             setLastMessageAt(new Date().toLocaleTimeString("fr-FR"));
             setStage("MESSAGE_RECEIVED");
@@ -226,10 +224,6 @@ export default function MixPartyCastV2ReceiverPage() {
 
   const displayUrl = useMemo(() => {
     if (!partyCode) return "";
-
-    if (mode === "karaoke") {
-      return `/party/${encodeURIComponent(partyCode)}/karaoke?cast=1`;
-    }
 
     return `/party/${encodeURIComponent(partyCode)}?display=tv&cast=1`;
   }, [mode, partyCode]);

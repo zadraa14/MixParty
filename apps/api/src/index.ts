@@ -25,6 +25,12 @@ dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
+
+// KARAOKÉ PAUSED — 2026-08-12
+// Default OFF on purpose. All code/data are preserved for a future reactivation.
+const karaokeFeatureEnabled =
+  String(process.env.KARAOKE_ENABLED || "false").toLowerCase() === "true";
+
 const persistentDataDir = path.resolve(
   process.env.PERSISTENT_DATA_DIR?.trim() || process.cwd()
 );
@@ -50,6 +56,22 @@ const io = new Server(httpServer, {
 
 app.use(cors({ origin: corsOrigin }));
 app.use(express.json());
+
+// Public/admin Karaoké endpoints are frozen while the feature is paused.
+// Nothing is deleted; KARAOKE_ENABLED=true will reactivate them later.
+app.use((req, res, next) => {
+  if (
+    !karaokeFeatureEnabled &&
+    String(req.path || "").startsWith("/partybrain/karaoke")
+  ) {
+    return res.status(503).json({
+      error: "KARAOKE_PAUSED",
+      message: "Le Karaoké MixParty est temporairement désactivé.",
+    });
+  }
+  next();
+});
+
 
 
 type YoutubeSuggestion = {
@@ -4625,6 +4647,8 @@ function karaokeSearchTitle(song: MusicBrainSong) {
 }
 
 function nextAcademyKaraokeMission() {
+  if (!karaokeFeatureEnabled) return null;
+
   const localResolution = karaokeLocalResolution();
 
   const candidates = Object.values(musicBrain.songs)
@@ -5745,6 +5769,8 @@ function enqueueAutomaticLrclibCheck(
   videoId: string,
   reason: AutomaticLrclibQueueItem["reason"]
 ) {
+  if (!karaokeFeatureEnabled) return;
+
   const cleanVideoId = String(videoId || "").trim();
   if (!cleanVideoId) return;
 
@@ -5763,6 +5789,12 @@ function enqueueAutomaticLrclibCheck(
 }
 
 async function runAutomaticLrclibWorker() {
+  if (!karaokeFeatureEnabled) {
+    automaticLrclibQueue.length = 0;
+    automaticLrclibQueuedIds.clear();
+    automaticLrclibWorkerRunning = false;
+    return;
+  }
   if (automaticLrclibWorkerRunning) return;
   automaticLrclibWorkerRunning = true;
 
@@ -6035,6 +6067,7 @@ async function runKaraokeLyricsAuditBatch(limit: number) {
    ========================================================= */
 
 const karaokeLyricsAuditSchedulerEnabled =
+  karaokeFeatureEnabled &&
   String(process.env.KARAOKE_LRCLIB_SCHEDULER_ENABLED || "true").toLowerCase() !== "false";
 
 const karaokeLyricsAuditSchedulerIntervalMs = Math.max(
@@ -6347,7 +6380,7 @@ function karaokeSyncEngineUrl() {
 }
 
 function karaokeSyncEngineEnabled() {
-  return Boolean(karaokeSyncEngineUrl());
+  return karaokeFeatureEnabled && Boolean(karaokeSyncEngineUrl());
 }
 
 function karaokeSyncEngineAuthorizedAudioUrl(value: unknown) {
@@ -6418,6 +6451,8 @@ function karaokeSyncEngineCandidate(videoId: string) {
 }
 
 function karaokeSyncEngineQueueSong(videoId: string) {
+  if (!karaokeFeatureEnabled) return false;
+
   const cleanVideoId = String(videoId || "").trim();
   if (!cleanVideoId) return false;
 
@@ -6656,6 +6691,13 @@ function applyKaraokeSyncEngineResult(entry: KaraokeSyncEngineEntry, result: any
 }
 
 async function runKaraokeSyncEngineWorker() {
+  if (!karaokeFeatureEnabled) {
+    karaokeSyncEngineQueue.length = 0;
+    karaokeSyncEngineQueuedIds.clear();
+    karaokeSyncEngineAudioUrlOverrides.clear();
+    karaokeSyncEngineWorkerRunning = false;
+    return;
+  }
   if (karaokeSyncEngineWorkerRunning) return;
   karaokeSyncEngineWorkerRunning = true;
 

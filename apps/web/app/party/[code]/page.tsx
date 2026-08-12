@@ -116,6 +116,9 @@ const MIXPARTY_DEFAULT_COVER = "/branding/icon.png";
 const MIXPARTY_CAST_APP_ID = "111703F0";
 const MIXPARTY_CAST_NAMESPACE = "urn:x-cast:fr.mixparty.display";
 
+// Karaoké is paused. All implementation stays in this file for future reactivation.
+const KARAOKE_ENABLED = false;
+
 function hasHdCover(song?: Song | null): boolean {
   return Boolean(song?.coverStatus === "found" && song.coverUrl);
 }
@@ -651,8 +654,9 @@ export default function PartyPage() {
   }, [code]);
 
   async function sendCastDisplayMode(mode: "tv" | "karaoke") {
-    setCastDisplayMode(mode);
-    castDisplayModeRef.current = mode;
+    const safeMode: "tv" | "karaoke" = KARAOKE_ENABLED ? mode : "tv";
+    setCastDisplayMode(safeMode);
+    castDisplayModeRef.current = safeMode;
 
     const context =
       castContextRef.current ||
@@ -666,7 +670,7 @@ export default function PartyPage() {
         type: "mixparty_display",
         version: "cast-v2",
         partyCode: code,
-        mode,
+        mode: safeMode,
       });
       return true;
     } catch (error) {
@@ -732,6 +736,7 @@ export default function PartyPage() {
   }
 
   async function startMixPartyCast(mode: "tv" | "karaoke" = "tv") {
+    const safeMode: "tv" | "karaoke" = KARAOKE_ENABLED ? mode : "tv";
     const framework = (window as any).cast?.framework;
     const context =
       castContextRef.current || framework?.CastContext?.getInstance?.();
@@ -744,8 +749,8 @@ export default function PartyPage() {
     }
 
     setCastConnecting(true);
-    setCastDisplayMode(mode);
-    castDisplayModeRef.current = mode;
+    setCastDisplayMode(safeMode);
+    castDisplayModeRef.current = safeMode;
 
     try {
       if (!context.getCurrentSession?.()) {
@@ -1277,6 +1282,7 @@ export default function PartyPage() {
   }, [karaokeCatalogSearch]);
 
   useEffect(() => {
+    if (!KARAOKE_ENABLED) return;
     if (!karaokeMode && activeMobileTab !== "karaoke") return;
 
     // Recherche instantanée côté utilisateur, mais requête API temporisée
@@ -1288,6 +1294,7 @@ export default function PartyPage() {
 
 
   useEffect(() => {
+    if (!KARAOKE_ENABLED) return;
     if (!karaokeCatalog) return;
     if (!karaokeHasMore || karaokeLoadingMore || karaokeCatalogLoading) return;
     if (karaokeUserInteracting) return;
@@ -1330,6 +1337,7 @@ export default function PartyPage() {
   ]);
 
   function activateKaraokeMode() {
+    if (!KARAOKE_ENABLED) return;
     setKaraokeMode(true);
     setResults([]);
     setSearchInsight(null);
@@ -1348,6 +1356,7 @@ export default function PartyPage() {
   }
 
   function openKaraokeScreen() {
+    if (!KARAOKE_ENABLED) return;
     const karaokeUrl = `${window.location.origin}/party/${encodeURIComponent(code)}/karaoke`;
 
     // Sur téléphone, on garde la salle DJ montée dans la même page.
@@ -1361,6 +1370,8 @@ export default function PartyPage() {
   }
 
   function addKaraokeCatalogSong(song: KaraokeCatalogSong) {
+    if (!KARAOKE_ENABLED) return;
+
     const alreadyInPlaylist =
       party?.currentSong?.videoId === song.videoId ||
       (party?.songs || []).some(
@@ -2303,7 +2314,7 @@ async function removeSong(index: number, song: Song) {
     : 0;
   const totalSessionVotes = [...(party.history || []), ...queue].reduce((total, song) => total + Number(song.votes || 0), 0);
 
-  const mobileTabs = ["playback", "add", "karaoke", "queue", "guests"] as const;
+  const mobileTabs = ["playback", "add", "queue", "guests"] as const;
 
   function normalizeKaraokeText(value: unknown) {
     return String(value || "")
@@ -2473,8 +2484,9 @@ async function removeSong(index: number, song: Song) {
   );
 
 
-  function switchMobileTab(nextTab: typeof mobileTabs[number]) {
-    setActiveMobileTab(nextTab);
+  function switchMobileTab(nextTab: typeof mobileTabs[number] | "karaoke") {
+    if (!KARAOKE_ENABLED && nextTab === "karaoke") return;
+    setActiveMobileTab(nextTab as typeof mobileTabs[number]);
 
     if (nextTab === "karaoke" && !karaokeCatalog && !karaokeCatalogLoading) {
       setKaraokeDebouncedSearch("");
@@ -2524,7 +2536,7 @@ async function removeSong(index: number, song: Song) {
     const deltaY = touch.clientY - start.y;
     if (Math.abs(deltaX) < 58 || Math.abs(deltaX) < Math.abs(deltaY) * 1.35) return;
 
-    const currentIndex = mobileTabs.indexOf(activeMobileTab);
+    const currentIndex = mobileTabs.indexOf(activeMobileTab as typeof mobileTabs[number]);
     const nextIndex = deltaX < 0
       ? Math.min(mobileTabs.length - 1, currentIndex + 1)
       : Math.max(0, currentIndex - 1);
@@ -2838,7 +2850,7 @@ async function removeSong(index: number, song: Song) {
       onTouchEnd={handleMobileTouchEnd}
     >
 
-      {karaokeScreenOpen ? (
+      {KARAOKE_ENABLED && karaokeScreenOpen ? (
         <div className="fixed inset-0 z-[9999] flex min-h-[100dvh] flex-col bg-[#070711]">
           <div className="flex shrink-0 items-center justify-between border-b border-white/10 bg-[#0b0914]/95 px-3 pb-3 pt-[max(.75rem,env(safe-area-inset-top))] backdrop-blur-xl">
             <div className="min-w-0">
@@ -3444,20 +3456,22 @@ const canRemove =
                 </div>
 
                 <div className="hidden flex-wrap gap-2 md:flex">
-                  <button
-                    type="button"
-                    onClick={karaokeMode ? deactivateKaraokeMode : activateKaraokeMode}
-                    className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-xs font-black transition ${
-                      karaokeMode
-                        ? "border-white/10 bg-white/[0.06] text-white/70 hover:bg-white/[0.10]"
-                        : "border-fuchsia-300/25 bg-gradient-to-r from-fuchsia-500/15 to-purple-500/15 text-fuchsia-100 shadow-[0_0_32px_rgba(217,70,239,.10)] hover:border-fuchsia-300/40"
-                    }`}
-                  >
-                    <Mic2 className="h-4 w-4" />
-                    {karaokeMode ? "Revenir au mode normal" : "Karaoké"}
-                  </button>
+                  {KARAOKE_ENABLED ? (
+                    <button
+                      type="button"
+                      onClick={karaokeMode ? deactivateKaraokeMode : activateKaraokeMode}
+                      className={`inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-xs font-black transition ${
+                        karaokeMode
+                          ? "border-white/10 bg-white/[0.06] text-white/70 hover:bg-white/[0.10]"
+                          : "border-fuchsia-300/25 bg-gradient-to-r from-fuchsia-500/15 to-purple-500/15 text-fuchsia-100 shadow-[0_0_32px_rgba(217,70,239,.10)] hover:border-fuchsia-300/40"
+                      }`}
+                    >
+                      <Mic2 className="h-4 w-4" />
+                      {karaokeMode ? "Revenir au mode normal" : "Karaoké"}
+                    </button>
+                  ) : null}
 
-                  {karaokeMode ? (
+                  {KARAOKE_ENABLED && karaokeMode ? (
                     <button
                       type="button"
                       onClick={openKaraokeScreen}
@@ -3624,7 +3638,7 @@ const canRemove =
 
 
             <section
-              className={`${activeMobileTab === "karaoke" ? "block" : "hidden"} premium-glass-card w-full min-w-0 max-w-full overflow-x-hidden rounded-[24px] border border-fuchsia-300/15 bg-gradient-to-br from-fuchsia-500/[0.07] via-purple-500/[0.045] to-cyan-500/[0.035] p-3 backdrop-blur-xl md:hidden`}
+              className={`${KARAOKE_ENABLED && activeMobileTab === "karaoke" ? "block" : "hidden"} premium-glass-card w-full min-w-0 max-w-full overflow-x-hidden rounded-[24px] border border-fuchsia-300/15 bg-gradient-to-br from-fuchsia-500/[0.07] via-purple-500/[0.045] to-cyan-500/[0.035] p-3 backdrop-blur-xl md:hidden`}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -4278,17 +4292,19 @@ const canRemove =
                         📺 TV
                       </button>
 
-                      <button
-                        type="button"
-                        onClick={() => void sendCastDisplayMode("karaoke")}
-                        className={`rounded-full border px-2.5 py-1.5 text-[10px] font-black transition ${
-                          castDisplayMode === "karaoke"
-                            ? "border-fuchsia-300/30 bg-fuchsia-500/20 text-fuchsia-100"
-                            : "border-white/10 bg-white/[0.05] text-white/55"
-                        }`}
-                      >
-                        🎤 Karaoké
-                      </button>
+                      {KARAOKE_ENABLED ? (
+                        <button
+                          type="button"
+                          onClick={() => void sendCastDisplayMode("karaoke")}
+                          className={`rounded-full border px-2.5 py-1.5 text-[10px] font-black transition ${
+                            castDisplayMode === "karaoke"
+                              ? "border-fuchsia-300/30 bg-fuchsia-500/20 text-fuchsia-100"
+                              : "border-white/10 bg-white/[0.05] text-white/55"
+                          }`}
+                        >
+                          🎤 Karaoké
+                        </button>
+                      ) : null}
 
                       <button
                         type="button"
@@ -4324,14 +4340,16 @@ const canRemove =
               </div>
               {externalDisplayMode !== "tv" ? (
                 <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setKaraokeScreenOpen(true)}
-                    className="inline-flex items-center gap-2 rounded-xl border border-fuchsia-300/25 bg-fuchsia-500/10 px-4 py-2 text-xs font-black text-fuchsia-100 transition hover:bg-fuchsia-500/15"
-                  >
-                    <Mic2 className="h-4 w-4" />
-                    Karaoké
-                  </button>
+                  {KARAOKE_ENABLED ? (
+                    <button
+                      type="button"
+                      onClick={() => setKaraokeScreenOpen(true)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-fuchsia-300/25 bg-fuchsia-500/10 px-4 py-2 text-xs font-black text-fuchsia-100 transition hover:bg-fuchsia-500/15"
+                    >
+                      <Mic2 className="h-4 w-4" />
+                      Karaoké
+                    </button>
+                  ) : null}
                   <button type="button" onClick={deactivateTvMode} className="v60-tv__close">Quitter</button>
                 </div>
               ) : (
@@ -4435,11 +4453,13 @@ const canRemove =
 
         </footer>
 
-        <nav className="v54-mobile-nav fixed inset-x-2 bottom-3 z-50 grid grid-cols-5 gap-0.5 rounded-[22px] border border-white/12 bg-[#11111d]/95 p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.55)] backdrop-blur-2xl md:hidden" aria-label="Navigation de la soirée">
+        <nav className={`v54-mobile-nav fixed inset-x-2 bottom-3 z-50 grid ${KARAOKE_ENABLED ? "grid-cols-5" : "grid-cols-4"} gap-0.5 rounded-[22px] border border-white/12 bg-[#11111d]/95 p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.55)] backdrop-blur-2xl md:hidden`} aria-label="Navigation de la soirée">
           {[
             { id: "playback", label: "Lecture", Icon: Music4 },
             { id: "add", label: "Ajouter", Icon: Plus },
-            { id: "karaoke", label: "Karaoké", Icon: Mic2 },
+            ...(KARAOKE_ENABLED
+              ? [{ id: "karaoke", label: "Karaoké", Icon: Mic2 }]
+              : []),
             { id: "queue", label: "File", Icon: ListMusic },
             { id: "guests", label: "Invités", Icon: UserPlus },
           ].map(({ id, label, Icon }) => {

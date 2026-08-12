@@ -411,6 +411,10 @@ const coverFilterLabels: Record<CoverFilter, string> = {
 
 const number = new Intl.NumberFormat("fr-FR");
 
+// Karaoké is intentionally paused. Keep the code below intact for later.
+const KARAOKE_ENABLED = false;
+
+
 export default function MusicBrainAdminPage() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -721,7 +725,7 @@ export default function MusicBrainAdminPage() {
       await loadPublicationQuality("review", "", selectedDiagnosticCategory || "");
       await loadMusicBrainQualityDiagnostic();
       await loadStats();
-      await loadKaraokeReadySongs("");
+      if (KARAOKE_ENABLED) await loadKaraokeReadySongs("");
     } catch (err) {
       setAutoAcceptV35Error(
         err instanceof Error ? err.message : "Auto-Accept V3.5 impossible"
@@ -773,7 +777,7 @@ export default function MusicBrainAdminPage() {
       await loadPublicationQuality("review", "", selectedDiagnosticCategory || "");
       await loadMusicBrainQualityDiagnostic();
       await loadStats();
-      await loadKaraokeReadySongs("");
+      if (KARAOKE_ENABLED) await loadKaraokeReadySongs("");
     } catch (err) {
       setAutoFixError(
         err instanceof Error ? err.message : "Auto-Fix MusicBrain impossible."
@@ -1075,6 +1079,7 @@ export default function MusicBrainAdminPage() {
 
 
   useEffect(() => {
+    if (!KARAOKE_ENABLED) return;
     if (!karaokeLyricsAudit?.job?.running) {
       void loadKaraokeReadySongs(karaokeReadySearch);
     }
@@ -1179,7 +1184,7 @@ export default function MusicBrainAdminPage() {
         `${data?.message || "Test Academy terminé."} • Quota Academy restant : ${number.format(Number(data?.remaining ?? 0))}`
       );
       await loadStats();
-      await loadKaraokeAudit();
+      if (KARAOKE_ENABLED) await loadKaraokeAudit();
     } catch (err) {
       setAcademyTestError(err instanceof Error ? err.message : "Test Academy impossible");
     } finally {
@@ -1206,9 +1211,11 @@ export default function MusicBrainAdminPage() {
     void loadStats();
     void loadLiveUsers();
     void loadAttendanceHistory();
-    void loadKaraokeAudit();
-    void loadKaraokeLyricsAudit();
-    void loadKaraokeReadySongs("");
+    if (KARAOKE_ENABLED) {
+      void loadKaraokeAudit();
+      void loadKaraokeLyricsAudit();
+      void loadKaraokeReadySongs("");
+    }
 
     const liveTimer = window.setInterval(() => {
       void loadLiveUsers();
@@ -1225,6 +1232,7 @@ export default function MusicBrainAdminPage() {
   }, []);
 
   useEffect(() => {
+    if (!KARAOKE_ENABLED) return;
     const running = Boolean(karaokeLyricsAudit?.job?.running);
 
     if (!running) {
@@ -1336,7 +1344,7 @@ export default function MusicBrainAdminPage() {
       setArtistRepairReport(data?.report || null);
       setSelectedReviewRepairs({});
       await loadStats();
-      await loadKaraokeAudit();
+      if (KARAOKE_ENABLED) await loadKaraokeAudit();
       await previewMusicBrainCleanup();
     } catch (err) {
       setArtistRepairError(
@@ -1410,7 +1418,7 @@ export default function MusicBrainAdminPage() {
       setArtistRepairMessage(data?.message || "Réparation terminée.");
       setArtistRepairReport(data?.after || null);
       await loadStats();
-      await loadKaraokeAudit();
+      if (KARAOKE_ENABLED) await loadKaraokeAudit();
       await previewMusicBrainCleanup();
     } catch (err) {
       setArtistRepairError(err instanceof Error ? err.message : "Réparation des artistes impossible.");
@@ -1482,7 +1490,7 @@ export default function MusicBrainAdminPage() {
       setCleanupMessage(data?.message || "MusicBrain nettoyé.");
       setCleanupReport(data?.after || null);
       await loadStats();
-      await loadKaraokeAudit();
+      if (KARAOKE_ENABLED) await loadKaraokeAudit();
     } catch (err) {
       setCleanupError(err instanceof Error ? err.message : "Nettoyage MusicBrain impossible.");
     } finally {
@@ -1762,10 +1770,12 @@ export default function MusicBrainAdminPage() {
   });
 
   useEffect(() => {
+    if (!KARAOKE_ENABLED) return;
     void loadKaraokeBenchmarkConfig();
   }, []);
 
   useEffect(() => {
+    if (!KARAOKE_ENABLED) return;
     if (!benchmarkCampaignId) return;
 
     let cancelled = false;
@@ -1843,7 +1853,7 @@ export default function MusicBrainAdminPage() {
           <>
             <nav className="sticky top-3 z-40 mb-7 rounded-[24px] border border-white/10 bg-[#0b0714]/90 p-2 shadow-[0_18px_50px_rgba(0,0,0,.35)] backdrop-blur-2xl">
               <div className="flex gap-2 overflow-x-auto">
-                {adminTabs.map((tab) => {
+                {adminTabs.filter((tab) => KARAOKE_ENABLED || tab.key !== "karaoke").map((tab) => {
                   const Icon = tab.icon;
                   const selected = activeAdminTab === tab.key;
                   return (
@@ -2387,7 +2397,7 @@ export default function MusicBrainAdminPage() {
               </>
             ) : null}
 
-{activeAdminTab === "karaoke" ? (
+{KARAOKE_ENABLED && activeAdminTab === "karaoke" ? (
               <>
             <section className="mt-7 rounded-[28px] border border-pink-400/20 bg-gradient-to-br from-pink-500/10 via-violet-500/[0.08] to-cyan-500/[0.06] p-5 backdrop-blur-xl sm:p-7">
               <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">

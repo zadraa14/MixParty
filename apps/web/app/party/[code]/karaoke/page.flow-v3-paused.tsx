@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { io } from "socket.io-client";
 import { Mic2, Music4, Pause, Play, Radio, SkipBack, SkipForward, Wifi, WifiOff } from "lucide-react";
 import { getApiBaseUrl, getSocketPath, getSocketUrl } from "../../../../lib/config";
@@ -55,7 +55,7 @@ type PlaybackState = {
 
 const DEFAULT_COVER = "/branding/icon.png";
 const KARAOKE_FLOW_LEAD_SECONDS = 0.38;
-const KARAOKE_FLOW_WINDOW = 3;
+const KARAOKE_FLOW_WINDOW = 2.35;
 const KARAOKE_FLOW_LINE_GAP_PX = 205;
 
 function songArtwork(song?: Song | null) {
@@ -70,7 +70,7 @@ function formatTime(seconds: number) {
 }
 
 
-function KaraokePartyPage() {
+export default function KaraokePartyPage() {
   const params = useParams<{ code: string }>();
   const code = String(params?.code || "").toUpperCase();
 
@@ -509,32 +509,56 @@ function KaraokePartyPage() {
                         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 h-24 bg-gradient-to-t from-[#05050d] via-[#05050d]/70 to-transparent" />
 
                         <div className="absolute inset-0 flex items-center justify-center">
-                          <div className="relative h-full w-full max-w-6xl">
-                            {lyricFlow.visible.map(({ line, index, translateY, opacity, scale, blur }) => {
+                          <div className="relative h-full w-full max-w-6xl overflow-hidden">
+                            {lyricFlow.visible.map(({ line, index, distance, opacity }) => {
                               const isCenter = Math.abs(index - lyricFlow.position) < 0.58;
+
+                              // V3.2 : chaque ligne possède désormais son propre "slot"
+                              // vertical. Même si une phrase passe sur 2 ou 3 lignes,
+                              // elle ne peut plus chevaucher la précédente/suivante.
+                              const slotHeight = castMode ? 230 : 190;
+                              const safeDistance = Math.max(-2.2, Math.min(2.2, distance));
+                              const translateY = safeDistance * slotHeight;
 
                               return (
                                 <div
                                   key={`${line.time}-${index}`}
-                                  className="absolute inset-x-0 top-1/2 flex w-full justify-center px-4 will-change-transform sm:px-8"
+                                  className="absolute inset-x-0 top-1/2 flex w-full items-center justify-center px-4 will-change-transform sm:px-8"
                                   style={{
-                                    transform: `translateY(calc(-50% + ${castMode ? translateY * 1.12 : translateY}px)) scale(${scale})`,
-                                    transformOrigin: "center center",
+                                    minHeight: `${slotHeight}px`,
+                                    transform: `translateY(calc(-50% + ${translateY}px))`,
                                     opacity,
-                                    filter: `blur(${blur}px)`,
                                     transition:
-                                      "transform 110ms linear, opacity 180ms ease, filter 180ms ease",
+                                      "transform 140ms linear, opacity 180ms ease",
                                   }}
                                 >
-                                  <p
-                                    className={`mx-auto w-full break-words text-center text-balance font-black tracking-[-0.035em] ${castMode ? "max-w-[88%] leading-[1.08]" : "max-w-[82%] leading-[1.12]"} ${
-                                      isCenter
-                                        ? `bg-gradient-to-r from-fuchsia-300 via-pink-100 to-orange-200 bg-clip-text text-transparent drop-shadow-[0_0_28px_rgba(236,72,153,.20)] ${castMode ? "text-[clamp(2.5rem,4.4vw,5.2rem)]" : "text-[clamp(2.15rem,4.2vw,4.6rem)]"}`
-                                        : `${castMode ? "text-[clamp(1.3rem,2.1vw,2.15rem)]" : "text-[clamp(1.15rem,2vw,1.95rem)]"} text-white/55`
+                                  <div
+                                    className={`flex w-full items-center justify-center ${
+                                      castMode ? "min-h-[210px]" : "min-h-[170px]"
                                     }`}
                                   >
-                                    {line.text}
-                                  </p>
+                                    <p
+                                      className={`mx-auto w-full break-words text-center text-balance font-black tracking-[-0.03em] ${
+                                        castMode
+                                          ? "max-w-[86%] leading-[1.08]"
+                                          : "max-w-[82%] leading-[1.1]"
+                                      } ${
+                                        isCenter
+                                          ? `bg-gradient-to-r from-fuchsia-300 via-pink-100 to-orange-200 bg-clip-text text-transparent drop-shadow-[0_0_28px_rgba(236,72,153,.20)] ${
+                                              castMode
+                                                ? "text-[clamp(2.35rem,4vw,4.8rem)]"
+                                                : "text-[clamp(1.9rem,3.7vw,4rem)]"
+                                            }`
+                                          : `${
+                                              castMode
+                                                ? "text-[clamp(1.2rem,1.8vw,1.9rem)]"
+                                                : "text-[clamp(1.05rem,1.75vw,1.65rem)]"
+                                            } text-white/48`
+                                      }`}
+                                    >
+                                      {line.text}
+                                    </p>
+                                  </div>
                                 </div>
                               );
                             })}
@@ -708,7 +732,7 @@ function KaraokePartyPage() {
 
         <footer className={castMode ? "hidden" : "flex items-center justify-between gap-4 border-t border-white/[0.06] pt-4 text-[10px] font-black uppercase tracking-[.12em] text-white/22"}>
           <span>Soirée {code || "—"}</span>
-          <span>MixParty Karaoké • Premium Flow V3</span>
+          <span>MixParty Karaoké • Premium Flow V3.2</span>
         </footer>
       </div>
 
@@ -740,27 +764,4 @@ function KaraokePartyPage() {
     </main>
   );
 
-}
-
-
-// Feature paused: keep the complete Karaoké implementation above, but do not mount it.
-export default function KaraokePausedRoute() {
-  const params = useParams<{ code: string }>();
-  const router = useRouter();
-  const code = String(params?.code || "").toUpperCase();
-
-  useEffect(() => {
-    if (code) router.replace(`/party/${encodeURIComponent(code)}`);
-  }, [code, router]);
-
-  return (
-    <main className="grid min-h-screen place-items-center bg-[#070711] px-6 text-center text-white">
-      <div>
-        <p className="text-sm font-black uppercase tracking-[0.2em] text-white/35">
-          MixParty
-        </p>
-        <h1 className="mt-2 text-2xl font-black">Retour à la soirée…</h1>
-      </div>
-    </main>
-  );
 }
