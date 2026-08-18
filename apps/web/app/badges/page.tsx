@@ -45,6 +45,15 @@ type MixPartyAccount = {
 
 const BADGES = [
   {
+    id: "createur-mixparty",
+    name: "Créateur de MixParty",
+    condition: "Badge unique réservé au créateur de MixParty",
+    image: "/badges/createur-mixparty.png",
+    category: "Prestige",
+    rarity: "Unique",
+    secret: false,
+  },
+  {
     id: "premiere-soiree",
     name: "Première Soirée",
     condition: "Participer à sa première soirée validée",
@@ -500,6 +509,7 @@ type Badge = (typeof BADGES)[number];
 
 const CATEGORY_ORDER = [
   "Tous",
+  "Prestige",
   "Premiers pas",
   "Fidélité",
   "Votes",
@@ -513,6 +523,7 @@ const CATEGORY_ORDER = [
 
 const RARITY_ORDER = [
   "Toutes",
+  "Unique",
   "Commun",
   "Rare",
   "Épique",
@@ -530,6 +541,7 @@ function formatDate(timestamp?: number) {
 }
 
 function rarityClass(rarity: Badge["rarity"]) {
+  if (rarity === "Unique") return "border-amber-200/35 bg-gradient-to-r from-amber-400/15 via-fuchsia-500/10 to-cyan-400/10 text-amber-100 shadow-[0_0_24px_rgba(251,191,36,.12)]";
   if (rarity === "Mythique") return "border-fuchsia-300/25 bg-fuchsia-500/10 text-fuchsia-200";
   if (rarity === "Légendaire") return "border-amber-300/25 bg-amber-500/10 text-amber-200";
   if (rarity === "Épique") return "border-violet-300/25 bg-violet-500/10 text-violet-200";
@@ -720,6 +732,7 @@ export default function BadgeCollectionPage() {
 
       if (sortMode === "Rareté") {
         const rarityRank: Record<string, number> = {
+          Unique: 6,
           Mythique: 5,
           Légendaire: 4,
           Épique: 3,
@@ -990,7 +1003,7 @@ export default function BadgeCollectionPage() {
             {filteredBadges.length} badge{filteredBadges.length > 1 ? "s" : ""}
           </p>
           <p className="text-[10px] font-black uppercase tracking-[.15em] text-white/20">
-            50 badges actifs
+            {BADGES.length} badges actifs
           </p>
         </div>
 

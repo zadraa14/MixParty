@@ -110,6 +110,11 @@ type AccountsDatabase = {
 export type PublicMixPartyAccount = Omit<MixPartyAccount, "passwordHash">;
 
 const SESSION_DURATION_MS = 90 * 24 * 60 * 60 * 1000;
+const CREATOR_BADGE_ID = "createur-mixparty";
+
+function configuredCreatorEmail() {
+  return normalizeEmail(process.env.MIXPARTY_CREATOR_EMAIL || "");
+}
 const PARTY_QUALIFICATION_MS = 30 * 60 * 1000;
 const SPEED_DJ_MS = 30 * 1000;
 const SURVIVANT_MS = 5 * 60 * 60 * 1000;
@@ -480,6 +485,52 @@ export function createAccountsStore(filePath: string) {
     return true;
   }
 
+
+  function syncCreatorBadge(account: MixPartyAccount) {
+    const creatorEmail = configuredCreatorEmail();
+    if (!creatorEmail) return false;
+
+    const isCreator = account.email === creatorEmail;
+    let changed = false;
+
+    if (isCreator) {
+      if (unlockBadge(account, CREATOR_BADGE_ID)) {
+        changed = true;
+      }
+    } else {
+      const hadBadge = account.badges.includes(CREATOR_BADGE_ID);
+      const hadUnlock = account.badgeUnlocks.some(
+        (item) => item.badgeId === CREATOR_BADGE_ID,
+      );
+      const hadFeatured = account.featuredBadges.includes(CREATOR_BADGE_ID);
+
+      if (hadBadge) {
+        account.badges = account.badges.filter(
+          (badgeId) => badgeId !== CREATOR_BADGE_ID,
+        );
+      }
+
+      if (hadUnlock) {
+        account.badgeUnlocks = account.badgeUnlocks.filter(
+          (item) => item.badgeId !== CREATOR_BADGE_ID,
+        );
+      }
+
+      if (hadFeatured) {
+        account.featuredBadges = account.featuredBadges.filter(
+          (badgeId) => badgeId !== CREATOR_BADGE_ID,
+        );
+      }
+
+      if (hadBadge || hadUnlock || hadFeatured) {
+        account.updatedAt = Date.now();
+        changed = true;
+      }
+    }
+
+    return changed;
+  }
+
   function syncSimpleBadges(account: MixPartyAccount, partyCode?: string) {
     const known = new Set(account.badges);
     let changed = false;
@@ -524,6 +575,7 @@ export function createAccountsStore(filePath: string) {
       );
       for (const account of database.accounts) {
         syncSimpleBadges(account);
+        syncCreatorBadge(account);
       }
       save();
     } catch (error) {
@@ -625,6 +677,7 @@ export function createAccountsStore(filePath: string) {
     };
 
     database.accounts.push(account);
+    syncCreatorBadge(account);
     save();
 
     return {
@@ -642,6 +695,10 @@ export function createAccountsStore(filePath: string) {
       throw new Error("INVALID_CREDENTIALS");
     }
 
+    if (syncCreatorBadge(account)) {
+      save();
+    }
+
     return {
       account: publicAccount(account),
       token: createSession(account.id),
@@ -650,7 +707,13 @@ export function createAccountsStore(filePath: string) {
 
   function authenticate(token: string) {
     const account = accountFromToken(token);
-    return account ? publicAccount(account) : null;
+    if (!account) return null;
+
+    if (syncCreatorBadge(account)) {
+      save();
+    }
+
+    return publicAccount(account);
   }
 
   function updateProfile(
@@ -1880,6 +1943,12 @@ export function createAccountsStore(filePath: string) {
     const partyCode = String(partyCodeValue || "").trim().toUpperCase() || undefined;
     const unlocked = Boolean(unlockedValue);
     if (!badgeId) return publicAccount(account);
+
+    if (badgeId === CREATOR_BADGE_ID) {
+      syncCreatorBadge(account);
+      save();
+      return publicAccount(account);
+    }
 
     if (unlocked) {
       unlockBadge(account, badgeId, partyCode);

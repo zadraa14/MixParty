@@ -146,6 +146,12 @@ const PROFILE_STAT_CARDS = [
 
 const PROFILE_BADGES = [
   {
+    id: "createur-mixparty",
+    name: "Créateur de MixParty",
+    condition: "Badge unique réservé au créateur de MixParty",
+    image: "/badges/createur-mixparty.png",
+  },
+  {
     id: "premiere-soiree",
     name: "Première Soirée",
     condition: "Participer à sa première soirée validée",
