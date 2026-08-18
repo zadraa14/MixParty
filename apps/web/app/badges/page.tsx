@@ -603,8 +603,12 @@ export default function BadgeCollectionPage() {
   const [category, setCategory] = useState<(typeof CATEGORY_ORDER)[number]>("Tous");
   const [rarity, setRarity] = useState<(typeof RARITY_ORDER)[number]>("Toutes");
   const [status, setStatus] = useState<"Tous" | "Débloqués" | "À débloquer">("Tous");
+  const [sortMode, setSortMode] = useState<
+    "Collection" | "Plus proches" | "Rareté" | "Récents"
+  >("Collection");
   const [search, setSearch] = useState("");
   const [selectedBadge, setSelectedBadge] = useState<Badge | null>(null);
+  const [celebratedBadgeId, setCelebratedBadgeId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -644,6 +648,51 @@ export default function BadgeCollectionPage() {
   const unlockedCount = BADGES.filter((badge) => unlockedIds.has(badge.id)).length;
   const completion = Math.round((unlockedCount / BADGES.length) * 100);
 
+  const latestUnlock = useMemo(() => {
+    const unlocks = account?.badgeUnlocks || [];
+    const latest = [...unlocks].sort((a, b) => b.unlockedAt - a.unlockedAt)[0];
+    if (!latest) return null;
+
+    const badge = BADGES.find((item) => item.id === latest.badgeId);
+    return badge ? { badge, unlock: latest } : null;
+  }, [account?.badgeUnlocks]);
+
+  const nearestBadges = useMemo(() => {
+    if (!account) return [];
+
+    return BADGES
+      .filter((badge) => !badge.secret && !unlockedIds.has(badge.id))
+      .map((badge) => {
+        const progress = getBadgeProgress(badge.id, account);
+        return {
+          badge,
+          progress,
+          percent: progress ? progressPercent(progress) : -1,
+        };
+      })
+      .filter((item) => item.progress)
+      .sort((a, b) => b.percent - a.percent)
+      .slice(0, 3);
+  }, [account, unlockedIds]);
+
+  useEffect(() => {
+    if (!latestUnlock) return;
+
+    const storageKey = `mixparty.badges.last-celebrated.${latestUnlock.badge.id}`;
+    const alreadyCelebrated = sessionStorage.getItem(storageKey);
+
+    if (!alreadyCelebrated) {
+      setCelebratedBadgeId(latestUnlock.badge.id);
+      sessionStorage.setItem(storageKey, "1");
+
+      const timer = window.setTimeout(() => {
+        setCelebratedBadgeId(null);
+      }, 4500);
+
+      return () => window.clearTimeout(timer);
+    }
+  }, [latestUnlock]);
+
   const filteredBadges = useMemo(() => {
     const query = search.trim().toLocaleLowerCase("fr-FR");
 
@@ -660,8 +709,39 @@ export default function BadgeCollectionPage() {
       }
 
       return true;
+    }).sort((a, b) => {
+      if (sortMode === "Plus proches") {
+        const aProgress = getBadgeProgress(a.id, account);
+        const bProgress = getBadgeProgress(b.id, account);
+        const aValue = aProgress ? progressPercent(aProgress) : -1;
+        const bValue = bProgress ? progressPercent(bProgress) : -1;
+        return bValue - aValue || a.name.localeCompare(b.name, "fr");
+      }
+
+      if (sortMode === "Rareté") {
+        const rarityRank: Record<string, number> = {
+          Mythique: 5,
+          Légendaire: 4,
+          Épique: 3,
+          Rare: 2,
+          Commun: 1,
+        };
+        return (
+          (rarityRank[b.rarity] || 0) -
+            (rarityRank[a.rarity] || 0) ||
+          a.name.localeCompare(b.name, "fr")
+        );
+      }
+
+      if (sortMode === "Récents") {
+        const aUnlock = account?.badgeUnlocks?.find((item) => item.badgeId === a.id)?.unlockedAt || 0;
+        const bUnlock = account?.badgeUnlocks?.find((item) => item.badgeId === b.id)?.unlockedAt || 0;
+        return bUnlock - aUnlock || a.name.localeCompare(b.name, "fr");
+      }
+
+      return 0;
     });
-  }, [category, rarity, status, search, unlockedIds]);
+  }, [category, rarity, status, search, unlockedIds, sortMode, account]);
 
   const selectedUnlocked = selectedBadge ? unlockedIds.has(selectedBadge.id) : false;
   const selectedUnlock = selectedBadge
@@ -739,13 +819,104 @@ export default function BadgeCollectionPage() {
           </div>
         </section>
 
+        <section className="mt-5 grid gap-4 lg:grid-cols-[1.3fr_.7fr]">
+          <div className="rounded-[28px] border border-white/[0.08] bg-gradient-to-br from-white/[0.05] via-violet-500/[0.04] to-fuchsia-500/[0.04] p-4 backdrop-blur-xl sm:p-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[.17em] text-fuchsia-300">
+                  Prochains objectifs
+                </p>
+                <h2 className="mt-1 font-[family:var(--font-exo-2)] text-xl font-black">
+                  Plus proches du déblocage
+                </h2>
+              </div>
+              <Trophy className="h-5 w-5 text-amber-300/70" />
+            </div>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              {nearestBadges.length === 0 ? (
+                <div className="sm:col-span-3 rounded-2xl border border-white/[0.06] bg-black/15 p-5 text-sm text-white/35">
+                  Aucun badge chiffré proche pour le moment.
+                </div>
+              ) : (
+                nearestBadges.map(({ badge, progress, percent }) => (
+                  <button
+                    key={badge.id}
+                    type="button"
+                    onClick={() => setSelectedBadge(badge)}
+                    className="rounded-[22px] border border-white/[0.07] bg-black/15 p-3 text-left transition hover:-translate-y-0.5 hover:bg-white/[0.05]"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="h-14 w-14 shrink-0 overflow-hidden rounded-2xl border border-white/[0.07] bg-black/20">
+                        <img src={badge.image} alt={badge.name} className="h-full w-full object-contain p-1" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-black">{badge.name}</p>
+                        <p className="mt-1 text-[10px] font-bold text-white/35">
+                          {progress?.current} / {progress?.target} {progress?.label}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/35">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-orange-400"
+                        style={{ width: `${percent}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-right text-[10px] font-black text-fuchsia-200/70">
+                      {percent} %
+                    </p>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-[28px] border border-amber-300/10 bg-gradient-to-br from-amber-500/[0.08] via-orange-500/[0.04] to-transparent p-4 backdrop-blur-xl sm:p-5">
+            <p className="text-[10px] font-black uppercase tracking-[.17em] text-amber-300">
+              Dernier badge obtenu
+            </p>
+
+            {latestUnlock ? (
+              <button
+                type="button"
+                onClick={() => setSelectedBadge(latestUnlock.badge)}
+                className="mt-4 flex w-full items-center gap-4 rounded-[22px] border border-amber-300/10 bg-black/15 p-3 text-left transition hover:bg-white/[0.05]"
+              >
+                <div className="h-20 w-20 shrink-0 overflow-hidden rounded-[20px] border border-white/[0.07] bg-black/20">
+                  <img
+                    src={latestUnlock.badge.image}
+                    alt={latestUnlock.badge.name}
+                    className="h-full w-full object-contain p-1"
+                  />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-[family:var(--font-exo-2)] text-lg font-black">
+                    {latestUnlock.badge.name}
+                  </p>
+                  <p className="mt-1 text-[10px] font-black uppercase tracking-[.12em] text-amber-200/70">
+                    {latestUnlock.badge.rarity}
+                  </p>
+                  <p className="mt-2 text-[10px] font-bold text-white/30">
+                    Obtenu le {formatDate(latestUnlock.unlock.unlockedAt)}
+                  </p>
+                </div>
+              </button>
+            ) : (
+              <div className="mt-4 rounded-[22px] border border-white/[0.06] bg-black/15 p-5 text-sm text-white/35">
+                Aucun badge obtenu pour le moment.
+              </div>
+            )}
+          </div>
+        </section>
+
         <section className="mt-5 rounded-[28px] border border-white/[0.08] bg-white/[0.035] p-4 backdrop-blur-xl sm:p-5">
           <div className="flex items-center gap-2">
             <Filter className="h-4 w-4 text-fuchsia-300" />
             <p className="text-sm font-black">Filtres</p>
           </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(250px,1fr)_auto_auto]">
+          <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(250px,1fr)_auto_auto_auto]">
             <label className="relative">
               <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/25" />
               <input
@@ -774,6 +945,25 @@ export default function BadgeCollectionPage() {
               <option>Tous</option>
               <option>Débloqués</option>
               <option>À débloquer</option>
+            </select>
+
+            <select
+              value={sortMode}
+              onChange={(event) =>
+                setSortMode(
+                  event.target.value as
+                    | "Collection"
+                    | "Plus proches"
+                    | "Rareté"
+                    | "Récents",
+                )
+              }
+              className="h-12 rounded-2xl border border-white/10 bg-[#15101f] px-4 text-sm font-black text-white outline-none"
+            >
+              <option>Collection</option>
+              <option>Plus proches</option>
+              <option>Rareté</option>
+              <option>Récents</option>
             </select>
           </div>
 
@@ -905,6 +1095,32 @@ export default function BadgeCollectionPage() {
         ) : null}
       </div>
 
+      {celebratedBadgeId ? (() => {
+        const badge = BADGES.find((item) => item.id === celebratedBadgeId);
+        if (!badge) return null;
+
+        return (
+          <div className="pointer-events-none fixed inset-x-0 top-5 z-[60] flex justify-center px-4">
+            <div className="animate-[badgePop_.55s_ease-out] rounded-[26px] border border-amber-300/20 bg-[#17101f]/95 p-3 pr-5 shadow-2xl shadow-fuchsia-950/40 backdrop-blur-2xl">
+              <div className="flex items-center gap-3">
+                <div className="relative h-16 w-16 overflow-hidden rounded-[18px] border border-amber-300/20 bg-black/30">
+                  <img src={badge.image} alt={badge.name} className="h-full w-full object-contain p-1" />
+                  <Sparkles className="absolute right-1 top-1 h-4 w-4 text-amber-300" />
+                </div>
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[.16em] text-amber-300">
+                    Nouveau badge débloqué
+                  </p>
+                  <p className="mt-1 font-[family:var(--font-exo-2)] text-lg font-black">
+                    {badge.name}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })() : null}
+
       {selectedBadge ? (
         <div
           className="fixed inset-0 z-50 grid place-items-center bg-black/75 p-4 backdrop-blur-xl"
@@ -1007,6 +1223,22 @@ export default function BadgeCollectionPage() {
           </section>
         </div>
       ) : null}
+      <style jsx global>{`
+        @keyframes badgePop {
+          0% {
+            opacity: 0;
+            transform: translateY(-18px) scale(.92);
+          }
+          65% {
+            opacity: 1;
+            transform: translateY(3px) scale(1.02);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+          }
+        }
+      `}</style>
     </main>
   );
 }
