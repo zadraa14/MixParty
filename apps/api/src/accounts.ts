@@ -1027,6 +1027,48 @@ export function createAccountsStore(filePath: string) {
     return publicAccount(owner);
   }
 
+  function adminListAccounts() {
+    return database.accounts
+      .map((account) => ({
+        id: account.id,
+        email: account.email,
+        name: account.name,
+        avatar: account.avatar,
+        stats: { ...account.stats },
+        badges: [...account.badges],
+      }))
+      .sort((a, b) =>
+        String(a.name || a.email).localeCompare(
+          String(b.name || b.email),
+          "fr",
+          { sensitivity: "base" },
+        ),
+      );
+  }
+
+  function adminResetAccountStats(accountId: string) {
+    const account = database.accounts.find((item) => item.id === accountId);
+    if (!account) return null;
+
+    account.stats = defaultStats();
+
+    // Remet à zéro les données qui alimentent les stats afin que les prochains
+    // tests puissent recompter proprement sans toucher à l'identité ni aux badges.
+    account.history = [];
+    account.progress = {
+      playedSongKeys: [],
+      fiveVoteSongKeys: [],
+      activePartyLastSeen: {},
+      activeMilliseconds: 0,
+      songAddedEvents: [],
+      completedSongStreak: 0,
+    };
+
+    account.updatedAt = Date.now();
+    save();
+    return publicAccount(account);
+  }
+
   function adminAdvancePartyTime(
     accountId: string,
     partyCodeValue: unknown,
@@ -1124,6 +1166,8 @@ export function createAccountsStore(filePath: string) {
     finalizePartyParticipation,
     recordVoteReceivedByAccountId,
     recordVoteReceivedRemovedByAccountId,
+    adminListAccounts,
+    adminResetAccountStats,
     adminAdvancePartyTime,
     adminSetBadge,
     logout,

@@ -52,6 +52,26 @@ type AdminIdentity = {
   name: string;
 };
 
+type AdminAccount = {
+  id: string;
+  email: string;
+  name: string;
+  avatar?: string;
+  stats: {
+    partiesJoined: number;
+    partiesHosted: number;
+    wins: number;
+    podiums: number;
+    votesGiven: number;
+    votesReceived: number;
+    songsAdded: number;
+    songsPlayed: number;
+    songsWith5Votes: number;
+    activeMinutes: number;
+  };
+  badges: string[];
+};
+
 async function adminFetch(path: string, init?: RequestInit) {
   const token = localStorage.getItem(ACCOUNT_TOKEN_KEY) || "";
   const headers = new Headers(init?.headers || {});
@@ -69,6 +89,8 @@ async function adminFetch(path: string, init?: RequestInit) {
 
 export default function AdminPage() {
   const [identity, setIdentity] = useState<AdminIdentity | null>(null);
+  const [accounts, setAccounts] = useState<AdminAccount[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState("");
   const [parties, setParties] = useState<AdminParty[]>([]);
   const [selectedCode, setSelectedCode] = useState("");
   const [loading, setLoading] = useState(true);
@@ -80,6 +102,15 @@ export default function AdminPage() {
   const selectedParty = useMemo(
     () => parties.find((party) => party.code === selectedCode) || parties[0] || null,
     [parties, selectedCode],
+  );
+
+  const selectedAccount = useMemo(
+    () =>
+      accounts.find((account) => account.id === selectedAccountId) ||
+      accounts.find((account) => account.id === identity?.id) ||
+      accounts[0] ||
+      null,
+    [accounts, selectedAccountId, identity?.id],
   );
 
   async function refresh() {
@@ -100,6 +131,25 @@ export default function AdminPage() {
       }
 
       setIdentity(meBody.account);
+
+      const accountsResponse = await adminFetch("/admin/accounts");
+      const accountsBody = await accountsResponse.json();
+
+      if (!accountsResponse.ok) {
+        throw new Error(accountsBody?.error || "Impossible de charger les comptes.");
+      }
+
+      const nextAccounts = Array.isArray(accountsBody.accounts) ? accountsBody.accounts : [];
+      setAccounts(nextAccounts);
+
+      if (!selectedAccountId && meBody.account?.id) {
+        setSelectedAccountId(meBody.account.id);
+      } else if (
+        selectedAccountId &&
+        !nextAccounts.some((item: AdminAccount) => item.id === selectedAccountId)
+      ) {
+        setSelectedAccountId(meBody.account?.id || nextAccounts[0]?.id || "");
+      }
 
       const partiesResponse = await adminFetch("/admin/parties");
       const partiesBody = await partiesResponse.json();
@@ -202,6 +252,42 @@ export default function AdminPage() {
       unlocked
         ? `Badge ${badgeId.trim()} débloqué en mode test.`
         : `Badge ${badgeId.trim()} reverrouillé.`,
+    );
+  }
+
+  async function resetSelectedAccountStats() {
+    if (!selectedAccount) return;
+
+    const confirmed = window.confirm(
+      `Remettre toutes les stats de ${selectedAccount.name || selectedAccount.email} à zéro ?\n\nLes badges déjà débloqués seront conservés.`,
+    );
+    if (!confirmed) return;
+
+    await runAction(
+      `reset-${selectedAccount.id}`,
+      `/admin/account/${selectedAccount.id}/reset-stats`,
+      {},
+      `Stats de ${selectedAccount.name || selectedAccount.email} remises à zéro.`,
+    );
+  }
+
+  async function scenarioComeback(song: AdminSong) {
+    if (!selectedParty) return;
+    await runAction(
+      `scenario-comeback-${song.index}`,
+      `/admin/party/${selectedParty.code}/song/${song.index}/scenario-comeback`,
+      {},
+      `Scénario COMEBACK appliqué à ${song.title}.`,
+    );
+  }
+
+  async function scenarioJackpot() {
+    if (!selectedParty || !selectedAccount) return;
+    await runAction(
+      "scenario-jackpot",
+      `/admin/party/${selectedParty.code}/scenario-jackpot`,
+      { accountId: selectedAccount.id },
+      `Scénario JACKPOT appliqué au compte ${selectedAccount.name || selectedAccount.email}.`,
     );
   }
 
@@ -332,6 +418,47 @@ export default function AdminPage() {
                   )}
                 </div>
 
+                <div className="mt-5 border-t border-white/[0.07] pt-5">
+                  <p className="text-[10px] font-black uppercase tracking-[.16em] text-violet-300">
+                    Compte de test
+                  </p>
+
+                  <select
+                    value={selectedAccount?.id || ""}
+                    onChange={(event) => setSelectedAccountId(event.target.value)}
+                    className="mt-3 w-full rounded-xl border border-white/10 bg-[#15101f] px-3 py-2.5 text-sm font-bold text-white outline-none focus:border-violet-300/30"
+                  >
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name || account.email} — {account.email}
+                      </option>
+                    ))}
+                  </select>
+
+                  {selectedAccount && (
+                    <div className="mt-3 rounded-xl border border-white/[0.06] bg-black/20 p-3">
+                      <div className="grid grid-cols-2 gap-2 text-[10px] text-white/45">
+                        <span>Soirées <b className="text-white/80">{selectedAccount.stats.partiesJoined}</b></span>
+                        <span>Votes reçus <b className="text-white/80">{selectedAccount.stats.votesReceived}</b></span>
+                        <span>Morceaux <b className="text-white/80">{selectedAccount.stats.songsAdded}</b></span>
+                        <span>Badges <b className="text-white/80">{selectedAccount.badges.length}</b></span>
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={busy !== "" || !selectedAccount}
+                    onClick={resetSelectedAccountStats}
+                    className="mt-3 w-full rounded-xl border border-red-300/15 bg-red-500/[0.08] px-3 py-2.5 text-xs font-black text-red-100 transition hover:bg-red-500/[0.14] disabled:opacity-40"
+                  >
+                    Remettre les stats à zéro
+                  </button>
+                  <p className="mt-2 text-[10px] leading-4 text-white/25">
+                    Remet les compteurs, l'historique de participation et les données de test à zéro. Les badges déjà obtenus restent conservés.
+                  </p>
+                </div>
+
                 {selectedParty && (
                   <div className="mt-5 border-t border-white/[0.07] pt-5">
                     <p className="text-[10px] font-black uppercase tracking-[.16em] text-cyan-300">
@@ -351,6 +478,15 @@ export default function AdminPage() {
                         </button>
                       ))}
                     </div>
+
+                    <button
+                      type="button"
+                      disabled={busy !== "" || !selectedAccount}
+                      onClick={scenarioJackpot}
+                      className="mt-3 w-full rounded-xl border border-amber-300/15 bg-amber-500/[0.08] px-3 py-2.5 text-xs font-black text-amber-100 transition hover:bg-amber-500/[0.14] disabled:opacity-40"
+                    >
+                      🎰 Scénario JACKPOT
+                    </button>
                   </div>
                 )}
 
@@ -470,6 +606,15 @@ export default function AdminPage() {
                                     {delta}
                                   </button>
                                 ))}
+
+                                <button
+                                  type="button"
+                                  disabled={busy !== ""}
+                                  onClick={() => scenarioComeback(song)}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-violet-300/10 bg-violet-500/[0.06] px-3 py-2 text-xs font-black text-violet-100 hover:bg-violet-500/[0.11] disabled:opacity-40"
+                                >
+                                  ⚡ COMEBACK
+                                </button>
 
                                 <button
                                   type="button"

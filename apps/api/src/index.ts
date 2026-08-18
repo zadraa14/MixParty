@@ -2879,6 +2879,37 @@ app.get("/admin/parties", (req, res) => {
   });
 });
 
+
+app.get("/admin/accounts", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  return res.json({
+    accounts: accountsStore.adminListAccounts(),
+  });
+});
+
+app.post("/admin/account/:accountId/reset-stats", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const targetAccountId = String(req.params.accountId || "").trim();
+  if (!targetAccountId) {
+    return res.status(400).json({ error: "accountId requis." });
+  }
+
+  const updated = accountsStore.adminResetAccountStats(targetAccountId);
+  if (!updated) {
+    return res.status(404).json({ error: "Compte introuvable." });
+  }
+
+  writeAdminAudit(account, "RESET_ACCOUNT_STATS", {
+    targetAccountId,
+  });
+
+  return res.json({ ok: true, account: updated });
+});
+
 app.post("/admin/party/:code/song/:index/simulate-votes", (req, res) => {
   const account = readAdminAccount(req);
   if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
@@ -2965,6 +2996,116 @@ app.post("/admin/party/:code/song/:index/simulate-votes", (req, res) => {
       played: song.played,
     },
   });
+});
+
+app.post("/admin/party/:code/song/:index/scenario-comeback", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  const index = Number(req.params.index);
+  const song = party.songs[index];
+  if (!song) return res.status(404).json({ error: "Morceau introuvable" });
+  if (!song.addedByAccountId) {
+    return res.status(400).json({
+      error: "Ce morceau n'est pas lié à un compte MixParty permanent.",
+    });
+  }
+
+  const now = Date.now();
+  song.addedAt = now - 31 * 60 * 1000;
+  song.firstVoteAt = now;
+
+  const missingVotes = Math.max(0, 10 - song.votes);
+  for (let i = 0; i < missingVotes; i += 1) {
+    const syntheticVoter = `ADMIN_COMEBACK_${now}_${i}_${randomUUID().slice(0, 6)}`;
+    song.voters.push(syntheticVoter);
+    song.votes += 1;
+    accountsStore.recordVoteReceivedByAccountId(song.addedByAccountId);
+
+    if (song.votes >= 5) {
+      accountsStore.recordSongReachedFiveVotesByAccountId(
+        song.addedByAccountId,
+        party.code,
+        accountSongKey(song),
+      );
+    }
+
+    accountsStore.recordSongVoteMilestoneByAccountId(
+      song.addedByAccountId,
+      party.code,
+      accountSongKey(song),
+      song.votes,
+      song.addedAt,
+      song.firstVoteAt,
+    );
+  }
+
+  writeAdminAudit(account, "SCENARIO_COMEBACK", {
+    partyCode: party.code,
+    songIndex: index,
+    videoId: song.videoId,
+    resultingVotes: song.votes,
+  });
+
+  updateParty(party);
+  return res.json({ ok: true, votes: song.votes });
+});
+
+app.post("/admin/party/:code/scenario-jackpot", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  const targetAccountId = String(req.body?.accountId || account.id).trim();
+  const ownedSongs = party.songs.filter(
+    (song) => song.addedByAccountId === targetAccountId,
+  );
+
+  if (ownedSongs.length < 5) {
+    return res.status(400).json({
+      error: "Il faut au moins 5 morceaux ajoutés par le compte sélectionné dans cette soirée.",
+    });
+  }
+
+  for (const song of ownedSongs.slice(0, 5)) {
+    const missingVotes = Math.max(0, 5 - song.votes);
+
+    for (let i = 0; i < missingVotes; i += 1) {
+      const syntheticVoter = `ADMIN_JACKPOT_${Date.now()}_${i}_${randomUUID().slice(0, 6)}`;
+      song.voters.push(syntheticVoter);
+      song.votes += 1;
+      accountsStore.recordVoteReceivedByAccountId(song.addedByAccountId);
+
+      accountsStore.recordSongReachedFiveVotesByAccountId(
+        song.addedByAccountId,
+        party.code,
+        accountSongKey(song),
+      );
+
+      accountsStore.recordSongVoteMilestoneByAccountId(
+        song.addedByAccountId,
+        party.code,
+        accountSongKey(song),
+        song.votes,
+        song.addedAt,
+        song.firstVoteAt,
+      );
+    }
+  }
+
+  writeAdminAudit(account, "SCENARIO_JACKPOT", {
+    partyCode: party.code,
+    targetAccountId,
+    songCount: 5,
+  });
+
+  updateParty(party);
+  return res.json({ ok: true });
 });
 
 app.post("/admin/party/:code/song/:index/outcome", (req, res) => {
