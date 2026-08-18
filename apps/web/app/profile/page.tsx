@@ -34,7 +34,6 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import MixPartyBackground from "../../components/MixPartyBackground";
 
 const NAME_KEY = "playerName";
@@ -510,8 +509,7 @@ async function compressProfilePhoto(file: File): Promise<string> {
 }
 
 export default function ProfilePage() {
-  const searchParams = useSearchParams();
-  const embedded = searchParams.get("embedded") === "1";
+  const [embedded, setEmbedded] = useState(false);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -550,6 +548,10 @@ export default function ProfilePage() {
   const statsSectionRef = useRef<HTMLDivElement | null>(null);
   const historySectionRef = useRef<HTMLElement | null>(null);
 
+
+  useEffect(() => {
+    setEmbedded(new URLSearchParams(window.location.search).get("embedded") === "1");
+  }, []);
 
   useEffect(() => {
     const savedName = localStorage.getItem(NAME_KEY)?.trim() || "";
