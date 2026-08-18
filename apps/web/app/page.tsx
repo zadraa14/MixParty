@@ -308,26 +308,26 @@ export default function Home() {
         <div className="mp521-depth pointer-events-none fixed inset-0 z-[1]" />
         <div className="mp521-particles pointer-events-none fixed inset-0 z-[2]" aria-hidden="true" />
 
-        <div className="relative z-10 mx-auto max-w-7xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(.75rem,env(safe-area-inset-top))] sm:px-6 lg:px-8">
+        <div className="relative z-10 mx-auto max-w-[1440px] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(.75rem,env(safe-area-inset-top))] sm:px-6 lg:px-10 xl:px-14">
           <MixPartyHeader />
 
-          <section className="grid min-h-[calc(100dvh-108px)] items-center gap-10 py-10 sm:py-14 lg:grid-cols-[minmax(0,1.02fr)_minmax(460px,.98fr)] lg:gap-16 lg:py-16">
-            <div className="relative z-10 max-w-2xl">
+          <section className="grid min-h-[calc(100dvh-104px)] items-center gap-10 py-10 sm:py-14 lg:min-h-[760px] lg:grid-cols-[minmax(0,1.12fr)_minmax(470px,.88fr)] lg:gap-12 lg:py-12 xl:min-h-[820px] xl:gap-20">
+            <div className="relative z-10 max-w-2xl lg:max-w-[720px]">
               <div className="mp521-reveal mp521-reveal-1 inline-flex items-center gap-2 rounded-full border border-purple-300/20 bg-purple-400/[0.08] px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-purple-200 shadow-[inset_0_1px_0_rgba(255,255,255,.08)] backdrop-blur-xl sm:text-xs">
                 <span className="mp521-live-dot h-2 w-2 rounded-full bg-emerald-400" />
                 La soirée devient collaborative
               </div>
 
-              <h1 className="mp521-reveal mp521-reveal-2 mt-6 font-[family:var(--font-exo-2)] text-[clamp(3.25rem,8vw,6.7rem)] font-black leading-[.88] tracking-[-.065em]">
+              <h1 className="mp521-reveal mp521-reveal-2 mt-6 font-[family:var(--font-exo-2)] text-[clamp(3.25rem,8vw,6.7rem)] font-black leading-[.88] tracking-[-.065em] lg:text-[clamp(5.4rem,7vw,7.6rem)]">
                 <span className="block text-white drop-shadow-[0_0_22px_rgba(255,255,255,.11)]">Ta soirée.</span>
                 <span className="mp521-hero-gradient block">Leur playlist.</span>
               </h1>
 
-              <p className="mp521-reveal mp521-reveal-3 mt-7 max-w-xl text-base font-medium leading-7 text-white/52 sm:text-lg sm:leading-8">
+              <p className="mp521-reveal mp521-reveal-3 mt-7 max-w-xl text-base font-medium leading-7 text-white/52 sm:text-lg sm:leading-8 lg:max-w-2xl lg:text-xl lg:leading-9">
                 Crée une salle, partage le QR Code et laisse tes invités proposer puis voter pour les prochains titres. MixParty s’occupe du reste.
               </p>
 
-              <div className="mp521-reveal mp521-reveal-4 mt-8 flex flex-col gap-3 sm:flex-row">
+              <div className="mp521-reveal mp521-reveal-4 mt-8 flex flex-col gap-3 sm:flex-row lg:mt-10 lg:gap-4">
                 <button type="button" onClick={createParty} disabled={creatingParty} className="mp521-primary-button group">
                   <span className="mp521-button-shine" aria-hidden="true" />
                   <span className="relative z-10 flex items-center justify-center gap-2.5">
@@ -345,19 +345,19 @@ export default function Home() {
                 </a>
               </div>
 
-              <div className="mp521-reveal mp521-reveal-5 mt-7 flex flex-wrap gap-x-5 gap-y-2 text-xs font-bold text-white/35">
+              <div className="mp521-reveal mp521-reveal-5 mt-7 flex flex-wrap gap-x-5 gap-y-2 text-xs font-bold text-white/35 lg:mt-8 lg:gap-x-7 lg:text-sm">
                 <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" />Sans compte</span>
                 <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" />En temps réel</span>
                 <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" />Pensé pour mobile</span>
               </div>
             </div>
 
-            <div className="mp521-reveal mp521-reveal-3 relative mx-auto w-full max-w-[570px] lg:mx-0">
+            <div className="mp521-reveal mp521-reveal-3 relative mx-auto w-full max-w-[570px] lg:mx-0 lg:justify-self-end lg:rounded-[44px] lg:border lg:border-white/[0.08] lg:bg-white/[0.025] lg:px-8 lg:py-10 lg:shadow-[0_35px_120px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.05)] lg:backdrop-blur-sm xl:px-10 xl:py-12">
               <div className="mp521-phone-aura pointer-events-none absolute inset-[10%] rounded-full" />
               <div className="mp521-orbit mp521-orbit-one" />
               <div className="mp521-orbit mp521-orbit-two" />
 
-              <div className="mp521-phone-shell relative mx-auto w-[min(100%,390px)] rounded-[48px] p-[7px] sm:w-[390px]">
+              <div className="mp521-phone-shell relative mx-auto w-[min(100%,390px)] rounded-[48px] p-[7px] sm:w-[390px] lg:w-[410px] xl:w-[430px]">
                 <div className="relative overflow-hidden rounded-[41px] border border-white/[0.09] bg-[#090913] px-5 pb-6 pt-4 shadow-[inset_0_1px_0_rgba(255,255,255,.08)]">
                   <div className="mx-auto h-1.5 w-20 rounded-full bg-white/10" />
 
@@ -429,8 +429,10 @@ export default function Home() {
             </div>
           </section>
 
-          <section id="rejoindre" className="py-14 sm:py-20">
-            <div className="mp521-join-card mx-auto grid max-w-5xl gap-7 rounded-[34px] p-5 sm:p-8 lg:grid-cols-[1fr_auto] lg:items-center lg:p-10">
+          <div className="mx-auto hidden h-px w-[88%] bg-gradient-to-r from-transparent via-white/10 to-transparent lg:block" />
+
+          <section id="rejoindre" className="py-14 sm:py-20 lg:py-16">
+            <div className="mp521-join-card mx-auto grid max-w-6xl gap-7 rounded-[34px] border border-white/[0.10] bg-white/[0.045] p-5 shadow-[0_24px_90px_rgba(0,0,0,.28),inset_0_1px_0_rgba(255,255,255,.055)] backdrop-blur-xl sm:p-8 lg:grid-cols-[1fr_auto] lg:items-center lg:p-10 xl:p-12">
               <div>
                 <span className="mp521-section-kicker">Déjà invité ?</span>
                 <h2 className="mt-3 font-[family:var(--font-exo-2)] text-3xl font-black tracking-tight sm:text-4xl">Entre dans la soirée.</h2>
@@ -454,15 +456,15 @@ export default function Home() {
             </div>
           </section>
 
-          <section className="py-14 sm:py-20">
-            <div className="mx-auto max-w-3xl text-center">
+          <section className="py-14 sm:py-20 lg:py-16">
+            <div className="mx-auto max-w-4xl text-center">
               <span className="mp521-section-kicker">Pourquoi MixParty</span>
               <h2 className="mt-4 font-[family:var(--font-exo-2)] text-3xl font-black tracking-tight sm:text-5xl">Une soirée qui <span className="mp521-inline-gradient">réagit en direct.</span></h2>
               <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-white/42 sm:text-base">Chaque téléphone devient une télécommande musicale collective, sans compte et sans installation compliquée.</p>
             </div>
-            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:mt-12 lg:grid-cols-4 lg:gap-5">
               {STATS.map(({ label, value, description, icon: Icon, accent }, index) => (
-                <article key={label} className={`mp521-stat-card mp521-accent-${accent}`} style={{ animationDelay: `${index * 100}ms` }}>
+                <article key={label} className={`mp521-stat-card mp521-accent-${accent} border border-white/[0.08] bg-white/[0.035] shadow-[0_18px_55px_rgba(0,0,0,.22),inset_0_1px_0_rgba(255,255,255,.045)] backdrop-blur-xl lg:min-h-[220px] lg:p-7`} style={{ animationDelay: `${index * 100}ms` }}>
                   <div className="mp521-stat-icon"><Icon className="h-5 w-5" /></div>
                   <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-white/27">{label}</p>
                   <p className="mt-2 font-[family:var(--font-exo-2)] text-xl font-black text-white">{value}</p>
@@ -472,15 +474,15 @@ export default function Home() {
             </div>
           </section>
 
-          <section className="py-14 sm:py-20">
+          <section className="py-14 sm:py-20 lg:py-16">
             <div className="mx-auto max-w-3xl text-center">
               <span className="mp521-section-kicker mp521-section-kicker--pink">Comment ça marche</span>
               <h2 className="mt-4 font-[family:var(--font-exo-2)] text-3xl font-black tracking-tight sm:text-5xl">Quatre étapes. <span className="mp521-inline-gradient">Une seule ambiance.</span></h2>
             </div>
-            <div className="mp521-timeline relative mt-12 grid gap-5 lg:grid-cols-4">
+            <div className="mp521-timeline relative mt-12 grid gap-5 lg:mt-14 lg:grid-cols-4 lg:gap-6">
               <div className="mp521-timeline-line hidden lg:block" />
               {STEPS.map(({ number, title, text, icon: Icon, accent }, index) => (
-                <article key={number} className={`mp521-step-card mp521-accent-${accent}`}>
+                <article key={number} className={`mp521-step-card mp521-accent-${accent} border border-white/[0.08] bg-black/15 shadow-[0_18px_55px_rgba(0,0,0,.20),inset_0_1px_0_rgba(255,255,255,.04)] backdrop-blur-xl lg:min-h-[240px] lg:p-7`}>
                   <div className="mp521-step-node"><span>{number}</span></div>
                   <div className="mp521-stat-icon"><Icon className="h-5 w-5" /></div>
                   <p className="mt-5 font-[family:var(--font-exo-2)] text-xl font-black">{title}</p>
