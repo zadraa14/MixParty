@@ -922,24 +922,52 @@ export default function ProfilePage() {
       value: bestRank ? `#${bestRank}` : "—",
       detail: bestRank === 1 ? "Victoire" : bestRank ? "Classement final" : "Aucun classement final",
       icon: Trophy,
+      accent: "text-amber-300",
+      glow: "from-amber-500/20 via-yellow-400/10 to-transparent",
+      panel: "from-amber-500/[0.12] via-orange-500/[0.04] to-white/[0.02]",
+      border: "border-amber-300/15",
+      iconWrap: "border-amber-300/20 bg-amber-400/10 text-amber-200",
+      spark: "text-amber-200/70",
+      chip: "TOP",
     },
     {
       label: "Meilleur PartyScore",
       value: bestPartyScore !== null ? String(bestPartyScore) : "—",
       detail: "Record sur une soirée terminée",
       icon: Zap,
+      accent: "text-fuchsia-300",
+      glow: "from-fuchsia-500/20 via-pink-400/10 to-transparent",
+      panel: "from-fuchsia-500/[0.12] via-pink-500/[0.05] to-white/[0.02]",
+      border: "border-fuchsia-300/15",
+      iconWrap: "border-fuchsia-300/20 bg-fuchsia-400/10 text-fuchsia-200",
+      spark: "text-fuchsia-200/70",
+      chip: "SCORE",
     },
     {
       label: "Votes / morceau",
       value: averageVotesPerSong > 0 ? averageVotesPerSong.toFixed(1).replace(".", ",") : "0",
       detail: "Moyenne de votes reçus",
       icon: Heart,
+      accent: "text-cyan-300",
+      glow: "from-cyan-500/20 via-sky-400/10 to-transparent",
+      panel: "from-cyan-500/[0.12] via-sky-500/[0.05] to-white/[0.02]",
+      border: "border-cyan-300/15",
+      iconWrap: "border-cyan-300/20 bg-cyan-400/10 text-cyan-200",
+      spark: "text-cyan-200/70",
+      chip: "MOYENNE",
     },
     {
       label: "Durée moyenne",
       value: averagePartyMinutes > 0 ? formatActiveTime(averagePartyMinutes) : "—",
       detail: "Par soirée validée",
       icon: Clock3,
+      accent: "text-violet-300",
+      glow: "from-violet-500/20 via-purple-400/10 to-transparent",
+      panel: "from-violet-500/[0.12] via-purple-500/[0.05] to-white/[0.02]",
+      border: "border-violet-300/15",
+      iconWrap: "border-violet-300/20 bg-violet-400/10 text-violet-200",
+      spark: "text-violet-200/70",
+      chip: "TEMPS",
     },
   ];
 
@@ -1376,26 +1404,54 @@ export default function ProfilePage() {
               </div>
 
               <div className="mt-4 grid grid-cols-2 gap-3">
-                {personalRecords.map(({ label, value, detail, icon: Icon }) => (
-                  <article
-                    key={label}
-                    className="rounded-[18px] border border-white/[0.07] bg-black/15 p-3"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <Icon className="h-4 w-4 text-white/35" />
-                      <Sparkles className="h-3 w-3 text-amber-300/35" />
-                    </div>
-                    <p className="mt-3 font-[family:var(--font-exo-2)] text-lg font-black">
-                      {account ? value : "—"}
-                    </p>
-                    <p className="mt-1 text-[10px] font-black text-white/45">
-                      {label}
-                    </p>
-                    <p className="mt-1 text-[8px] font-bold leading-3 text-white/20">
-                      {detail}
-                    </p>
-                  </article>
-                ))}
+                {personalRecords.map(
+                  ({
+                    label,
+                    value,
+                    detail,
+                    icon: Icon,
+                    accent,
+                    glow,
+                    panel,
+                    border,
+                    iconWrap,
+                    spark,
+                    chip,
+                  }) => (
+                    <article
+                      key={label}
+                      className={`group relative overflow-hidden rounded-[20px] border ${border} bg-gradient-to-br ${panel} p-3.5 shadow-[0_12px_30px_rgba(0,0,0,0.18)] transition-all duration-300 hover:-translate-y-0.5`}
+                    >
+                      <div className={`pointer-events-none absolute inset-x-0 top-0 h-16 bg-gradient-to-r ${glow}`} />
+                      <div className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-white/[0.03] blur-2xl" />
+
+                      <div className="relative flex items-center justify-between gap-2">
+                        <span className={`inline-flex items-center rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-[0.18em] ${border} ${accent} bg-black/15`}>
+                          {chip}
+                        </span>
+                        <Sparkles className={`h-3.5 w-3.5 ${spark}`} />
+                      </div>
+
+                      <div className="relative mt-3 flex items-start justify-between gap-3">
+                        <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-2xl border ${iconWrap}`}>
+                          <Icon className="h-4.5 w-4.5" />
+                        </span>
+                        <p className={`text-right font-[family:var(--font-exo-2)] text-[28px] leading-none font-black ${accent}`}>
+                          {account ? value : "—"}
+                        </p>
+                      </div>
+
+                      <div className="relative mt-4">
+                        <p className="text-[11px] font-black text-white/80">
+                          {label}
+                        </p>
+                        <p className="mt-1 text-[9px] font-bold leading-4 text-white/35">
+                          {detail}
+                        </p>
+                      </div>
+                    </article>
+                  ),
+                )}
               </div>
             </div>
           </div>
