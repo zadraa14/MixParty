@@ -476,6 +476,7 @@ function finalizePlayback(party: Party, reason: "ended" | "dj_skip" | "dj_previo
       song.addedByAccountId,
       party.code,
       completed,
+      song.votes,
     );
   }
 }
@@ -785,6 +786,11 @@ type Party = {
   lastActivityAt: number;
   creatorToken: string;
   partyBrainAutoRelayEnabled: boolean;
+  rankingSnapshotCount: number;
+  top3SnapshotCounts: Record<string, number>;
+  voteStreakOwnerAccountId?: string;
+  voteStreakCount: number;
+  voteStreakSongKeys: string[];
 };
 
 let parties: Party[] = [];
@@ -815,6 +821,17 @@ if(fs.existsSync(dataFilePath)){
     party.lastActivityAt = Number(party.lastActivityAt || party.createdAt || Date.now());
     party.creatorToken = typeof party.creatorToken === "string" && party.creatorToken ? party.creatorToken : randomUUID();
     party.partyBrainAutoRelayEnabled = Boolean(party.partyBrainAutoRelayEnabled);
+    party.rankingSnapshotCount = Math.max(0, Number(party.rankingSnapshotCount || 0));
+    party.top3SnapshotCounts =
+      party.top3SnapshotCounts && typeof party.top3SnapshotCounts === "object"
+        ? party.top3SnapshotCounts
+        : {};
+    party.voteStreakOwnerAccountId =
+      String(party.voteStreakOwnerAccountId || "").trim() || undefined;
+    party.voteStreakCount = Math.max(0, Number(party.voteStreakCount || 0));
+    party.voteStreakSongKeys = Array.isArray(party.voteStreakSongKeys)
+      ? [...new Set(party.voteStreakSongKeys.map(String).filter(Boolean))]
+      : [];
   });
 
   cleanOldParties();
@@ -2740,6 +2757,40 @@ function cleanOldParties(){
     accountsStore.finalizePartyParticipation(party.code, endedAt);
     const finalRanking = buildFinalPartyRanking(party);
     accountsStore.recordFinalPartyRanking(party.code, finalRanking);
+
+    const totalVotes = party.songs.reduce(
+      (sum, song) => sum + Math.max(0, Number(song.votes || 0)),
+      0,
+    );
+    const playedSongs = party.songs.filter((song) => song.played).length;
+
+    accountsStore.recordHostedPartyEngagement(
+      party.code,
+      party.seenParticipantIds.length,
+      totalVotes,
+      playedSongs,
+    );
+
+    const winnerAccountId = finalRanking[0]?.accountId;
+    if (
+      winnerAccountId &&
+      party.rankingSnapshotCount >= 5
+    ) {
+      const winnerTop3Snapshots = Math.max(
+        0,
+        Number(party.top3SnapshotCounts[winnerAccountId] || 0),
+      );
+      const winnerTop3Ratio =
+        winnerTop3Snapshots / Math.max(1, party.rankingSnapshotCount);
+
+      if (winnerTop3Ratio < 0.5) {
+        accountsStore.unlockRoiCache(
+          winnerAccountId,
+          party.code,
+        );
+      }
+    }
+
     playbackTelemetry.delete(party.code);
   }
 
@@ -2853,6 +2904,69 @@ function buildFinalPartyRanking(party: Party) {
       b.songsAdded - a.songsAdded ||
       a.accountId.localeCompare(b.accountId),
   );
+}
+
+
+function captureRankingSnapshot(party: Party) {
+  const scores = new Map<string, number>();
+
+  for (const song of party.songs) {
+    const accountId = String(song.addedByAccountId || "").trim();
+    if (!accountId) continue;
+
+    scores.set(
+      accountId,
+      (scores.get(accountId) || 0) + Math.max(0, Number(song.votes || 0)),
+    );
+  }
+
+  const top3 = [...scores.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+    .slice(0, 3)
+    .map(([accountId]) => accountId);
+
+  if (top3.length === 0) return;
+
+  party.rankingSnapshotCount += 1;
+
+  for (const accountId of top3) {
+    party.top3SnapshotCounts[accountId] =
+      Math.max(0, Number(party.top3SnapshotCounts[accountId] || 0)) + 1;
+  }
+}
+
+function updateMachineDanceStreak(party: Party, song: Song) {
+  const ownerAccountId = String(song.addedByAccountId || "").trim();
+
+  if (!ownerAccountId) {
+    party.voteStreakOwnerAccountId = undefined;
+    party.voteStreakCount = 0;
+    party.voteStreakSongKeys = [];
+    return;
+  }
+
+  const songKey = accountSongKey(song);
+
+  if (party.voteStreakOwnerAccountId !== ownerAccountId) {
+    party.voteStreakOwnerAccountId = ownerAccountId;
+    party.voteStreakCount = 1;
+    party.voteStreakSongKeys = [songKey];
+  } else {
+    party.voteStreakCount += 1;
+    if (!party.voteStreakSongKeys.includes(songKey)) {
+      party.voteStreakSongKeys.push(songKey);
+    }
+  }
+
+  if (
+    party.voteStreakCount >= 5 &&
+    party.voteStreakSongKeys.length >= 3
+  ) {
+    accountsStore.unlockMachineADanser(
+      ownerAccountId,
+      party.code,
+    );
+  }
 }
 
 
@@ -3391,6 +3505,49 @@ app.post("/admin/party/:code/song/:index/scenario-pepite", (req, res) => {
 
   updateParty(party);
   return res.json({ ok: true });
+});
+
+app.post("/admin/account/:accountId/scenario-quality-badge", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const targetAccountId = String(req.params.accountId || "").trim();
+  const badgeId = String(req.body?.badgeId || "").trim();
+  const partyCode = String(req.body?.partyCode || "").trim().toUpperCase();
+
+  const allowed = [
+    "compatible",
+    "partybrain-approved",
+    "maitre-partybrain",
+    "serie-parfaite",
+    "machine-a-danser",
+    "soiree-adoree",
+    "secret-roi-cache",
+  ];
+
+  if (!targetAccountId || !allowed.includes(badgeId)) {
+    return res.status(400).json({
+      error: "accountId ou badgeId invalide.",
+    });
+  }
+
+  const updated = accountsStore.adminSimulateQualityBadge(
+    targetAccountId,
+    partyCode,
+    badgeId,
+  );
+
+  if (!updated) {
+    return res.status(404).json({ error: "Compte introuvable." });
+  }
+
+  writeAdminAudit(account, "SCENARIO_QUALITY_BADGE", {
+    targetAccountId,
+    partyCode,
+    badgeId,
+  });
+
+  return res.json({ ok: true, account: updated });
 });
 
 app.post("/admin/account/:accountId/scenario-result", (req, res) => {
@@ -4014,6 +4171,22 @@ addedById: typeof addedById === "string" && addedById.trim()
       addedSong.addedAt,
       isFirstEverOnMixParty,
     );
+
+    const contextGenre = inferPartyBrainContextGenre(party);
+    const addedGenre = inferPartyBrainGenre(
+      addedSong.title || "",
+      addedSong.artistName || "",
+    );
+    const compatibility = partyBrainGenreCompatibility(
+      contextGenre,
+      addedGenre,
+    );
+
+    accountsStore.recordPartyBrainAdditionQuality(
+      accountToken,
+      party.code,
+      compatibility,
+    );
   }
   recordMusicBrainAddition(addedSong);
   recordPartyEvent(party, "SONG_ADDED", {
@@ -4142,6 +4315,9 @@ console.log("Résultat includes :", song.voters.includes(name));
     );
   }
 
+  updateMachineDanceStreak(party, song);
+  captureRankingSnapshot(party);
+
   recordMusicBrainVote(song);
   recordPartyEvent(party, "SONG_VOTED", {
     song: songEventSnapshot(party, song),
@@ -4191,6 +4367,11 @@ app.post("/party/:code/song/:index/downvote", (req, res) => {
   if (song.addedByAccountId) {
     accountsStore.recordVoteReceivedRemovedByAccountId(song.addedByAccountId);
   }
+
+  party.voteStreakOwnerAccountId = undefined;
+  party.voteStreakCount = 0;
+  party.voteStreakSongKeys = [];
+  captureRankingSnapshot(party);
 
   recordPartyEvent(party, "SONG_DOWNVOTED", {
     song: songEventSnapshot(party, song),
@@ -4369,6 +4550,39 @@ app.post("/party/:code/end", (req, res) => {
     party.code,
     finalRanking,
   );
+
+  const totalVotes = party.songs.reduce(
+    (sum, song) => sum + Math.max(0, Number(song.votes || 0)),
+    0,
+  );
+  const playedSongs = party.songs.filter((song) => song.played).length;
+
+  accountsStore.recordHostedPartyEngagement(
+    party.code,
+    party.seenParticipantIds.length,
+    totalVotes,
+    playedSongs,
+  );
+
+  const winnerAccountId = finalRanking[0]?.accountId;
+  if (
+    winnerAccountId &&
+    party.rankingSnapshotCount >= 5
+  ) {
+    const winnerTop3Snapshots = Math.max(
+      0,
+      Number(party.top3SnapshotCounts[winnerAccountId] || 0),
+    );
+    const winnerTop3Ratio =
+      winnerTop3Snapshots / Math.max(1, party.rankingSnapshotCount);
+
+    if (winnerTop3Ratio < 0.5) {
+      accountsStore.unlockRoiCache(
+        winnerAccountId,
+        party.code,
+      );
+    }
+  }
 
   playbackTelemetry.delete(party.code);
   parties = parties.filter((item) => item.code !== party.code);

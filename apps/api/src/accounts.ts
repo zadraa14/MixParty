@@ -79,6 +79,11 @@ export type MixPartyAccount = {
     currentWinStreak: number;
     bestWinStreak: number;
     lastRankedPartyCode?: string;
+    compatibleStreak: number;
+    partyBrainApprovedStreak: number;
+    partyBrainQualityPoints: number;
+    partyBrainQualitySamples: number;
+    appreciatedSongStreak: number;
   };
   customization: {
     avatarFrame?: string;
@@ -414,6 +419,11 @@ export function createAccountsStore(filePath: string) {
               bestWinStreak: Math.max(0, Number(raw.progress?.bestWinStreak || 0)),
               lastRankedPartyCode:
                 String(raw.progress?.lastRankedPartyCode || "").trim().toUpperCase() || undefined,
+              compatibleStreak: Math.max(0, Number(raw.progress?.compatibleStreak || 0)),
+              partyBrainApprovedStreak: Math.max(0, Number(raw.progress?.partyBrainApprovedStreak || 0)),
+              partyBrainQualityPoints: Math.max(0, Number(raw.progress?.partyBrainQualityPoints || 0)),
+              partyBrainQualitySamples: Math.max(0, Number(raw.progress?.partyBrainQualitySamples || 0)),
+              appreciatedSongStreak: Math.max(0, Number(raw.progress?.appreciatedSongStreak || 0)),
             },
             customization: {
               ...(raw.customization && typeof raw.customization === "object"
@@ -600,6 +610,11 @@ export function createAccountsStore(filePath: string) {
         votedCreatorKeysByParty: {},
         currentWinStreak: 0,
         bestWinStreak: 0,
+        compatibleStreak: 0,
+        partyBrainApprovedStreak: 0,
+        partyBrainQualityPoints: 0,
+        partyBrainQualitySamples: 0,
+        appreciatedSongStreak: 0,
       },
       customization: {},
     };
@@ -935,6 +950,63 @@ export function createAccountsStore(filePath: string) {
     }
   }
 
+  function recordPartyBrainAdditionQuality(
+    token: string,
+    partyCodeValue: unknown,
+    compatibilityValue: unknown,
+  ) {
+    const account = accountMutableFromToken(token);
+    if (!account) return null;
+
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    const compatibility = Number(compatibilityValue || 0);
+
+    const isCompatible = compatibility >= 0.55;
+    const isExceptional = compatibility >= 1;
+
+    account.progress.compatibleStreak = isCompatible
+      ? account.progress.compatibleStreak + 1
+      : 0;
+
+    account.progress.partyBrainApprovedStreak = isExceptional
+      ? account.progress.partyBrainApprovedStreak + 1
+      : 0;
+
+    const qualityScore =
+      compatibility >= 1 ? 100 :
+      compatibility >= 0.55 ? 75 :
+      compatibility === 0 ? 50 :
+      20;
+
+    account.progress.partyBrainQualityPoints += qualityScore;
+    account.progress.partyBrainQualitySamples += 1;
+
+    if (account.progress.compatibleStreak >= 5) {
+      unlockBadge(account, "compatible", partyCode);
+    }
+
+    if (account.progress.partyBrainApprovedStreak >= 5) {
+      unlockBadge(account, "partybrain-approved", partyCode);
+    }
+
+    const qualityAverage =
+      account.progress.partyBrainQualitySamples > 0
+        ? account.progress.partyBrainQualityPoints /
+          account.progress.partyBrainQualitySamples
+        : 0;
+
+    if (
+      account.progress.partyBrainQualitySamples >= 20 &&
+      qualityAverage >= 80
+    ) {
+      unlockBadge(account, "maitre-partybrain", partyCode);
+    }
+
+    account.updatedAt = Date.now();
+    save();
+    return publicAccount(account);
+  }
+
   function recordSongAdded(
     token: string,
     partyCodeValue?: unknown,
@@ -1165,6 +1237,49 @@ export function createAccountsStore(filePath: string) {
     return results;
   }
 
+  function adminSimulateQualityBadge(
+    accountId: string,
+    partyCodeValue: unknown,
+    badgeIdValue: unknown,
+  ) {
+    const account = database.accounts.find((item) => item.id === accountId);
+    if (!account) return null;
+
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    const badgeId = String(badgeIdValue || "").trim();
+
+    if (badgeId === "compatible") {
+      account.progress.compatibleStreak = 5;
+      unlockBadge(account, "compatible", partyCode);
+    } else if (badgeId === "partybrain-approved") {
+      account.progress.partyBrainApprovedStreak = 5;
+      unlockBadge(account, "partybrain-approved", partyCode);
+    } else if (badgeId === "maitre-partybrain") {
+      account.progress.partyBrainQualitySamples = Math.max(
+        20,
+        account.progress.partyBrainQualitySamples,
+      );
+      account.progress.partyBrainQualityPoints = Math.max(
+        1600,
+        account.progress.partyBrainQualityPoints,
+      );
+      unlockBadge(account, "maitre-partybrain", partyCode);
+    } else if (badgeId === "serie-parfaite") {
+      account.progress.appreciatedSongStreak = 5;
+      unlockBadge(account, "serie-parfaite", partyCode);
+    } else if (badgeId === "machine-a-danser") {
+      unlockBadge(account, "machine-a-danser", partyCode);
+    } else if (badgeId === "soiree-adoree") {
+      unlockBadge(account, "soiree-adoree", partyCode);
+    } else if (badgeId === "secret-roi-cache") {
+      unlockBadge(account, "secret-roi-cache", partyCode);
+    }
+
+    account.updatedAt = Date.now();
+    save();
+    return publicAccount(account);
+  }
+
   function adminSimulateRankingResult(
     accountId: string,
     resultValue: unknown,
@@ -1256,6 +1371,75 @@ export function createAccountsStore(filePath: string) {
       unlockBadge(account, "bon-public", partyCode);
     }
 
+    account.updatedAt = Date.now();
+    save();
+    return publicAccount(account);
+  }
+
+  function unlockMachineADanser(
+    accountId: string | undefined,
+    partyCodeValue: unknown,
+  ) {
+    if (!accountId) return null;
+    const account = database.accounts.find((item) => item.id === accountId);
+    if (!account) return null;
+
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    unlockBadge(account, "machine-a-danser", partyCode);
+    account.updatedAt = Date.now();
+    save();
+    return publicAccount(account);
+  }
+
+  function recordHostedPartyEngagement(
+    partyCodeValue: unknown,
+    uniqueParticipantsValue: unknown,
+    totalVotesValue: unknown,
+    playedSongsValue: unknown,
+  ) {
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    const uniqueParticipants = Math.max(0, Number(uniqueParticipantsValue || 0));
+    const totalVotes = Math.max(0, Number(totalVotesValue || 0));
+    const playedSongs = Math.max(0, Number(playedSongsValue || 0));
+
+    if (
+      !partyCode ||
+      uniqueParticipants < 10 ||
+      totalVotes < 30 ||
+      playedSongs < 10
+    ) {
+      return;
+    }
+
+    let changed = false;
+
+    for (const account of database.accounts) {
+      const hostEntry = account.history.find(
+        (entry) =>
+          entry.partyCode === partyCode &&
+          entry.role === "host",
+      );
+
+      if (!hostEntry) continue;
+
+      if (unlockBadge(account, "soiree-adoree", partyCode)) {
+        changed = true;
+      }
+    }
+
+    if (changed) save();
+  }
+
+  function unlockRoiCache(
+    accountId: string | undefined,
+    partyCodeValue: unknown,
+  ) {
+    if (!accountId) return null;
+    const account = database.accounts.find((item) => item.id === accountId);
+    if (!account) return null;
+
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    unlockBadge(account, "secret-roi-cache", partyCode);
     account.updatedAt = Date.now();
     save();
     return publicAccount(account);
@@ -1413,6 +1597,7 @@ export function createAccountsStore(filePath: string) {
     accountId: string | undefined,
     partyCodeValue: unknown,
     completedValue: unknown,
+    votesValue?: unknown,
   ) {
     if (!accountId) return null;
     const account = database.accounts.find((item) => item.id === accountId);
@@ -1421,18 +1606,32 @@ export function createAccountsStore(filePath: string) {
     const partyCode = String(partyCodeValue || "").trim().toUpperCase();
     const completed = Boolean(completedValue);
 
+    const votes = Math.max(0, Number(votesValue || 0));
+
     if (completed) {
       if (account.progress.lastCompletedSongPartyCode !== partyCode) {
         account.progress.completedSongStreak = 0;
+        account.progress.appreciatedSongStreak = 0;
       }
+
       account.progress.completedSongStreak += 1;
       account.progress.lastCompletedSongPartyCode = partyCode;
 
       if (account.progress.completedSongStreak >= 5) {
         unlockBadge(account, "dans-le-mille", partyCode);
       }
+
+      if (votes >= 5) {
+        account.progress.appreciatedSongStreak += 1;
+        if (account.progress.appreciatedSongStreak >= 5) {
+          unlockBadge(account, "serie-parfaite", partyCode);
+        }
+      } else {
+        account.progress.appreciatedSongStreak = 0;
+      }
     } else {
       account.progress.completedSongStreak = 0;
+      account.progress.appreciatedSongStreak = 0;
       account.progress.lastCompletedSongPartyCode = partyCode || undefined;
     }
 
@@ -1502,6 +1701,11 @@ export function createAccountsStore(filePath: string) {
       votedCreatorKeysByParty: {},
       currentWinStreak: 0,
       bestWinStreak: 0,
+      compatibleStreak: 0,
+      partyBrainApprovedStreak: 0,
+      partyBrainQualityPoints: 0,
+      partyBrainQualitySamples: 0,
+      appreciatedSongStreak: 0,
     };
 
     account.updatedAt = Date.now();
@@ -1679,14 +1883,19 @@ export function createAccountsStore(filePath: string) {
     recordPresence,
     recordSongPlayedByAccountId,
     recordSongReachedFiveVotesByAccountId,
+    recordPartyBrainAdditionQuality,
     recordSongAdded,
     recordVoteGiven,
     recordVoteRemoved,
     recordSongVoteMilestoneByAccountId,
     recordSongPlaybackOutcomeByAccountId,
+    unlockMachineADanser,
+    recordHostedPartyEngagement,
+    unlockRoiCache,
     partyQualifiedAccountIds,
     recordGrosseSoiree,
     recordFinalPartyRanking,
+    adminSimulateQualityBadge,
     adminSimulateRankingResult,
     adminSimulateBonPublic,
     recordPartyEndingBadges,

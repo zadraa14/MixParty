@@ -287,6 +287,39 @@ export default function AdminPage() {
     );
   }
 
+  async function scenarioQualityBadge(
+    badgeId:
+      | "compatible"
+      | "partybrain-approved"
+      | "maitre-partybrain"
+      | "serie-parfaite"
+      | "machine-a-danser"
+      | "soiree-adoree"
+      | "secret-roi-cache",
+  ) {
+    if (!selectedAccount) return;
+
+    const labels: Record<string, string> = {
+      compatible: "Compatible",
+      "partybrain-approved": "PartyBrain Approved",
+      "maitre-partybrain": "Maître PartyBrain",
+      "serie-parfaite": "Série parfaite",
+      "machine-a-danser": "Machine à danser",
+      "soiree-adoree": "Soirée Adorée",
+      "secret-roi-cache": "Roi caché",
+    };
+
+    await runAction(
+      `scenario-quality-${badgeId}`,
+      `/admin/account/${selectedAccount.id}/scenario-quality-badge`,
+      {
+        badgeId,
+        partyCode: selectedParty?.code,
+      },
+      `Scénario ${labels[badgeId]} appliqué à ${selectedAccount.name || selectedAccount.email}.`,
+    );
+  }
+
   async function scenarioResult(result: "win" | "podium" | "loss") {
     if (!selectedAccount) return;
 
@@ -611,6 +644,71 @@ export default function AdminPage() {
                       >
                         🏆 Classement final
                       </button>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          disabled={busy !== "" || !selectedAccount}
+                          onClick={() => scenarioQualityBadge("compatible")}
+                          className="rounded-xl border border-emerald-300/15 bg-emerald-500/[0.08] px-2 py-2.5 text-[11px] font-black text-emerald-100 transition hover:bg-emerald-500/[0.14] disabled:opacity-40"
+                        >
+                          🤝 Compatible
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={busy !== "" || !selectedAccount}
+                          onClick={() => scenarioQualityBadge("partybrain-approved")}
+                          className="rounded-xl border border-fuchsia-300/15 bg-fuchsia-500/[0.08] px-2 py-2.5 text-[11px] font-black text-fuchsia-100 transition hover:bg-fuchsia-500/[0.14] disabled:opacity-40"
+                        >
+                          🧠 PB Approved
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={busy !== "" || !selectedAccount}
+                          onClick={() => scenarioQualityBadge("maitre-partybrain")}
+                          className="rounded-xl border border-violet-300/15 bg-violet-500/[0.08] px-2 py-2.5 text-[11px] font-black text-violet-100 transition hover:bg-violet-500/[0.14] disabled:opacity-40"
+                        >
+                          🧠 Maître PB
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={busy !== "" || !selectedAccount}
+                          onClick={() => scenarioQualityBadge("serie-parfaite")}
+                          className="rounded-xl border border-cyan-300/15 bg-cyan-500/[0.08] px-2 py-2.5 text-[11px] font-black text-cyan-100 transition hover:bg-cyan-500/[0.14] disabled:opacity-40"
+                        >
+                          ✨ Série parfaite
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={busy !== "" || !selectedAccount}
+                          onClick={() => scenarioQualityBadge("machine-a-danser")}
+                          className="rounded-xl border border-pink-300/15 bg-pink-500/[0.08] px-2 py-2.5 text-[11px] font-black text-pink-100 transition hover:bg-pink-500/[0.14] disabled:opacity-40"
+                        >
+                          💃 Machine à danser
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={busy !== "" || !selectedAccount}
+                          onClick={() => scenarioQualityBadge("soiree-adoree")}
+                          className="rounded-xl border border-orange-300/15 bg-orange-500/[0.08] px-2 py-2.5 text-[11px] font-black text-orange-100 transition hover:bg-orange-500/[0.14] disabled:opacity-40"
+                        >
+                          ❤️ Soirée Adorée
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={busy !== "" || !selectedAccount}
+                          onClick={() => scenarioQualityBadge("secret-roi-cache")}
+                          className="col-span-2 rounded-xl border border-yellow-300/15 bg-yellow-500/[0.08] px-2 py-2.5 text-[11px] font-black text-yellow-100 transition hover:bg-yellow-500/[0.14] disabled:opacity-40"
+                        >
+                          👑 Roi caché
+                        </button>
+                      </div>
 
                       <div className="grid grid-cols-3 gap-2">
                         <button
