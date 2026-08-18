@@ -494,6 +494,34 @@ function startPlaybackTelemetry(party: Party, song: Song) {
   recordPartyEvent(party, "SONG_PLAY_STARTED", { song: songEventSnapshot(party, song) });
 }
 
+function loadKnownSongVideoIds() {
+  const known = new Set<string>();
+
+  try {
+    if (!fs.existsSync(partyEventsFilePath)) return known;
+
+    const lines = fs
+      .readFileSync(partyEventsFilePath, "utf8")
+      .split("\n")
+      .filter(Boolean);
+
+    for (const line of lines) {
+      try {
+        const event = JSON.parse(line) as PartyIntelligenceEvent;
+        if (event.event === "SONG_ADDED" && event.song?.videoId) {
+          known.add(String(event.song.videoId));
+        }
+      } catch {}
+    }
+  } catch (error) {
+    console.error("⚠️ Impossible de charger le catalogue historique MixParty", error);
+  }
+
+  return known;
+}
+
+const knownSongVideoIds = loadKnownSongVideoIds();
+
 function readPartyEvents(limit = 5000): PartyIntelligenceEvent[] {
   if (!fs.existsSync(partyEventsFilePath)) return [];
   const lines = fs.readFileSync(partyEventsFilePath, "utf8").trim().split("\n").filter(Boolean);
@@ -2688,6 +2716,17 @@ function cleanOldParties(){
       },
     });
 
+    accountsStore.recordPartyEndingBadges(
+      party.code,
+      endedAt,
+      party.songs.map((song) => ({
+        videoId: song.videoId,
+        addedAt: song.addedAt,
+        votes: song.votes,
+        firstVoteAt: song.firstVoteAt,
+        addedByAccountId: song.addedByAccountId,
+      })),
+    );
     accountsStore.finalizePartyParticipation(party.code, endedAt);
     playbackTelemetry.delete(party.code);
   }
@@ -3102,6 +3141,166 @@ app.post("/admin/party/:code/scenario-jackpot", (req, res) => {
     partyCode: party.code,
     targetAccountId,
     songCount: 5,
+  });
+
+  updateParty(party);
+  return res.json({ ok: true });
+});
+
+app.post("/admin/party/:code/song/:index/scenario-sniper", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  const index = Number(req.params.index);
+  const song = party.songs[index];
+  if (!song || !song.addedByAccountId) {
+    return res.status(400).json({ error: "Morceau lié à un compte permanent requis." });
+  }
+
+  const now = Date.now();
+  song.addedAt = now - 60_000;
+
+  while (song.votes < 10) {
+    song.votes += 1;
+    song.voters.push(`ADMIN_SNIPER_${randomUUID().slice(0, 8)}`);
+    accountsStore.recordVoteReceivedByAccountId(song.addedByAccountId);
+
+    if (song.votes >= 5) {
+      accountsStore.recordSongReachedFiveVotesByAccountId(
+        song.addedByAccountId,
+        party.code,
+        accountSongKey(song),
+      );
+    }
+  }
+
+  accountsStore.recordPartyEndingBadges(
+    party.code,
+    now,
+    party.songs.map((item) => ({
+      videoId: item.videoId,
+      addedAt: item.addedAt,
+      votes: item.votes,
+      firstVoteAt: item.firstVoteAt,
+      addedByAccountId: item.addedByAccountId,
+    })),
+  );
+
+  writeAdminAudit(account, "SCENARIO_SNIPER", {
+    partyCode: party.code,
+    songIndex: index,
+    videoId: song.videoId,
+  });
+
+  updateParty(party);
+  return res.json({ ok: true });
+});
+
+app.post("/admin/party/:code/song/:index/scenario-devin", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  const index = Number(req.params.index);
+  const song = party.songs[index];
+  if (!song || !song.addedByAccountId) {
+    return res.status(400).json({ error: "Morceau lié à un compte permanent requis." });
+  }
+
+  const now = Date.now();
+  const existingFirstVotes = party.songs
+    .map((item) => Number(item.firstVoteAt || 0))
+    .filter((value) => value > 0);
+
+  const syntheticFirstVoteAt =
+    existingFirstVotes.length > 0
+      ? Math.min(...existingFirstVotes)
+      : now - 60_000;
+
+  song.addedAt = syntheticFirstVoteAt - 60_000;
+  if (!song.firstVoteAt) song.firstVoteAt = syntheticFirstVoteAt;
+
+  const currentMax = Math.max(0, ...party.songs.map((item) => item.votes));
+  const targetVotes = Math.max(1, currentMax + 1);
+
+  while (song.votes < targetVotes) {
+    song.votes += 1;
+    song.voters.push(`ADMIN_DEVIN_${randomUUID().slice(0, 8)}`);
+    accountsStore.recordVoteReceivedByAccountId(song.addedByAccountId);
+  }
+
+  accountsStore.recordPartyEndingBadges(
+    party.code,
+    now,
+    party.songs.map((item) => ({
+      videoId: item.videoId,
+      addedAt: item.addedAt,
+      votes: item.votes,
+      firstVoteAt: item.firstVoteAt,
+      addedByAccountId: item.addedByAccountId,
+    })),
+  );
+
+  writeAdminAudit(account, "SCENARIO_DEVIN", {
+    partyCode: party.code,
+    songIndex: index,
+    videoId: song.videoId,
+  });
+
+  updateParty(party);
+  return res.json({ ok: true });
+});
+
+app.post("/admin/party/:code/song/:index/scenario-pepite", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  const index = Number(req.params.index);
+  const song = party.songs[index];
+  if (!song || !song.addedByAccountId) {
+    return res.status(400).json({ error: "Morceau lié à un compte permanent requis." });
+  }
+
+  const songKey = accountSongKey(song);
+  accountsStore.adminMarkSongFirstEver(
+    song.addedByAccountId,
+    party.code,
+    songKey,
+  );
+
+  while (song.votes < 5) {
+    song.votes += 1;
+    song.voters.push(`ADMIN_PEPITE_${randomUUID().slice(0, 8)}`);
+    accountsStore.recordVoteReceivedByAccountId(song.addedByAccountId);
+  }
+
+  accountsStore.recordSongReachedFiveVotesByAccountId(
+    song.addedByAccountId,
+    party.code,
+    songKey,
+  );
+
+  accountsStore.recordSongVoteMilestoneByAccountId(
+    song.addedByAccountId,
+    party.code,
+    songKey,
+    song.votes,
+    song.addedAt,
+    song.firstVoteAt,
+  );
+
+  writeAdminAudit(account, "SCENARIO_PEPITE_CACHEE", {
+    partyCode: party.code,
+    songIndex: index,
+    videoId: song.videoId,
   });
 
   updateParty(party);
@@ -3578,6 +3777,13 @@ addedById: typeof addedById === "string" && addedById.trim()
 });
 
   const addedSong = party.songs[party.songs.length - 1];
+  const isFirstEverOnMixParty =
+    Boolean(addedSong.videoId) && !knownSongVideoIds.has(addedSong.videoId);
+
+  if (addedSong.videoId) {
+    knownSongVideoIds.add(addedSong.videoId);
+  }
+
   if (accountToken && authenticatedAccount) {
     accountsStore.recordSongAdded(
       accountToken,
@@ -3585,6 +3791,7 @@ addedById: typeof addedById === "string" && addedById.trim()
       accountSongKey(addedSong),
       addedSong.artistName,
       addedSong.addedAt,
+      isFirstEverOnMixParty,
     );
   }
   recordMusicBrainAddition(addedSong);
@@ -3919,6 +4126,17 @@ app.post("/party/:code/end", (req, res) => {
     },
   });
 
+  accountsStore.recordPartyEndingBadges(
+    party.code,
+    endedAt,
+    party.songs.map((song) => ({
+      videoId: song.videoId,
+      addedAt: song.addedAt,
+      votes: song.votes,
+      firstVoteAt: song.firstVoteAt,
+      addedByAccountId: song.addedByAccountId,
+    })),
+  );
   accountsStore.finalizePartyParticipation(party.code, endedAt);
   playbackTelemetry.delete(party.code);
   parties = parties.filter((item) => item.code !== party.code);

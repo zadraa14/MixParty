@@ -287,6 +287,26 @@ export default function AdminPage() {
     );
   }
 
+  async function scenarioSecretSong(
+    song: AdminSong,
+    scenario: "sniper" | "devin" | "pepite",
+  ) {
+    if (!selectedParty) return;
+
+    const labels = {
+      sniper: "SNIPER",
+      devin: "DEVIN",
+      pepite: "PÉPITE CACHÉE",
+    };
+
+    await runAction(
+      `scenario-${scenario}-${song.index}`,
+      `/admin/party/${selectedParty.code}/song/${song.index}/scenario-${scenario}`,
+      {},
+      `Scénario ${labels[scenario]} appliqué à ${song.title}.`,
+    );
+  }
+
   async function scenarioComeback(song: AdminSong) {
     if (!selectedParty) return;
     await runAction(
@@ -641,6 +661,33 @@ export default function AdminPage() {
                                     {delta}
                                   </button>
                                 ))}
+
+                                <button
+                                  type="button"
+                                  disabled={busy !== ""}
+                                  onClick={() => scenarioSecretSong(song, "sniper")}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-red-300/10 bg-red-500/[0.06] px-3 py-2 text-xs font-black text-red-100 hover:bg-red-500/[0.11] disabled:opacity-40"
+                                >
+                                  🎯 SNIPER
+                                </button>
+
+                                <button
+                                  type="button"
+                                  disabled={busy !== ""}
+                                  onClick={() => scenarioSecretSong(song, "devin")}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-sky-300/10 bg-sky-500/[0.06] px-3 py-2 text-xs font-black text-sky-100 hover:bg-sky-500/[0.11] disabled:opacity-40"
+                                >
+                                  🔮 DEVIN
+                                </button>
+
+                                <button
+                                  type="button"
+                                  disabled={busy !== ""}
+                                  onClick={() => scenarioSecretSong(song, "pepite")}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300/10 bg-emerald-500/[0.06] px-3 py-2 text-xs font-black text-emerald-100 hover:bg-emerald-500/[0.11] disabled:opacity-40"
+                                >
+                                  💎 PÉPITE
+                                </button>
 
                                 <button
                                   type="button"

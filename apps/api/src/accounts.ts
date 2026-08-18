@@ -68,6 +68,7 @@ export type MixPartyAccount = {
       songKey: string;
       artistKey?: string;
       addedAt: number;
+      firstEver?: boolean;
     }>;
     completedSongStreak: number;
     lastCompletedSongPartyCode?: string;
@@ -351,6 +352,7 @@ export function createAccountsStore(filePath: string) {
                       songKey,
                       artistKey: String(event?.artistKey || "").trim() || undefined,
                       addedAt: Number(event?.addedAt || Date.now()),
+                      firstEver: Boolean(event?.firstEver),
                     }];
                   }).slice(-2000)
                 : [],
@@ -881,6 +883,7 @@ export function createAccountsStore(filePath: string) {
     songKeyValue?: unknown,
     artistNameValue?: unknown,
     addedAtValue?: unknown,
+    firstEverValue?: unknown,
   ) {
     const account = accountMutableFromToken(token);
     if (!account) return null;
@@ -897,6 +900,7 @@ export function createAccountsStore(filePath: string) {
       .toLocaleLowerCase("fr-FR")
       .replace(/\s+/g, " ");
     const addedAt = Number(addedAtValue || Date.now());
+    const firstEver = Boolean(firstEverValue);
 
     if (partyCode) {
       evaluateSongTimingBadges(account, partyCode, addedAt);
@@ -913,6 +917,7 @@ export function createAccountsStore(filePath: string) {
           songKey,
           artistKey: artistKey || undefined,
           addedAt,
+          firstEver,
         });
         account.progress.songAddedEvents = account.progress.songAddedEvents.slice(-2000);
       }
@@ -953,6 +958,64 @@ export function createAccountsStore(filePath: string) {
     account.updatedAt = Date.now();
     save();
     return publicAccount(account);
+  }
+
+  function recordPartyEndingBadges(
+    partyCodeValue: unknown,
+    endedAtValue: unknown,
+    songsValue: Array<{
+      videoId?: string;
+      addedAt?: number;
+      votes?: number;
+      firstVoteAt?: number;
+      addedByAccountId?: string;
+    }>,
+  ) {
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    const endedAt = Number(endedAtValue || Date.now());
+    const songs = Array.isArray(songsValue) ? songsValue : [];
+    if (!partyCode || songs.length === 0) return;
+
+    const firstPartyVoteAt = songs
+      .map((song) => Number(song.firstVoteAt || 0))
+      .filter((value) => value > 0)
+      .sort((a, b) => a - b)[0];
+
+    const maxVotes = Math.max(0, ...songs.map((song) => Number(song.votes || 0)));
+
+    for (const song of songs) {
+      const accountId = String(song.addedByAccountId || "").trim();
+      if (!accountId) continue;
+
+      const account = database.accounts.find((item) => item.id === accountId);
+      if (!account) continue;
+
+      const addedAt = Number(song.addedAt || 0);
+      const votes = Math.max(0, Number(song.votes || 0));
+
+      if (
+        addedAt > 0 &&
+        endedAt - addedAt >= 0 &&
+        endedAt - addedAt <= 5 * 60 * 1000 &&
+        votes >= 10
+      ) {
+        unlockBadge(account, "secret-sniper", partyCode);
+      }
+
+      if (
+        firstPartyVoteAt &&
+        addedAt > 0 &&
+        addedAt < firstPartyVoteAt &&
+        votes === maxVotes &&
+        maxVotes > 0
+      ) {
+        unlockBadge(account, "secret-devin", partyCode);
+      }
+
+      account.updatedAt = Date.now();
+    }
+
+    save();
   }
 
   function finalizePartyParticipation(
@@ -1005,6 +1068,14 @@ export function createAccountsStore(filePath: string) {
     }
 
     if (partyCode && rawSongKey && votes >= 5) {
+      const songEvent = account.progress.songAddedEvents.find(
+        (event) => event.partyCode === partyCode && event.songKey === rawSongKey,
+      );
+
+      if (songEvent?.firstEver) {
+        unlockBadge(account, "secret-pepite-cachee", partyCode);
+      }
+
       const qualified = new Set(
         account.progress.fiveVoteSongKeys
           .filter((key) => key.startsWith(`${partyCode}:`))
@@ -1162,6 +1233,30 @@ export function createAccountsStore(filePath: string) {
     return publicAccount(account);
   }
 
+  function adminMarkSongFirstEver(
+    accountId: string,
+    partyCodeValue: unknown,
+    songKeyValue: unknown,
+  ) {
+    const account = database.accounts.find((item) => item.id === accountId);
+    if (!account) return null;
+
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    const songKey = String(songKeyValue || "").trim();
+
+    const event = account.progress.songAddedEvents.find(
+      (item) => item.partyCode === partyCode && item.songKey === songKey,
+    );
+
+    if (event) {
+      event.firstEver = true;
+      account.updatedAt = Date.now();
+      save();
+    }
+
+    return publicAccount(account);
+  }
+
   function adminSimulateTimingBadge(
     accountId: string,
     partyCodeValue: unknown,
@@ -1261,12 +1356,14 @@ export function createAccountsStore(filePath: string) {
     recordVoteRemoved,
     recordSongVoteMilestoneByAccountId,
     recordSongPlaybackOutcomeByAccountId,
+    recordPartyEndingBadges,
     finalizePartyParticipation,
     recordVoteReceivedByAccountId,
     recordVoteReceivedRemovedByAccountId,
     adminListAccounts,
     adminResetAccountStats,
     adminAdvancePartyTime,
+    adminMarkSongFirstEver,
     adminSimulateTimingBadge,
     adminSetBadge,
     logout,

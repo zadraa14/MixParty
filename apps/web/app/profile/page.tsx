@@ -256,6 +256,27 @@ const PROFILE_BADGES = [
     image: "/badges/oiseau-de-nuit.png",
   },
   {
+    id: "secret-sniper",
+    name: "SNIPER",
+    condition: "Ajouter un morceau dans les 5 dernières minutes de la soirée et atteindre au moins 10 votes",
+    image: "/badges/secret-sniper.png",
+    secret: true,
+  },
+  {
+    id: "secret-devin",
+    name: "DEVIN",
+    condition: "Ajouter un morceau avant le premier vote de la soirée puis terminer avec le morceau le plus voté",
+    image: "/badges/secret-devin.png",
+    secret: true,
+  },
+  {
+    id: "secret-pepite-cachee",
+    name: "PÉPITE CACHÉE",
+    condition: "Ajouter un morceau jamais encore ajouté sur MixParty et atteindre au moins 5 votes",
+    image: "/badges/secret-pepite-cachee.png",
+    secret: true,
+  },
+  {
     id: "secret-comeback",
     name: "COMEBACK",
     condition: "Ajouter un morceau qui reste à 0 vote pendant au moins 30 min puis atteint 10 votes",
