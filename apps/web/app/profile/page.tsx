@@ -23,6 +23,7 @@ import {
   Star,
   Trophy,
   UserRound,
+  X,
   Vote,
   Zap,
 } from "lucide-react";
@@ -98,7 +99,57 @@ const PROFILE_BADGES = [
     condition: "Voter pour la première fois",
     image: "/badges/premier-vote.png",
   },
+  {
+    id: "premier-host",
+    name: "Premier Host",
+    condition: "Organiser sa première soirée",
+    image: "/badges/premier-host.png",
+  },
+  {
+    id: "habitue",
+    name: "Habitué",
+    condition: "Participer à 5 soirées",
+    image: "/badges/habitue.png",
+  },
+  {
+    id: "fetard",
+    name: "Fêtard",
+    condition: "Participer à 10 soirées",
+    image: "/badges/fetard.png",
+  },
+  {
+    id: "pilier-de-soiree",
+    name: "Pilier de soirée",
+    condition: "Participer à 25 soirées",
+    image: "/badges/pilier-de-soiree.png",
+  },
+  {
+    id: "veteran-mixparty",
+    name: "Vétéran MixParty",
+    condition: "Participer à 50 soirées",
+    image: "/badges/veteran-mixparty.png",
+  },
+  {
+    id: "centurion",
+    name: "Centurion",
+    condition: "Participer à 100 soirées",
+    image: "/badges/centurion.png",
+  },
+  {
+    id: "supporter",
+    name: "Supporter",
+    condition: "Effectuer 50 votes",
+    image: "/badges/supporter.png",
+  },
+  {
+    id: "super-votant",
+    name: "Super Votant",
+    condition: "Effectuer 250 votes",
+    image: "/badges/super-votant.png",
+  },
 ] as const;
+
+type ProfileBadge = (typeof PROFILE_BADGES)[number];
 
 
 const BADGE_PREVIEWS = [
@@ -161,6 +212,7 @@ export default function ProfilePage() {
   const [authName, setAuthName] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
+  const [selectedBadge, setSelectedBadge] = useState<ProfileBadge | null>(null);
 
 
   useEffect(() => {
@@ -557,9 +609,15 @@ export default function ProfilePage() {
                 const unlockInfo = account?.badgeUnlocks?.find((item) => item.badgeId === badge.id);
 
                 return (
-                  <article
+                  <p className="mt-3 text-center text-[10px] font-bold text-white/25">
+              Clique sur un badge pour l’agrandir et voir sa condition.
+            </p>
+
+            <button
+                    type="button"
                     key={badge.id}
-                    className={`group relative overflow-hidden rounded-[24px] border p-3 text-center transition ${
+                    onClick={() => setSelectedBadge(badge)}
+                    className={`group relative overflow-hidden rounded-[24px] border p-3 text-center transition hover:-translate-y-0.5 hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-fuchsia-400/40 ${
                       unlocked
                         ? "border-emerald-300/20 bg-gradient-to-b from-white/[0.07] to-emerald-500/[0.04] shadow-[0_16px_45px_rgba(0,0,0,.24)]"
                         : "border-white/[0.08] bg-black/15"
@@ -602,7 +660,7 @@ export default function ProfilePage() {
                         Obtenu le {new Date(unlockInfo.unlockedAt).toLocaleDateString("fr-FR")}
                       </p>
                     ) : null}
-                  </article>
+                  </button>
                 );
               })}
 
@@ -752,6 +810,80 @@ export default function ProfilePage() {
         </footer>
       </div>
 
+
+      {selectedBadge ? (() => {
+        const unlocked = Boolean(account?.badges?.includes(selectedBadge.id));
+        const unlockInfo = account?.badgeUnlocks?.find(
+          (item) => item.badgeId === selectedBadge.id,
+        );
+
+        return (
+          <div
+            className="fixed inset-0 z-[9999] flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-[#05030c]/92 px-4 py-[max(1rem,env(safe-area-inset-top))] backdrop-blur-2xl"
+            onMouseDown={(event) => {
+              if (event.currentTarget === event.target) setSelectedBadge(null);
+            }}
+          >
+            <section className="relative w-full max-w-lg overflow-hidden rounded-[34px] border border-white/12 bg-[#100b19]/96 p-5 text-center shadow-[0_35px_120px_rgba(0,0,0,.72)] sm:p-7">
+              <div className="absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-fuchsia-400/70 to-transparent" />
+
+              <button
+                type="button"
+                onClick={() => setSelectedBadge(null)}
+                className="absolute right-4 top-4 z-10 grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-black/30 text-white/55 transition hover:bg-white/10 hover:text-white"
+                aria-label="Fermer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+
+              <div className="mx-auto mt-5 w-full max-w-[320px]">
+                <img
+                  src={selectedBadge.image}
+                  alt={selectedBadge.name}
+                  className={`mx-auto aspect-square w-full object-contain transition ${
+                    unlocked
+                      ? "drop-shadow-[0_24px_55px_rgba(0,0,0,.5)]"
+                      : "grayscale opacity-35"
+                  }`}
+                />
+              </div>
+
+              <div className="mt-4">
+                <span
+                  className={`inline-flex rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[.15em] ${
+                    unlocked
+                      ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-200"
+                      : "border-white/10 bg-white/[0.05] text-white/40"
+                  }`}
+                >
+                  {unlocked ? "Badge débloqué" : "Badge à débloquer"}
+                </span>
+
+                <h2 className="mt-3 font-[family:var(--font-exo-2)] text-2xl font-black sm:text-3xl">
+                  {selectedBadge.name}
+                </h2>
+
+                <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-white/50">
+                  {selectedBadge.condition}
+                </p>
+
+                {unlocked && unlockInfo?.unlockedAt ? (
+                  <div className="mx-auto mt-5 max-w-sm rounded-2xl border border-emerald-300/10 bg-emerald-500/[0.06] px-4 py-3">
+                    <p className="text-[10px] font-black uppercase tracking-[.15em] text-emerald-300">
+                      Obtenu le {new Date(unlockInfo.unlockedAt).toLocaleDateString("fr-FR")}
+                    </p>
+                    {unlockInfo.partyCode ? (
+                      <p className="mt-1 text-xs font-bold text-white/35">
+                        Soirée {unlockInfo.partyCode}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            </section>
+          </div>
+        );
+      })() : null}
 
       {authOpen ? (
         <div className="fixed inset-0 z-[9999] flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-[#05030c]/92 px-4 py-[max(1rem,env(safe-area-inset-top))] backdrop-blur-2xl">

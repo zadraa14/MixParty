@@ -87,6 +87,38 @@ const SIMPLE_BADGES = [
     id: "premier-vote",
     isUnlocked: (stats: MixPartyAccountStats) => stats.votesGiven >= 1,
   },
+  {
+    id: "premier-host",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.partiesHosted >= 1,
+  },
+  {
+    id: "habitue",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.partiesJoined >= 5,
+  },
+  {
+    id: "fetard",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.partiesJoined >= 10,
+  },
+  {
+    id: "pilier-de-soiree",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.partiesJoined >= 25,
+  },
+  {
+    id: "veteran-mixparty",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.partiesJoined >= 50,
+  },
+  {
+    id: "centurion",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.partiesJoined >= 100,
+  },
+  {
+    id: "supporter",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.votesGiven >= 50,
+  },
+  {
+    id: "super-votant",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.votesGiven >= 250,
+  },
 ] as const;
 
 function createDefaultStats(): MixPartyAccountStats {
