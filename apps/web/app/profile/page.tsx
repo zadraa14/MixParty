@@ -90,7 +90,7 @@ const PROFILE_BADGES = [
   {
     id: "premiere-soiree",
     name: "Première Soirée",
-    condition: "Participer à sa première soirée",
+    condition: "Participer à sa première soirée validée",
     image: "/badges/premiere-soiree.png",
   },
   {
@@ -106,39 +106,45 @@ const PROFILE_BADGES = [
     image: "/badges/premier-vote.png",
   },
   {
+    id: "premier-vote-recu",
+    name: "Premier Vote Reçu",
+    condition: "Recevoir son premier vote",
+    image: "/badges/premier-vote-recu.png",
+  },
+  {
     id: "premier-host",
     name: "Premier Host",
-    condition: "Organiser sa première soirée",
+    condition: "Organiser sa première soirée validée",
     image: "/badges/premier-host.png",
   },
   {
     id: "habitue",
     name: "Habitué",
-    condition: "Participer à 5 soirées",
+    condition: "Participer à 5 soirées validées",
     image: "/badges/habitue.png",
   },
   {
     id: "fetard",
     name: "Fêtard",
-    condition: "Participer à 10 soirées",
+    condition: "Participer à 10 soirées validées",
     image: "/badges/fetard.png",
   },
   {
     id: "pilier-de-soiree",
     name: "Pilier de soirée",
-    condition: "Participer à 25 soirées",
+    condition: "Participer à 25 soirées validées",
     image: "/badges/pilier-de-soiree.png",
   },
   {
     id: "veteran-mixparty",
     name: "Vétéran MixParty",
-    condition: "Participer à 50 soirées",
+    condition: "Participer à 50 soirées validées",
     image: "/badges/veteran-mixparty.png",
   },
   {
     id: "centurion",
     name: "Centurion",
-    condition: "Participer à 100 soirées",
+    condition: "Participer à 100 soirées validées",
     image: "/badges/centurion.png",
   },
   {
@@ -152,6 +158,54 @@ const PROFILE_BADGES = [
     name: "Super Votant",
     condition: "Effectuer 250 votes",
     image: "/badges/super-votant.png",
+  },
+  {
+    id: "aimant-a-votes",
+    name: "Aimant à votes",
+    condition: "Recevoir 100 votes cumulés",
+    image: "/badges/aimant-a-vote.png",
+  },
+  {
+    id: "chouchou-du-public",
+    name: "Chouchou du Public",
+    condition: "Recevoir 500 votes cumulés",
+    image: "/badges/chouchou-du-public.png",
+  },
+  {
+    id: "hitmaker",
+    name: "Hitmaker",
+    condition: "Avoir 10 morceaux ayant atteint au moins 5 votes",
+    image: "/badges/hitmaker.png",
+  },
+  {
+    id: "hitmaker-ii",
+    name: "Hitmaker II",
+    condition: "Avoir 50 morceaux ayant atteint au moins 5 votes",
+    image: "/badges/hitmaker-ii.png",
+  },
+  {
+    id: "hitmaker-iii",
+    name: "Hitmaker III",
+    condition: "Avoir 100 morceaux ayant atteint au moins 5 votes",
+    image: "/badges/hitmaker-iii.png",
+  },
+  {
+    id: "maitre-de-ceremonie",
+    name: "Maître de cérémonie",
+    condition: "Organiser 5 soirées validées",
+    image: "/badges/maitre-de-ceremonie.png",
+  },
+  {
+    id: "maison-de-la-fete",
+    name: "Maison de la fête",
+    condition: "Organiser 25 soirées validées",
+    image: "/badges/maison-de-la-fete.png",
+  },
+  {
+    id: "host-legendaire",
+    name: "Host légendaire",
+    condition: "Organiser 50 soirées validées",
+    image: "/badges/host-legendaire.png",
   },
 ] as const;
 
@@ -640,14 +694,14 @@ export default function ProfilePage() {
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[.22em] text-fuchsia-300">Collection</p>
                 <h2 className="mt-1 font-[family:var(--font-exo-2)] text-2xl font-black">Mes badges</h2>
-                <p className="mt-2 max-w-xl text-sm leading-6 text-white/40">Tes premiers badges MixParty se débloquent maintenant automatiquement avec tes actions en soirée.</p>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-white/40">Tes badges MixParty se débloquent automatiquement selon tes soirées validées, tes votes et tes morceaux.</p>
               </div>
               <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/10 text-fuchsia-200">
                 <Medal className="h-5 w-5" />
               </div>
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
               {PROFILE_BADGES.map((badge) => {
                 const unlocked = Boolean(account?.badges?.includes(badge.id));
                 const unlockInfo = account?.badgeUnlocks?.find((item) => item.badgeId === badge.id);

@@ -104,6 +104,10 @@ const SIMPLE_BADGES = [
     isUnlocked: (stats: MixPartyAccountStats) => stats.votesGiven >= 1,
   },
   {
+    id: "premier-vote-recu",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.votesReceived >= 1,
+  },
+  {
     id: "premier-host",
     isUnlocked: (stats: MixPartyAccountStats) => stats.partiesHosted >= 1,
   },
@@ -134,6 +138,38 @@ const SIMPLE_BADGES = [
   {
     id: "super-votant",
     isUnlocked: (stats: MixPartyAccountStats) => stats.votesGiven >= 250,
+  },
+  {
+    id: "aimant-a-votes",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.votesReceived >= 100,
+  },
+  {
+    id: "chouchou-du-public",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.votesReceived >= 500,
+  },
+  {
+    id: "hitmaker",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.songsWith5Votes >= 10,
+  },
+  {
+    id: "hitmaker-ii",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.songsWith5Votes >= 50,
+  },
+  {
+    id: "hitmaker-iii",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.songsWith5Votes >= 100,
+  },
+  {
+    id: "maitre-de-ceremonie",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.partiesHosted >= 5,
+  },
+  {
+    id: "maison-de-la-fete",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.partiesHosted >= 25,
+  },
+  {
+    id: "host-legendaire",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.partiesHosted >= 50,
   },
 ] as const;
 
