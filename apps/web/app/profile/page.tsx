@@ -962,10 +962,13 @@ export default function ProfilePage() {
               Clique sur un badge pour l’agrandir et voir sa condition.
             </p>
 
-            <button type="button" disabled className="mt-5 inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm font-black text-white/35">
+            <Link
+              href="/badges"
+              className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/[0.07] px-4 text-sm font-black text-fuchsia-100 transition hover:bg-fuchsia-500/[0.12]"
+            >
               <Medal className="h-4 w-4" />
-              Voir toute la collection — bientôt
-            </button>
+              Voir toute la collection
+            </Link>
           </section>
 
           <section className="relative overflow-hidden rounded-[32px] border border-amber-300/20 bg-[linear-gradient(145deg,rgba(245,158,11,.14),rgba(236,72,153,.09)_46%,rgba(139,92,246,.10))] p-5 shadow-[0_28px_90px_rgba(245,158,11,.08),0_24px_70px_rgba(0,0,0,.30)] backdrop-blur-2xl sm:p-6">
