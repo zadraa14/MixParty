@@ -187,7 +187,7 @@ export default function ProfilePage() {
       <MixPartyBackground />
       <div className="pointer-events-none fixed inset-0 z-[1] bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,.035),transparent_36%),linear-gradient(to_bottom,rgba(7,7,17,.02),rgba(7,7,17,.28))]" />
 
-      <div className="relative z-10 mx-auto w-full max-w-6xl px-4 pb-16 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6 lg:px-8">
+      <div className="relative z-10 mx-auto w-full max-w-[1480px] px-4 pb-16 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6 lg:px-8">
         <header className="flex items-center justify-between gap-3 py-2 sm:py-4">
           <Link
             href="/"
@@ -210,7 +210,7 @@ export default function ProfilePage() {
         </header>
 
         <section className="mt-5 overflow-hidden rounded-[30px] border border-white/10 bg-white/[0.055] shadow-[0_30px_100px_rgba(0,0,0,.42)] backdrop-blur-2xl sm:mt-8 sm:rounded-[36px]">
-          <div className="relative overflow-hidden px-5 pb-6 pt-7 sm:px-8 sm:pb-8 sm:pt-9">
+          <div className="relative overflow-hidden px-5 pb-6 pt-7 sm:px-10 sm:pb-10 sm:pt-10 lg:px-12">
             <div className="pointer-events-none absolute -left-16 -top-20 h-64 w-64 rounded-full bg-violet-600/20 blur-[90px]" />
             <div className="pointer-events-none absolute -right-20 top-0 h-72 w-72 rounded-full bg-fuchsia-600/15 blur-[100px]" />
             <div className="pointer-events-none absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-fuchsia-400/70 to-transparent" />
@@ -219,8 +219,8 @@ export default function ProfilePage() {
               <div className="flex min-w-0 flex-col items-center gap-5 text-center sm:flex-row sm:text-left">
                 <div className="relative shrink-0">
                   <div className="absolute -inset-2 rounded-[34px] bg-gradient-to-br from-violet-500 via-fuchsia-500 to-orange-400 opacity-65 blur-md" />
-                  <div className="relative h-28 w-28 overflow-hidden rounded-[30px] border border-white/20 bg-[#0d0817] p-1 shadow-[0_18px_45px_rgba(0,0,0,.45)] sm:h-32 sm:w-32">
-                    <div className="grid h-full w-full place-items-center overflow-hidden rounded-[25px] bg-gradient-to-br from-[#171024] to-[#090610]">
+                  <div className="relative h-32 w-32 overflow-hidden rounded-[34px] border border-white/20 bg-[#0d0817] p-1 shadow-[0_18px_45px_rgba(0,0,0,.45)] sm:h-40 sm:w-40 lg:h-44 lg:w-44">
+                    <div className="grid h-full w-full place-items-center overflow-hidden rounded-[29px] bg-gradient-to-br from-[#171024] to-[#090610]">
                       {ready && photo ? (
                         <img src={photo} alt={`Photo de ${displayName}`} className="h-full w-full object-cover" />
                       ) : (
@@ -239,10 +239,10 @@ export default function ProfilePage() {
                     <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-[10px] font-black uppercase tracking-[.16em] text-white/40">Compte à venir</span>
                   </div>
 
-                  <h1 className="mt-3 truncate font-[family:var(--font-exo-2)] text-3xl font-black tracking-tight sm:text-4xl lg:text-5xl">
+                  <h1 className="mt-3 truncate font-[family:var(--font-exo-2)] text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">
                     {ready ? displayName : "Chargement…"}
                   </h1>
-                  <p className="mt-2 max-w-xl text-sm leading-6 text-white/45 sm:text-base">
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-white/45 sm:text-base lg:text-lg">
                     Ton futur espace personnel pour retrouver tes soirées, ta progression, tes statistiques et tes badges MixParty.
                   </p>
                 </div>
@@ -260,9 +260,9 @@ export default function ProfilePage() {
           </div>
         </section>
 
-        <section className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-5 sm:gap-4">
+        <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5 sm:gap-4">
           {DEFAULT_STATS.map(({ label, value, icon: Icon, accent }) => (
-            <article key={label} className="rounded-[24px] border border-white/10 bg-white/[0.05] p-4 shadow-[0_18px_45px_rgba(0,0,0,.18)] backdrop-blur-xl sm:p-5">
+            <article key={label} className="rounded-[26px] border border-white/10 bg-white/[0.055] p-4 shadow-[0_18px_45px_rgba(0,0,0,.18)] backdrop-blur-xl sm:p-5">
               <div className="flex items-center justify-between gap-3">
                 <Icon className={`h-5 w-5 ${accent}`} />
                 <span className="text-[9px] font-black uppercase tracking-[.15em] text-white/25">Bientôt</span>
@@ -273,8 +273,8 @@ export default function ProfilePage() {
           ))}
         </section>
 
-        <div className="mt-5 grid gap-5 lg:grid-cols-[1.55fr_.85fr]">
-          <section className="rounded-[30px] border border-white/10 bg-white/[0.05] p-5 shadow-[0_24px_70px_rgba(0,0,0,.26)] backdrop-blur-2xl sm:p-6">
+        <div className="mt-6 grid gap-6 lg:grid-cols-[1.7fr_.8fr]">
+          <section className="rounded-[32px] border border-white/10 bg-white/[0.055] p-5 shadow-[0_24px_70px_rgba(0,0,0,.26)] backdrop-blur-2xl sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[.22em] text-fuchsia-300">Collection</p>
@@ -306,7 +306,7 @@ export default function ProfilePage() {
             </button>
           </section>
 
-          <section className="relative overflow-hidden rounded-[30px] border border-amber-300/15 bg-gradient-to-br from-amber-400/[0.10] via-fuchsia-500/[0.07] to-violet-500/[0.08] p-5 shadow-[0_24px_70px_rgba(0,0,0,.26)] backdrop-blur-2xl sm:p-6">
+          <section className="relative overflow-hidden rounded-[32px] border border-amber-300/15 bg-gradient-to-br from-amber-400/[0.10] via-fuchsia-500/[0.07] to-violet-500/[0.08] p-5 shadow-[0_24px_70px_rgba(0,0,0,.26)] backdrop-blur-2xl sm:p-6">
             <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-amber-400/15 blur-[65px]" />
             <div className="relative">
               <div className="flex items-center justify-between gap-3">
@@ -331,6 +331,34 @@ export default function ProfilePage() {
           </section>
         </div>
 
+        <section className="mt-6 grid gap-4 sm:grid-cols-4">
+          {[
+            { label: "Profil", detail: "Identité & avatar", Icon: UserRound, active: true },
+            { label: "Badges", detail: "Collection", Icon: Medal, active: false },
+            { label: "Statistiques", detail: "Progression", Icon: Trophy, active: false },
+            { label: "Historique", detail: "Tes soirées", Icon: History, active: false },
+          ].map(({ label, detail, Icon, active }) => (
+            <button
+              key={label}
+              type="button"
+              disabled={!active}
+              className={`group flex min-h-20 items-center gap-3 rounded-[24px] border px-4 text-left backdrop-blur-xl transition ${
+                active
+                  ? "border-fuchsia-300/25 bg-gradient-to-br from-fuchsia-500/15 to-violet-500/10 shadow-[0_16px_45px_rgba(168,85,247,.12)]"
+                  : "cursor-not-allowed border-white/[0.08] bg-white/[0.035] opacity-55"
+              }`}
+            >
+              <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl border ${active ? "border-fuchsia-300/20 bg-fuchsia-500/10 text-fuchsia-200" : "border-white/10 bg-white/[0.04] text-white/35"}`}>
+                <Icon className="h-5 w-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="block font-[family:var(--font-exo-2)] text-sm font-black text-white/80">{label}</span>
+                <span className="mt-0.5 block text-[11px] font-bold text-white/30">{active ? detail : `${detail} · bientôt`}</span>
+              </span>
+            </button>
+          ))}
+        </section>
+
         <section className="mt-5 rounded-[30px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
@@ -338,13 +366,14 @@ export default function ProfilePage() {
                 <ShieldCheck className="h-5 w-5" />
               </div>
               <div>
-                <h2 className="font-[family:var(--font-exo-2)] text-lg font-black">Compte MixParty permanent</h2>
-                <p className="mt-1 max-w-2xl text-sm leading-6 text-white/40">La connexion, la sauvegarde multi-appareils, les statistiques et la progression permanente seront branchées dans la prochaine étape.</p>
+                <p className="text-[10px] font-black uppercase tracking-[.2em] text-cyan-300">Compte & sécurité</p>
+                <h2 className="mt-1 font-[family:var(--font-exo-2)] text-lg font-black">Ton compte MixParty</h2>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-white/40">Connexion multi-appareils, sécurité, statut Free/Premium et sauvegarde de la progression seront regroupés ici quand nous brancherons les comptes permanents.</p>
               </div>
             </div>
             <span className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[.16em] text-cyan-200">
               <Sparkles className="h-3.5 w-3.5" />
-              En préparation
+              Prochaine étape
             </span>
           </div>
         </section>
