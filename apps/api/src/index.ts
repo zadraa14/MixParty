@@ -40,6 +40,7 @@ const dataFilePath = path.resolve(persistentDataDir, "data.json");
 const partyEventsFilePath = path.resolve(persistentDataDir, "party-intelligence-events.jsonl");
 const attendanceHistoryFilePath = path.resolve(persistentDataDir, "party-attendance-history.json");
 const accountsFilePath = path.resolve(persistentDataDir, "accounts.json");
+const adminAuditFilePath = path.resolve(persistentDataDir, "admin-audit.jsonl");
 const karaokeAuditFilePath = path.resolve(persistentDataDir, "karaoke-audit.json");
 const karaokeLyricsAuditFilePath = path.resolve(persistentDataDir, "karaoke-lyrics-audit.json");
 const karaokeSyncEngineFilePath = path.resolve(persistentDataDir, "karaoke-sync-engine.json");
@@ -60,6 +61,86 @@ app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: "2mb" }));
 
 const accountsStore = createAccountsStore(accountsFilePath);
+
+function configuredAdminEmails() {
+  return new Set(
+    String(process.env.MIXPARTY_ADMIN_EMAILS || "")
+      .split(",")
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function configuredAdminAccountIds() {
+  return new Set(
+    String(process.env.MIXPARTY_ADMIN_ACCOUNT_IDS || "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean),
+  );
+}
+
+function isAdminAccount(account: any) {
+  if (!account) return false;
+  const emails = configuredAdminEmails();
+  const ids = configuredAdminAccountIds();
+
+  return (
+    emails.has(String(account.email || "").trim().toLowerCase()) ||
+    ids.has(String(account.id || "").trim())
+  );
+}
+
+function readAdminAccount(req: any) {
+  const token = readBearerToken(req);
+  const account = token ? accountsStore.authenticate(token) : null;
+  if (!account || !isAdminAccount(account)) return null;
+  return account;
+}
+
+function adminConfigReady() {
+  return configuredAdminEmails().size > 0 || configuredAdminAccountIds().size > 0;
+}
+
+function writeAdminAudit(account: any, action: string, details: Record<string, unknown> = {}) {
+  try {
+    fs.appendFileSync(
+      adminAuditFilePath,
+      JSON.stringify({
+        at: Date.now(),
+        adminAccountId: account?.id,
+        adminEmail: account?.email,
+        action,
+        ...details,
+      }) + "\n",
+      "utf8",
+    );
+  } catch (error) {
+    console.error("⚠️ Admin audit write failed", error);
+  }
+}
+
+function adminPartySummary(party: Party) {
+  return {
+    code: party.code,
+    createdAt: party.createdAt,
+    lastActivityAt: party.lastActivityAt,
+    currentSong: party.currentSong,
+    participants: party.participants?.length || 0,
+    songs: party.songs.map((song, index) => ({
+      index,
+      title: song.title,
+      artistName: song.artistName,
+      videoId: song.videoId,
+      votes: song.votes,
+      played: song.played,
+      addedBy: song.addedBy,
+      addedByAccountId: song.addedByAccountId,
+      addedAt: song.addedAt,
+    })),
+  };
+}
+
 
 // Public/admin Karaoké endpoints are frozen while the feature is paused.
 // Nothing is deleted; KARAOKE_ENABLED=true will reactivate them later.
@@ -2761,6 +2842,220 @@ app.post("/account/logout", (req, res) => {
   const token = readBearerToken(req);
   if (token) accountsStore.logout(token);
   return res.json({ ok: true });
+});
+
+app.get("/admin/me", (req, res) => {
+  if (!adminConfigReady()) {
+    return res.status(503).json({
+      error: "ADMIN_NOT_CONFIGURED",
+      message: "Configure MIXPARTY_ADMIN_EMAILS ou MIXPARTY_ADMIN_ACCOUNT_IDS sur Railway.",
+    });
+  }
+
+  const account = readAdminAccount(req);
+  if (!account) {
+    return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+  }
+
+  return res.json({
+    ok: true,
+    account: {
+      id: account.id,
+      email: account.email,
+      name: account.name,
+    },
+  });
+});
+
+app.get("/admin/parties", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  return res.json({
+    parties: parties
+      .slice()
+      .sort((a, b) => b.lastActivityAt - a.lastActivityAt)
+      .map(adminPartySummary),
+  });
+});
+
+app.post("/admin/party/:code/song/:index/simulate-votes", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  const index = Number(req.params.index);
+  const song = party.songs[index];
+  if (!song) return res.status(404).json({ error: "Morceau introuvable" });
+
+  const delta = Math.trunc(Number(req.body?.delta || 0));
+  if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > 25) {
+    return res.status(400).json({ error: "delta doit être compris entre -25 et 25, hors 0." });
+  }
+
+  if (delta > 0) {
+    for (let i = 0; i < delta; i += 1) {
+      const syntheticVoter = `ADMIN_TEST_${Date.now()}_${i}_${randomUUID().slice(0, 6)}`;
+      song.voters.push(syntheticVoter);
+      song.votes += 1;
+
+      if (!song.firstVoteAt) song.firstVoteAt = Date.now();
+
+      if (song.addedByAccountId) {
+        accountsStore.recordVoteReceivedByAccountId(song.addedByAccountId);
+
+        if (song.votes >= 5) {
+          accountsStore.recordSongReachedFiveVotesByAccountId(
+            song.addedByAccountId,
+            party.code,
+            accountSongKey(song),
+          );
+        }
+
+        accountsStore.recordSongVoteMilestoneByAccountId(
+          song.addedByAccountId,
+          party.code,
+          accountSongKey(song),
+          song.votes,
+          song.addedAt,
+          song.firstVoteAt,
+        );
+      }
+    }
+  } else {
+    const removeCount = Math.min(Math.abs(delta), song.votes);
+
+    for (let i = 0; i < removeCount; i += 1) {
+      const adminIndex = song.voters.findIndex((name) =>
+        String(name).startsWith("ADMIN_TEST_"),
+      );
+
+      if (adminIndex >= 0) {
+        song.voters.splice(adminIndex, 1);
+      } else if (song.voters.length > 0) {
+        song.voters.pop();
+      }
+
+      song.votes = Math.max(0, song.votes - 1);
+
+      if (song.addedByAccountId) {
+        accountsStore.recordVoteReceivedRemovedByAccountId(song.addedByAccountId);
+      }
+    }
+  }
+
+  writeAdminAudit(account, "SIMULATE_VOTES", {
+    partyCode: party.code,
+    songIndex: index,
+    videoId: song.videoId,
+    delta,
+    resultingVotes: song.votes,
+  });
+
+  updateParty(party);
+
+  return res.json({
+    ok: true,
+    song: {
+      index,
+      title: song.title,
+      votes: song.votes,
+      played: song.played,
+    },
+  });
+});
+
+app.post("/admin/party/:code/song/:index/outcome", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  const index = Number(req.params.index);
+  const song = party.songs[index];
+  if (!song) return res.status(404).json({ error: "Morceau introuvable" });
+
+  const outcome = String(req.body?.outcome || "");
+  if (outcome !== "completed" && outcome !== "skipped") {
+    return res.status(400).json({ error: "outcome doit être completed ou skipped." });
+  }
+
+  if (song.addedByAccountId) {
+    accountsStore.recordSongPlaybackOutcomeByAccountId(
+      song.addedByAccountId,
+      party.code,
+      outcome === "completed",
+    );
+  }
+
+  if (outcome === "completed") {
+    song.played = true;
+  }
+
+  writeAdminAudit(account, "SIMULATE_PLAYBACK_OUTCOME", {
+    partyCode: party.code,
+    songIndex: index,
+    videoId: song.videoId,
+    outcome,
+  });
+
+  updateParty(party);
+  return res.json({ ok: true });
+});
+
+app.post("/admin/account/me/advance-party", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const partyCode = String(req.body?.partyCode || "").trim().toUpperCase();
+  const minutes = Math.trunc(Number(req.body?.minutes || 0));
+
+  if (!partyCode || !minutes || minutes < 1 || minutes > 1440) {
+    return res.status(400).json({ error: "partyCode requis et minutes entre 1 et 1440." });
+  }
+
+  const updated = accountsStore.adminAdvancePartyTime(
+    account.id,
+    partyCode,
+    minutes,
+  );
+
+  writeAdminAudit(account, "ADVANCE_PARTY_TIME", {
+    partyCode,
+    minutes,
+  });
+
+  return res.json({ ok: true, account: updated });
+});
+
+app.post("/admin/account/me/badge", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const badgeId = String(req.body?.badgeId || "").trim();
+  const unlocked = Boolean(req.body?.unlocked);
+  const partyCode = String(req.body?.partyCode || "").trim().toUpperCase() || undefined;
+
+  if (!badgeId) {
+    return res.status(400).json({ error: "badgeId requis." });
+  }
+
+  const updated = accountsStore.adminSetBadge(
+    account.id,
+    badgeId,
+    unlocked,
+    partyCode,
+  );
+
+  writeAdminAudit(account, unlocked ? "UNLOCK_BADGE" : "LOCK_BADGE", {
+    badgeId,
+    partyCode,
+  });
+
+  return res.json({ ok: true, account: updated });
 });
 
 

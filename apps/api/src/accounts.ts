@@ -1027,6 +1027,74 @@ export function createAccountsStore(filePath: string) {
     return publicAccount(owner);
   }
 
+  function adminAdvancePartyTime(
+    accountId: string,
+    partyCodeValue: unknown,
+    minutesValue: unknown,
+  ) {
+    const account = database.accounts.find((item) => item.id === accountId);
+    if (!account) return null;
+
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    const minutes = Math.max(0, Math.min(24 * 60, Number(minutesValue || 0)));
+    if (!partyCode || !minutes) return publicAccount(account);
+
+    let entry = account.history.find((item) => item.partyCode === partyCode);
+    const now = Date.now();
+
+    if (!entry) {
+      entry = {
+        partyCode,
+        joinedAt: now,
+        lastSeenAt: now,
+        role: "participant",
+        participationCounted: false,
+        hostCounted: false,
+        durationCreditedMs: 0,
+      };
+      account.history.push(entry);
+    }
+
+    // Admin simulation advances the same participation instead of creating a new one.
+    entry.joinedAt -= minutes * 60_000;
+    if (entry.hostStartedAt) {
+      entry.hostStartedAt -= minutes * 60_000;
+    }
+    entry.lastSeenAt = now;
+
+    qualifyPartyEntry(account, entry, now);
+    save();
+    return publicAccount(account);
+  }
+
+  function adminSetBadge(
+    accountId: string,
+    badgeIdValue: unknown,
+    unlockedValue: unknown,
+    partyCodeValue?: unknown,
+  ) {
+    const account = database.accounts.find((item) => item.id === accountId);
+    if (!account) return null;
+
+    const badgeId = String(badgeIdValue || "").trim();
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase() || undefined;
+    const unlocked = Boolean(unlockedValue);
+    if (!badgeId) return publicAccount(account);
+
+    if (unlocked) {
+      unlockBadge(account, badgeId, partyCode);
+    } else {
+      account.badges = account.badges.filter((id) => id !== badgeId);
+      account.badgeUnlocks = account.badgeUnlocks.filter(
+        (item) => item.badgeId !== badgeId,
+      );
+      account.updatedAt = Date.now();
+    }
+
+    save();
+    return publicAccount(account);
+  }
+
   function logout(token: string) {
     const tokenHash = hashToken(token);
     const previousLength = database.sessions.length;
@@ -1056,6 +1124,8 @@ export function createAccountsStore(filePath: string) {
     finalizePartyParticipation,
     recordVoteReceivedByAccountId,
     recordVoteReceivedRemovedByAccountId,
+    adminAdvancePartyTime,
+    adminSetBadge,
     logout,
   };
 }
