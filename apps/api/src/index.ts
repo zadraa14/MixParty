@@ -779,6 +779,7 @@ type Party = {
   songs: Song[];
   history: Song[];
   participants: Participant[];
+  seenParticipantIds: string[];
   currentSong: Song | null;
   createdAt: number;
   lastActivityAt: number;
@@ -802,6 +803,9 @@ if(fs.existsSync(dataFilePath)){
         ? { id: `legacy-${index}-${participant}`, name: participant, lastSeen: 0 }
         : { ...participant, lastSeen: Number(participant.lastSeen || 0) }
     );
+    party.seenParticipantIds = Array.isArray(party.seenParticipantIds)
+      ? [...new Set(party.seenParticipantIds.map(String).filter(Boolean))]
+      : [...new Set(party.participants.map((participant) => participant.id))];
     party.lastActivityAt = Number(party.lastActivityAt || party.createdAt || Date.now());
     party.creatorToken = typeof party.creatorToken === "string" && party.creatorToken ? party.creatorToken : randomUUID();
     party.partyBrainAutoRelayEnabled = Boolean(party.partyBrainAutoRelayEnabled);
@@ -2728,6 +2732,8 @@ function cleanOldParties(){
       })),
     );
     accountsStore.finalizePartyParticipation(party.code, endedAt);
+    const finalRanking = buildFinalPartyRanking(party);
+    accountsStore.recordFinalPartyRanking(party.code, finalRanking);
     playbackTelemetry.delete(party.code);
   }
 
@@ -2767,6 +2773,80 @@ function updateParty(party:Party) {
   pruneOfflineParticipants(party);
   saveParties();
   io.emit("party_updated", toPublicParty(party));
+}
+
+
+function registerPartyParticipant(party: Party, participantIdValue: unknown) {
+  const participantId = String(participantIdValue || "").trim();
+  if (!participantId) return;
+
+  if (!Array.isArray(party.seenParticipantIds)) {
+    party.seenParticipantIds = [];
+  }
+
+  if (!party.seenParticipantIds.includes(participantId)) {
+    party.seenParticipantIds.push(participantId);
+    party.seenParticipantIds = party.seenParticipantIds.slice(-5000);
+  }
+
+  accountsStore.recordGrosseSoiree(
+    party.code,
+    party.seenParticipantIds.length,
+  );
+}
+
+function buildFinalPartyRanking(party: Party) {
+  const qualifiedAccountIds = new Set(
+    accountsStore.partyQualifiedAccountIds(party.code),
+  );
+
+  const scores = new Map<
+    string,
+    {
+      accountId: string;
+      votesReceived: number;
+      songsWithVotes: number;
+      songsAdded: number;
+      partyScore: number;
+    }
+  >();
+
+  for (const accountId of qualifiedAccountIds) {
+    scores.set(accountId, {
+      accountId,
+      votesReceived: 0,
+      songsWithVotes: 0,
+      songsAdded: 0,
+      partyScore: 0,
+    });
+  }
+
+  for (const song of party.songs) {
+    const accountId = String(song.addedByAccountId || "").trim();
+    if (!accountId || !qualifiedAccountIds.has(accountId)) continue;
+
+    const row = scores.get(accountId);
+    if (!row) continue;
+
+    const votes = Math.max(0, Number(song.votes || 0));
+    row.votesReceived += votes;
+    row.songsAdded += 1;
+    if (votes > 0) row.songsWithVotes += 1;
+  }
+
+  for (const row of scores.values()) {
+    // PartyScore V1 : total des votes reçus pendant la soirée.
+    // Les autres valeurs servent uniquement de départage.
+    row.partyScore = row.votesReceived;
+  }
+
+  return [...scores.values()].sort(
+    (a, b) =>
+      b.partyScore - a.partyScore ||
+      b.songsWithVotes - a.songsWithVotes ||
+      b.songsAdded - a.songsAdded ||
+      a.accountId.localeCompare(b.accountId),
+  );
 }
 
 
@@ -3307,6 +3387,106 @@ app.post("/admin/party/:code/song/:index/scenario-pepite", (req, res) => {
   return res.json({ ok: true });
 });
 
+app.post("/admin/account/:accountId/scenario-bon-public", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const targetAccountId = String(req.params.accountId || "").trim();
+  const partyCode = String(req.body?.partyCode || "").trim().toUpperCase();
+
+  const updated = accountsStore.adminSimulateBonPublic(
+    targetAccountId,
+    partyCode,
+  );
+
+  if (!updated) return res.status(404).json({ error: "Compte introuvable." });
+
+  writeAdminAudit(account, "SCENARIO_BON_PUBLIC", {
+    targetAccountId,
+    partyCode,
+  });
+
+  return res.json({ ok: true, account: updated });
+});
+
+app.post("/admin/party/:code/scenario-grosse-soiree", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  for (let index = party.seenParticipantIds.length; index < 25; index += 1) {
+    party.seenParticipantIds.push(`ADMIN_GUEST_${index + 1}`);
+  }
+
+  accountsStore.recordGrosseSoiree(
+    party.code,
+    party.seenParticipantIds.length,
+  );
+
+  writeAdminAudit(account, "SCENARIO_GROSSE_SOIREE", {
+    partyCode: party.code,
+    uniqueParticipants: party.seenParticipantIds.length,
+  });
+
+  saveParties();
+  return res.json({
+    ok: true,
+    uniqueParticipants: party.seenParticipantIds.length,
+  });
+});
+
+app.post("/admin/party/:code/scenario-ranking", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const party = findParty(req.params.code);
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
+
+  const targetAccountId = String(req.body?.accountId || "").trim();
+  if (!targetAccountId) {
+    return res.status(400).json({ error: "accountId requis." });
+  }
+
+  // Le compte doit être qualifié pour recevoir un résultat de soirée.
+  accountsStore.adminAdvancePartyTime(
+    targetAccountId,
+    party.code,
+    30,
+  );
+
+  // Donne au compte sélectionné un morceau gagnant artificiel si possible.
+  const ownedSong = party.songs.find(
+    (song) => song.addedByAccountId === targetAccountId,
+  );
+
+  if (ownedSong) {
+    const maxOtherVotes = Math.max(
+      0,
+      ...party.songs
+        .filter((song) => song !== ownedSong)
+        .map((song) => Number(song.votes || 0)),
+    );
+    ownedSong.votes = Math.max(ownedSong.votes, maxOtherVotes + 10);
+  }
+
+  const ranking = buildFinalPartyRanking(party);
+  const results = accountsStore.recordFinalPartyRanking(
+    party.code,
+    ranking,
+  );
+
+  writeAdminAudit(account, "SCENARIO_FINAL_RANKING", {
+    partyCode: party.code,
+    targetAccountId,
+    ranking,
+  });
+
+  updateParty(party);
+  return res.json({ ok: true, ranking, results });
+});
+
 app.post("/admin/party/:code/song/:index/outcome", (req, res) => {
   const account = readAdminAccount(req);
   if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
@@ -3497,6 +3677,7 @@ const party:Party = {
   songs: [],
   history: [],
   participants: [],
+  seenParticipantIds: [],
   currentSong: null,
   createdAt: Date.now(),
   lastActivityAt: Date.now(),
@@ -3596,6 +3777,8 @@ app.post("/party/:code/join",(req,res)=>{
     party.participants.push({ id: participantId, name, avatar, accountId: authenticatedAccount?.id, lastSeen: Date.now() });
   }
 
+  registerPartyParticipant(party, participantId);
+
   if (accountToken && authenticatedAccount) {
     accountsStore.recordPartyJoined(accountToken, party.code);
   }
@@ -3642,6 +3825,8 @@ app.post("/party/:code/presence", (req, res) => {
   } else {
     party.participants.push({ id, name, avatar, accountId: authenticatedAccount?.id, lastSeen: Date.now() });
   }
+
+  registerPartyParticipant(party, id);
 
   if (accountToken && authenticatedAccount) {
     accountsStore.recordPartyJoined(accountToken, party.code);
@@ -3891,7 +4076,11 @@ console.log("Résultat includes :", song.voters.includes(name));
   const accountToken = readBearerToken(req);
   const authenticatedAccount = accountToken ? accountsStore.authenticate(accountToken) : null;
   if (accountToken && authenticatedAccount) {
-    accountsStore.recordVoteGiven(accountToken, song.addedByAccountId);
+    accountsStore.recordVoteGiven(
+      accountToken,
+      song.addedByAccountId || song.addedById || song.addedBy,
+      party.code,
+    );
   }
 
   if (song.addedByAccountId) {
@@ -4138,12 +4327,24 @@ app.post("/party/:code/end", (req, res) => {
     })),
   );
   accountsStore.finalizePartyParticipation(party.code, endedAt);
+
+  const finalRanking = buildFinalPartyRanking(party);
+  const recordedResults = accountsStore.recordFinalPartyRanking(
+    party.code,
+    finalRanking,
+  );
+
   playbackTelemetry.delete(party.code);
   parties = parties.filter((item) => item.code !== party.code);
   saveParties();
   io.emit("party_ended", { code: party.code });
 
-  return res.json({ ok: true, code: party.code });
+  return res.json({
+    ok: true,
+    code: party.code,
+    ranking: finalRanking,
+    recordedResults,
+  });
 });
 
 

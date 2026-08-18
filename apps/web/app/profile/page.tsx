@@ -79,8 +79,8 @@ type MixPartyAccount = {
 
 const PROFILE_STAT_CARDS = [
   { key: "partiesJoined", label: "Soirées", icon: History, accent: "text-violet-300", live: true },
-  { key: "wins", label: "Victoires", icon: Crown, accent: "text-amber-300", live: false },
-  { key: "podiums", label: "Podiums", icon: Trophy, accent: "text-cyan-300", live: false },
+  { key: "wins", label: "Victoires", icon: Crown, accent: "text-amber-300", live: true },
+  { key: "podiums", label: "Podiums", icon: Trophy, accent: "text-cyan-300", live: true },
   { key: "votesGiven", label: "Votes", icon: Vote, accent: "text-pink-300", live: true },
   { key: "songsAdded", label: "Morceaux", icon: Music2, accent: "text-orange-300", live: true },
 ] as const;
@@ -206,6 +206,48 @@ const PROFILE_BADGES = [
     name: "Host légendaire",
     condition: "Organiser 50 soirées validées",
     image: "/badges/host-legendaire.png",
+  },
+  {
+    id: "grosse-soiree",
+    name: "Grosse soirée",
+    condition: "Organiser une soirée accueillant au moins 25 personnes différentes",
+    image: "/badges/grosse-soiree.png",
+  },
+  {
+    id: "bon-public",
+    name: "Bon Public",
+    condition: "Voter pour les morceaux de 10 personnes différentes",
+    image: "/badges/bon-public.png",
+  },
+  {
+    id: "premier-podium",
+    name: "Premier podium",
+    condition: "Terminer dans le Top 3 d'une soirée validée",
+    image: "/badges/premier-podium.png",
+  },
+  {
+    id: "habitue-du-podium",
+    name: "Habitué du podium",
+    condition: "Terminer 5 fois dans le Top 3",
+    image: "/badges/habitue-du-podium.png",
+  },
+  {
+    id: "champion",
+    name: "Champion",
+    condition: "Remporter une soirée validée",
+    image: "/badges/champion.png",
+  },
+  {
+    id: "double-couronne",
+    name: "Double Couronne",
+    condition: "Remporter 2 soirées validées",
+    image: "/badges/double-couronne.png",
+  },
+  {
+    id: "collectionneur-de-couronnes",
+    name: "Collectionneur de Couronnes",
+    condition: "Remporter 5 soirées validées",
+    image: "/badges/collectionneur-de-couronnes.png",
   },
   {
     id: "banger",

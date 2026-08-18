@@ -287,6 +287,39 @@ export default function AdminPage() {
     );
   }
 
+  async function scenarioBonPublic() {
+    if (!selectedParty || !selectedAccount) return;
+
+    await runAction(
+      "scenario-bon-public",
+      `/admin/account/${selectedAccount.id}/scenario-bon-public`,
+      { partyCode: selectedParty.code },
+      `Scénario Bon Public appliqué à ${selectedAccount.name || selectedAccount.email}.`,
+    );
+  }
+
+  async function scenarioGrosseSoiree() {
+    if (!selectedParty) return;
+
+    await runAction(
+      "scenario-grosse-soiree",
+      `/admin/party/${selectedParty.code}/scenario-grosse-soiree`,
+      {},
+      `La soirée ${selectedParty.code} a été simulée avec 25 participants uniques.`,
+    );
+  }
+
+  async function scenarioRanking() {
+    if (!selectedParty || !selectedAccount) return;
+
+    await runAction(
+      "scenario-ranking",
+      `/admin/party/${selectedParty.code}/scenario-ranking`,
+      { accountId: selectedAccount.id },
+      `Classement final simulé pour ${selectedAccount.name || selectedAccount.email}.`,
+    );
+  }
+
   async function scenarioSecretSong(
     song: AdminSong,
     scenario: "sniper" | "devin" | "pepite",
@@ -531,6 +564,35 @@ export default function AdminPage() {
                         className="rounded-xl border border-indigo-300/15 bg-indigo-500/[0.08] px-3 py-2.5 text-xs font-black text-indigo-100 transition hover:bg-indigo-500/[0.14] disabled:opacity-40"
                       >
                         🌙 Oiseau de nuit
+                      </button>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-1 gap-2">
+                      <button
+                        type="button"
+                        disabled={busy !== "" || !selectedAccount}
+                        onClick={scenarioBonPublic}
+                        className="rounded-xl border border-pink-300/15 bg-pink-500/[0.08] px-3 py-2.5 text-xs font-black text-pink-100 transition hover:bg-pink-500/[0.14] disabled:opacity-40"
+                      >
+                        ❤️ Bon Public
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={busy !== ""}
+                        onClick={scenarioGrosseSoiree}
+                        className="rounded-xl border border-orange-300/15 bg-orange-500/[0.08] px-3 py-2.5 text-xs font-black text-orange-100 transition hover:bg-orange-500/[0.14] disabled:opacity-40"
+                      >
+                        👥 Grosse soirée
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={busy !== "" || !selectedAccount}
+                        onClick={scenarioRanking}
+                        className="rounded-xl border border-yellow-300/15 bg-yellow-500/[0.08] px-3 py-2.5 text-xs font-black text-yellow-100 transition hover:bg-yellow-500/[0.14] disabled:opacity-40"
+                      >
+                        🏆 Classement final
                       </button>
                     </div>
 

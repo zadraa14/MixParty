@@ -35,6 +35,9 @@ export type MixPartyAccountHistoryEntry = {
   hostQualifiedAt?: number;
   endedAt?: number;
   durationCreditedMs: number;
+  finalRank?: number;
+  partyScore?: number;
+  resultCounted?: boolean;
 };
 
 export type MixPartyBadgeUnlock = {
@@ -72,6 +75,7 @@ export type MixPartyAccount = {
     }>;
     completedSongStreak: number;
     lastCompletedSongPartyCode?: string;
+    votedCreatorKeysByParty: Record<string, string[]>;
   };
   customization: {
     avatarFrame?: string;
@@ -183,6 +187,26 @@ const SIMPLE_BADGES = [
   {
     id: "host-legendaire",
     isUnlocked: (stats: MixPartyAccountStats) => stats.partiesHosted >= 50,
+  },
+  {
+    id: "premier-podium",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.podiums >= 1,
+  },
+  {
+    id: "habitue-du-podium",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.podiums >= 5,
+  },
+  {
+    id: "champion",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.wins >= 1,
+  },
+  {
+    id: "double-couronne",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.wins >= 2,
+  },
+  {
+    id: "collectionneur-de-couronnes",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.wins >= 5,
   },
 ] as const;
 
@@ -327,6 +351,12 @@ export function createAccountsStore(filePath: string) {
                       entry.durationCreditedMs === undefined
                         ? Math.max(0, lastSeenAt - joinedAt)
                         : Math.max(0, Number(entry.durationCreditedMs || 0)),
+                    finalRank: Number(entry.finalRank || 0) || undefined,
+                    partyScore:
+                      entry.partyScore === undefined
+                        ? undefined
+                        : Math.max(0, Number(entry.partyScore || 0)),
+                    resultCounted: Boolean(entry.resultCounted),
                   }];
                 }).slice(-500)
               : [],
@@ -359,6 +389,20 @@ export function createAccountsStore(filePath: string) {
               completedSongStreak: Math.max(0, Number(raw.progress?.completedSongStreak || 0)),
               lastCompletedSongPartyCode:
                 String(raw.progress?.lastCompletedSongPartyCode || "").trim().toUpperCase() || undefined,
+              votedCreatorKeysByParty:
+                raw.progress?.votedCreatorKeysByParty &&
+                typeof raw.progress.votedCreatorKeysByParty === "object"
+                  ? Object.fromEntries(
+                      Object.entries(raw.progress.votedCreatorKeysByParty)
+                        .slice(-500)
+                        .map(([partyCode, values]) => [
+                          String(partyCode).trim().toUpperCase(),
+                          Array.isArray(values)
+                            ? [...new Set(values.map(String).filter(Boolean))].slice(-100)
+                            : [],
+                        ]),
+                    )
+                  : {},
             },
             customization: {
               ...(raw.customization && typeof raw.customization === "object"
@@ -542,6 +586,7 @@ export function createAccountsStore(filePath: string) {
         activeMilliseconds: 0,
         songAddedEvents: [],
         completedSongStreak: 0,
+        votedCreatorKeysByParty: {},
       },
       customization: {},
     };
@@ -942,11 +987,34 @@ export function createAccountsStore(filePath: string) {
     return publicAccount(account);
   }
 
-  function recordVoteGiven(token: string, songOwnerAccountId?: string) {
+  function recordVoteGiven(
+    token: string,
+    creatorKeyValue?: unknown,
+    partyCodeValue?: unknown,
+  ) {
     const account = accountMutableFromToken(token);
     if (!account) return null;
+
     account.stats.votesGiven += 1;
+
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    const creatorKey = String(creatorKeyValue || "").trim();
+
+    if (partyCode && creatorKey) {
+      const current = new Set(
+        account.progress.votedCreatorKeysByParty[partyCode] || [],
+      );
+      current.add(creatorKey);
+      account.progress.votedCreatorKeysByParty[partyCode] =
+        [...current].slice(-100);
+
+      if (current.size >= 10) {
+        unlockBadge(account, "bon-public", partyCode);
+      }
+    }
+
     account.updatedAt = Date.now();
+    syncSimpleBadges(account, partyCode);
     save();
     return publicAccount(account);
   }
@@ -955,6 +1023,144 @@ export function createAccountsStore(filePath: string) {
     const account = accountMutableFromToken(token);
     if (!account) return null;
     account.stats.votesGiven = Math.max(0, account.stats.votesGiven - 1);
+    account.updatedAt = Date.now();
+    save();
+    return publicAccount(account);
+  }
+
+  function partyQualifiedAccountIds(partyCodeValue: unknown) {
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    if (!partyCode) return [];
+
+    return database.accounts
+      .filter((account) =>
+        account.history.some(
+          (entry) =>
+            entry.partyCode === partyCode &&
+            entry.participationCounted,
+        ),
+      )
+      .map((account) => account.id);
+  }
+
+  function recordGrosseSoiree(
+    partyCodeValue: unknown,
+    uniqueParticipantsValue: unknown,
+  ) {
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    const uniqueParticipants = Math.max(
+      0,
+      Number(uniqueParticipantsValue || 0),
+    );
+
+    if (!partyCode || uniqueParticipants < 25) return;
+
+    let changed = false;
+
+    for (const account of database.accounts) {
+      const hostEntry = account.history.find(
+        (entry) =>
+          entry.partyCode === partyCode &&
+          entry.role === "host",
+      );
+      if (!hostEntry) continue;
+
+      if (unlockBadge(account, "grosse-soiree", partyCode)) {
+        changed = true;
+      }
+    }
+
+    if (changed) save();
+  }
+
+  function recordFinalPartyRanking(
+    partyCodeValue: unknown,
+    rankingValue: Array<{
+      accountId: string;
+      partyScore: number;
+      votesReceived: number;
+      songsWithVotes: number;
+      songsAdded: number;
+    }>,
+  ) {
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    const ranking = Array.isArray(rankingValue) ? rankingValue : [];
+    if (!partyCode || ranking.length === 0) return [];
+
+    const qualifiedIds = new Set(partyQualifiedAccountIds(partyCode));
+    const qualifiedRanking = ranking.filter((row) =>
+      qualifiedIds.has(String(row.accountId || "")),
+    );
+
+    if (qualifiedRanking.length === 0) return [];
+
+    const results: Array<{
+      accountId: string;
+      rank: number;
+      partyScore: number;
+    }> = [];
+
+    qualifiedRanking.forEach((row, index) => {
+      const accountId = String(row.accountId || "").trim();
+      const account = database.accounts.find((item) => item.id === accountId);
+      if (!account) return;
+
+      const entry = account.history.find(
+        (item) => item.partyCode === partyCode,
+      );
+      if (!entry || entry.resultCounted) return;
+
+      const rank = index + 1;
+      entry.finalRank = rank;
+      entry.partyScore = Math.max(0, Number(row.partyScore || 0));
+      entry.resultCounted = true;
+
+      if (rank <= 3) {
+        account.stats.podiums += 1;
+      }
+      if (rank === 1) {
+        account.stats.wins += 1;
+      }
+
+      syncSimpleBadges(account, partyCode);
+      account.updatedAt = Date.now();
+
+      results.push({
+        accountId,
+        rank,
+        partyScore: entry.partyScore,
+      });
+    });
+
+    save();
+    return results;
+  }
+
+  function adminSimulateBonPublic(
+    accountId: string,
+    partyCodeValue: unknown,
+  ) {
+    const account = database.accounts.find((item) => item.id === accountId);
+    if (!account) return null;
+
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    if (!partyCode) return publicAccount(account);
+
+    const keys = new Set(
+      account.progress.votedCreatorKeysByParty[partyCode] || [],
+    );
+
+    for (let index = 1; index <= 10; index += 1) {
+      keys.add(`ADMIN_CREATOR_${index}`);
+    }
+
+    account.progress.votedCreatorKeysByParty[partyCode] =
+      [...keys].slice(-100);
+
+    if (keys.size >= 10) {
+      unlockBadge(account, "bon-public", partyCode);
+    }
+
     account.updatedAt = Date.now();
     save();
     return publicAccount(account);
@@ -1198,6 +1404,7 @@ export function createAccountsStore(filePath: string) {
       activeMilliseconds: 0,
       songAddedEvents: [],
       completedSongStreak: 0,
+      votedCreatorKeysByParty: {},
     };
 
     account.updatedAt = Date.now();
@@ -1380,6 +1587,10 @@ export function createAccountsStore(filePath: string) {
     recordVoteRemoved,
     recordSongVoteMilestoneByAccountId,
     recordSongPlaybackOutcomeByAccountId,
+    partyQualifiedAccountIds,
+    recordGrosseSoiree,
+    recordFinalPartyRanking,
+    adminSimulateBonPublic,
     recordPartyEndingBadges,
     finalizePartyParticipation,
     recordVoteReceivedByAccountId,
