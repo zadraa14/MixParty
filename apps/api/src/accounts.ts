@@ -1050,7 +1050,7 @@ export function createAccountsStore(filePath: string) {
     const account = database.accounts.find((item) => item.id === accountId);
     if (!account) return null;
 
-    account.stats = defaultStats();
+    account.stats = createDefaultStats();
 
     // Remet à zéro les données qui alimentent les stats afin que les prochains
     // tests puissent recompter proprement sans toucher à l'identité ni aux badges.
