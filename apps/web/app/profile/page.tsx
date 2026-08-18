@@ -37,10 +37,10 @@ const DEFAULT_STATS = [
 ] as const;
 
 const BADGE_PREVIEWS = [
-  { title: "Premier Son", tone: "from-violet-500/35 to-fuchsia-500/15", icon: Music2 },
-  { title: "Champion", tone: "from-amber-400/30 to-orange-500/10", icon: Trophy },
-  { title: "Hitmaker", tone: "from-fuchsia-500/30 to-violet-500/10", icon: Zap },
-  { title: "Badge secret", tone: "from-cyan-500/20 to-violet-500/10", icon: LockKeyhole },
+  { title: "Premier Son", tone: "from-violet-500/40 via-fuchsia-500/15 to-transparent", icon: Music2, ring: "border-violet-300/20" },
+  { title: "Champion", tone: "from-amber-400/35 via-orange-500/12 to-transparent", icon: Trophy, ring: "border-amber-300/20" },
+  { title: "Hitmaker", tone: "from-fuchsia-500/35 via-violet-500/12 to-transparent", icon: Zap, ring: "border-fuchsia-300/20" },
+  { title: "Badge secret", tone: "from-cyan-500/25 via-violet-500/10 to-transparent", icon: LockKeyhole, ring: "border-cyan-300/20" },
 ] as const;
 
 async function compressProfilePhoto(file: File): Promise<string> {
@@ -218,9 +218,11 @@ export default function ProfilePage() {
             <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 flex-col items-center gap-5 text-center sm:flex-row sm:text-left">
                 <div className="relative shrink-0">
-                  <div className="absolute -inset-2 rounded-[34px] bg-gradient-to-br from-violet-500 via-fuchsia-500 to-orange-400 opacity-65 blur-md" />
-                  <div className="relative h-32 w-32 overflow-hidden rounded-[34px] border border-white/20 bg-[#0d0817] p-1 shadow-[0_18px_45px_rgba(0,0,0,.45)] sm:h-40 sm:w-40 lg:h-44 lg:w-44">
-                    <div className="grid h-full w-full place-items-center overflow-hidden rounded-[29px] bg-gradient-to-br from-[#171024] to-[#090610]">
+                  <div className="absolute -inset-4 rounded-[42px] bg-gradient-to-br from-violet-500 via-fuchsia-500 to-orange-400 opacity-35 blur-xl" />
+                  <div className="absolute -inset-2 rounded-[38px] border border-white/10 bg-gradient-to-br from-white/10 via-transparent to-white/[0.02] shadow-[0_0_45px_rgba(168,85,247,.24)]" />
+                  <div className="relative h-36 w-36 overflow-hidden rounded-[36px] border border-white/20 bg-[#0d0817] p-1.5 shadow-[0_22px_55px_rgba(0,0,0,.5)] sm:h-44 sm:w-44 lg:h-48 lg:w-48">
+                    <div className="absolute inset-0 rounded-[36px] bg-[conic-gradient(from_210deg,rgba(139,92,246,.55),rgba(236,72,153,.55),rgba(251,146,60,.48),rgba(34,211,238,.45),rgba(139,92,246,.55))] opacity-60" />
+                    <div className="relative grid h-full w-full place-items-center overflow-hidden rounded-[30px] border border-black/30 bg-gradient-to-br from-[#171024] to-[#090610]">
                       {ready && photo ? (
                         <img src={photo} alt={`Photo de ${displayName}`} className="h-full w-full object-cover" />
                       ) : (
@@ -228,9 +230,15 @@ export default function ProfilePage() {
                       )}
                     </div>
                   </div>
-                  <span className="absolute -bottom-2 -right-2 grid h-11 w-11 place-items-center rounded-2xl border border-white/20 bg-gradient-to-br from-violet-600 to-fuchsia-500 shadow-xl">
+                  <span className="absolute -left-3 top-5 grid h-9 w-9 place-items-center rounded-2xl border border-white/15 bg-black/55 text-fuchsia-200 shadow-xl backdrop-blur-xl">
+                    <Sparkles className="h-4 w-4" />
+                  </span>
+                  <span className="absolute -bottom-2 -right-2 grid h-12 w-12 place-items-center rounded-2xl border border-white/20 bg-gradient-to-br from-violet-600 to-fuchsia-500 shadow-xl">
                     <BadgeCheck className="h-5 w-5" />
                   </span>
+                  <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full border border-white/10 bg-black/55 px-3 py-1 text-[9px] font-black uppercase tracking-[.16em] text-white/45 backdrop-blur-xl">
+                    Cadre profil
+                  </div>
                 </div>
 
                 <div className="min-w-0">
@@ -243,7 +251,7 @@ export default function ProfilePage() {
                     {ready ? displayName : "Chargement…"}
                   </h1>
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-white/45 sm:text-base lg:text-lg">
-                    Ton futur espace personnel pour retrouver tes soirées, ta progression, tes statistiques et tes badges MixParty.
+                    Ta progression, tes badges et l’histoire de tes soirées MixParty.
                   </p>
                 </div>
               </div>
@@ -287,15 +295,17 @@ export default function ProfilePage() {
             </div>
 
             <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {BADGE_PREVIEWS.map(({ title, tone, icon: Icon }, index) => (
-                <div key={title} className="group relative overflow-hidden rounded-[24px] border border-white/10 bg-black/20 p-3 text-center">
-                  <div className={`absolute inset-0 bg-gradient-to-br ${tone} opacity-65`} />
-                  <div className="relative mx-auto grid aspect-square w-full max-w-[112px] place-items-center rounded-[22px] border border-white/10 bg-black/25 shadow-inner">
-                    <Icon className="h-9 w-9 text-white/55" />
-                    <LockKeyhole className="absolute right-2.5 top-2.5 h-4 w-4 text-white/25" />
+              {BADGE_PREVIEWS.map(({ title, tone, icon: Icon, ring }, index) => (
+                <div key={title} className={`group relative overflow-hidden rounded-[26px] border ${ring} bg-black/25 p-3 text-center transition hover:-translate-y-1 hover:bg-black/30`}>
+                  <div className={`absolute inset-0 bg-gradient-to-br ${tone} opacity-80`} />
+                  <div className="absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent" />
+                  <div className={`relative mx-auto grid aspect-square w-full max-w-[118px] place-items-center rounded-[28px] border ${ring} bg-[radial-gradient(circle_at_50%_30%,rgba(255,255,255,.10),rgba(0,0,0,.34)_72%)] shadow-[inset_0_0_30px_rgba(255,255,255,.03),0_16px_35px_rgba(0,0,0,.28)]`}>
+                    <div className="absolute inset-3 rounded-[22px] border border-white/[0.07]" />
+                    <Icon className="h-10 w-10 text-white/65 drop-shadow-[0_0_16px_rgba(255,255,255,.15)]" />
+                    <LockKeyhole className="absolute right-2.5 top-2.5 h-4 w-4 text-white/30" />
                   </div>
-                  <p className="relative mt-3 truncate text-xs font-black text-white/70">{title}</p>
-                  <p className="relative mt-1 text-[9px] font-black uppercase tracking-[.12em] text-white/25">{index === 3 ? "Secret" : "À débloquer"}</p>
+                  <p className="relative mt-3 truncate text-xs font-black text-white/80">{title}</p>
+                  <p className="relative mt-1 text-[9px] font-black uppercase tracking-[.12em] text-white/30">{index === 3 ? "Secret" : "À débloquer"}</p>
                 </div>
               ))}
             </div>
@@ -306,15 +316,22 @@ export default function ProfilePage() {
             </button>
           </section>
 
-          <section className="relative overflow-hidden rounded-[32px] border border-amber-300/15 bg-gradient-to-br from-amber-400/[0.10] via-fuchsia-500/[0.07] to-violet-500/[0.08] p-5 shadow-[0_24px_70px_rgba(0,0,0,.26)] backdrop-blur-2xl sm:p-6">
-            <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-amber-400/15 blur-[65px]" />
+          <section className="relative overflow-hidden rounded-[32px] border border-amber-300/20 bg-[linear-gradient(145deg,rgba(245,158,11,.14),rgba(236,72,153,.09)_46%,rgba(139,92,246,.10))] p-5 shadow-[0_28px_90px_rgba(245,158,11,.08),0_24px_70px_rgba(0,0,0,.30)] backdrop-blur-2xl sm:p-6">
+            <div className="pointer-events-none absolute -right-10 -top-12 h-44 w-44 rounded-full bg-amber-400/20 blur-[70px]" />
+            <div className="pointer-events-none absolute -left-14 bottom-0 h-36 w-36 rounded-full bg-fuchsia-500/15 blur-[70px]" />
+            <div className="absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-amber-300/70 to-transparent" />
             <div className="relative">
               <div className="flex items-center justify-between gap-3">
                 <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-[.18em] text-amber-200">Bientôt</span>
                 <Gem className="h-5 w-5 text-amber-200" />
               </div>
 
-              <h2 className="mt-5 font-[family:var(--font-exo-2)] text-2xl font-black">
+              <div className="mt-5 inline-flex items-center gap-2 rounded-2xl border border-amber-300/15 bg-black/20 px-3 py-2 text-amber-200">
+                <Crown className="h-4 w-4" />
+                <span className="text-[10px] font-black uppercase tracking-[.18em]">Personnalisation avancée</span>
+              </div>
+
+              <h2 className="mt-4 font-[family:var(--font-exo-2)] text-2xl font-black">
                 MixParty <span className="bg-gradient-to-r from-amber-300 via-orange-300 to-fuchsia-300 bg-clip-text text-transparent">Premium</span>
               </h2>
               <p className="mt-2 text-sm leading-6 text-white/45">Plus tard, Premium donnera accès à la personnalisation complète de tes soirées et de ton univers MixParty.</p>
@@ -368,12 +385,12 @@ export default function ProfilePage() {
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[.2em] text-cyan-300">Compte & sécurité</p>
                 <h2 className="mt-1 font-[family:var(--font-exo-2)] text-lg font-black">Ton compte MixParty</h2>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-white/40">Connexion multi-appareils, sécurité, statut Free/Premium et sauvegarde de la progression seront regroupés ici quand nous brancherons les comptes permanents.</p>
+                <p className="mt-1 max-w-3xl text-sm leading-6 text-white/40">Connexion multi-appareils, sécurité, statut Free/Premium et sauvegarde de la progression seront centralisés ici.</p>
               </div>
             </div>
             <span className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[.16em] text-cyan-200">
               <Sparkles className="h-3.5 w-3.5" />
-              Prochaine étape
+              Compte à connecter
             </span>
           </div>
         </section>
