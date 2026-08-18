@@ -3393,6 +3393,36 @@ app.post("/admin/party/:code/song/:index/scenario-pepite", (req, res) => {
   return res.json({ ok: true });
 });
 
+app.post("/admin/account/:accountId/scenario-result", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const targetAccountId = String(req.params.accountId || "").trim();
+  const result = String(req.body?.result || "").trim().toLowerCase();
+
+  if (!targetAccountId || !["win", "podium", "loss"].includes(result)) {
+    return res.status(400).json({
+      error: "accountId requis et result doit être win, podium ou loss.",
+    });
+  }
+
+  const updated = accountsStore.adminSimulateRankingResult(
+    targetAccountId,
+    result,
+  );
+
+  if (!updated) {
+    return res.status(404).json({ error: "Compte introuvable." });
+  }
+
+  writeAdminAudit(account, "SCENARIO_RANKING_RESULT", {
+    targetAccountId,
+    result,
+  });
+
+  return res.json({ ok: true, account: updated });
+});
+
 app.post("/admin/account/:accountId/scenario-bon-public", (req, res) => {
   const account = readAdminAccount(req);
   if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });

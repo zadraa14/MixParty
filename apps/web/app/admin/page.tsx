@@ -287,6 +287,23 @@ export default function AdminPage() {
     );
   }
 
+  async function scenarioResult(result: "win" | "podium" | "loss") {
+    if (!selectedAccount) return;
+
+    const labels = {
+      win: "Victoire",
+      podium: "Podium",
+      loss: "Défaite",
+    };
+
+    await runAction(
+      `scenario-result-${result}`,
+      `/admin/account/${selectedAccount.id}/scenario-result`,
+      { result },
+      `${labels[result]} simulée pour ${selectedAccount.name || selectedAccount.email}.`,
+    );
+  }
+
   async function scenarioBonPublic() {
     if (!selectedParty || !selectedAccount) return;
 
@@ -594,6 +611,35 @@ export default function AdminPage() {
                       >
                         🏆 Classement final
                       </button>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        <button
+                          type="button"
+                          disabled={busy !== "" || !selectedAccount}
+                          onClick={() => scenarioResult("win")}
+                          className="rounded-xl border border-amber-300/15 bg-amber-500/[0.08] px-2 py-2.5 text-[11px] font-black text-amber-100 transition hover:bg-amber-500/[0.14] disabled:opacity-40"
+                        >
+                          👑 +1 Victoire
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={busy !== "" || !selectedAccount}
+                          onClick={() => scenarioResult("podium")}
+                          className="rounded-xl border border-cyan-300/15 bg-cyan-500/[0.08] px-2 py-2.5 text-[11px] font-black text-cyan-100 transition hover:bg-cyan-500/[0.14] disabled:opacity-40"
+                        >
+                          🥉 +1 Podium
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={busy !== "" || !selectedAccount}
+                          onClick={() => scenarioResult("loss")}
+                          className="rounded-xl border border-white/10 bg-white/[0.04] px-2 py-2.5 text-[11px] font-black text-white/55 transition hover:bg-white/[0.08] disabled:opacity-40"
+                        >
+                          ✖ Casser série
+                        </button>
+                      </div>
                     </div>
 
                     <button

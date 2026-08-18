@@ -76,6 +76,9 @@ export type MixPartyAccount = {
     completedSongStreak: number;
     lastCompletedSongPartyCode?: string;
     votedCreatorKeysByParty: Record<string, string[]>;
+    currentWinStreak: number;
+    bestWinStreak: number;
+    lastRankedPartyCode?: string;
   };
   customization: {
     avatarFrame?: string;
@@ -207,6 +210,10 @@ const SIMPLE_BADGES = [
   {
     id: "collectionneur-de-couronnes",
     isUnlocked: (stats: MixPartyAccountStats) => stats.wins >= 5,
+  },
+  {
+    id: "legende-mixparty",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.wins >= 10,
   },
 ] as const;
 
@@ -403,6 +410,10 @@ export function createAccountsStore(filePath: string) {
                         ]),
                     )
                   : {},
+              currentWinStreak: Math.max(0, Number(raw.progress?.currentWinStreak || 0)),
+              bestWinStreak: Math.max(0, Number(raw.progress?.bestWinStreak || 0)),
+              lastRankedPartyCode:
+                String(raw.progress?.lastRankedPartyCode || "").trim().toUpperCase() || undefined,
             },
             customization: {
               ...(raw.customization && typeof raw.customization === "object"
@@ -587,6 +598,8 @@ export function createAccountsStore(filePath: string) {
         songAddedEvents: [],
         completedSongStreak: 0,
         votedCreatorKeysByParty: {},
+        currentWinStreak: 0,
+        bestWinStreak: 0,
       },
       customization: {},
     };
@@ -1118,9 +1131,25 @@ export function createAccountsStore(filePath: string) {
       if (rank <= 3) {
         account.stats.podiums += 1;
       }
+
       if (rank === 1) {
         account.stats.wins += 1;
+        account.progress.currentWinStreak += 1;
+        account.progress.bestWinStreak = Math.max(
+          account.progress.bestWinStreak,
+          account.progress.currentWinStreak,
+        );
+
+        unlockBadge(account, "roi-de-la-soiree", partyCode);
+
+        if (account.progress.currentWinStreak >= 3) {
+          unlockBadge(account, "intouchable", partyCode);
+        }
+      } else {
+        account.progress.currentWinStreak = 0;
       }
+
+      account.progress.lastRankedPartyCode = partyCode;
 
       syncSimpleBadges(account, partyCode);
       account.updatedAt = Date.now();
@@ -1134,6 +1163,72 @@ export function createAccountsStore(filePath: string) {
 
     save();
     return results;
+  }
+
+  function adminSimulateRankingResult(
+    accountId: string,
+    resultValue: unknown,
+  ) {
+    const account = database.accounts.find((item) => item.id === accountId);
+    if (!account) return null;
+
+    const result = String(resultValue || "").trim().toLowerCase();
+    if (!["win", "podium", "loss"].includes(result)) {
+      return publicAccount(account);
+    }
+
+    const now = Date.now();
+    const syntheticPartyCode =
+      `ADMIN-${result.toUpperCase()}-${now.toString(36).toUpperCase()}`.slice(0, 32);
+
+    const rank = result === "win" ? 1 : result === "podium" ? 2 : 4;
+
+    account.history.push({
+      partyCode: syntheticPartyCode,
+      joinedAt: now - PARTY_QUALIFICATION_MS - 60_000,
+      lastSeenAt: now,
+      role: "participant",
+      participationCounted: true,
+      hostCounted: false,
+      participationQualifiedAt: now - 60_000,
+      endedAt: now,
+      durationCreditedMs: PARTY_QUALIFICATION_MS + 60_000,
+      finalRank: rank,
+      partyScore: result === "win" ? 100 : result === "podium" ? 50 : 10,
+      resultCounted: true,
+    });
+
+    account.stats.partiesJoined += 1;
+
+    if (rank <= 3) {
+      account.stats.podiums += 1;
+    }
+
+    if (rank === 1) {
+      account.stats.wins += 1;
+      account.progress.currentWinStreak += 1;
+      account.progress.bestWinStreak = Math.max(
+        account.progress.bestWinStreak,
+        account.progress.currentWinStreak,
+      );
+
+      unlockBadge(account, "roi-de-la-soiree", syntheticPartyCode);
+
+      if (account.progress.currentWinStreak >= 3) {
+        unlockBadge(account, "intouchable", syntheticPartyCode);
+      }
+    } else {
+      account.progress.currentWinStreak = 0;
+    }
+
+    account.progress.lastRankedPartyCode = syntheticPartyCode;
+    syncSimpleBadges(account, syntheticPartyCode);
+
+    account.history = account.history.slice(-500);
+    account.updatedAt = now;
+    save();
+
+    return publicAccount(account);
   }
 
   function adminSimulateBonPublic(
@@ -1405,6 +1500,8 @@ export function createAccountsStore(filePath: string) {
       songAddedEvents: [],
       completedSongStreak: 0,
       votedCreatorKeysByParty: {},
+      currentWinStreak: 0,
+      bestWinStreak: 0,
     };
 
     account.updatedAt = Date.now();
@@ -1590,6 +1687,7 @@ export function createAccountsStore(filePath: string) {
     partyQualifiedAccountIds,
     recordGrosseSoiree,
     recordFinalPartyRanking,
+    adminSimulateRankingResult,
     adminSimulateBonPublic,
     recordPartyEndingBadges,
     finalizePartyParticipation,

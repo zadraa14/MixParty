@@ -250,6 +250,24 @@ const PROFILE_BADGES = [
     image: "/badges/collectionneur-de-couronnes.png",
   },
   {
+    id: "roi-de-la-soiree",
+    name: "Roi de la soirée",
+    condition: "Terminer n°1 du classement final avec le meilleur PartyScore",
+    image: "/badges/roi-de-la-soiree.png",
+  },
+  {
+    id: "intouchable",
+    name: "Intouchable",
+    condition: "Remporter 3 soirées classées consécutivement",
+    image: "/badges/intouchable.png",
+  },
+  {
+    id: "legende-mixparty",
+    name: "Légende MixParty",
+    condition: "Remporter 10 soirées validées",
+    image: "/badges/top-dj.png",
+  },
+  {
     id: "banger",
     name: "Banger",
     condition: "Faire atteindre au moins 10 votes à un de tes morceaux",
