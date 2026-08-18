@@ -609,11 +609,7 @@ export default function ProfilePage() {
                 const unlockInfo = account?.badgeUnlocks?.find((item) => item.badgeId === badge.id);
 
                 return (
-                  <p className="mt-3 text-center text-[10px] font-bold text-white/25">
-              Clique sur un badge pour l’agrandir et voir sa condition.
-            </p>
-
-            <button
+                  <button
                     type="button"
                     key={badge.id}
                     onClick={() => setSelectedBadge(badge)}
@@ -675,6 +671,10 @@ export default function ProfilePage() {
                 <p className="mt-1 text-[9px] font-black uppercase tracking-[.13em] text-cyan-200/35">Condition inconnue</p>
               </article>
             </div>
+
+            <p className="mt-3 text-center text-[10px] font-bold text-white/25">
+              Clique sur un badge pour l’agrandir et voir sa condition.
+            </p>
 
             <button type="button" disabled className="mt-5 inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm font-black text-white/35">
               <Medal className="h-4 w-4" />
