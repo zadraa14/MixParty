@@ -24,6 +24,18 @@ type MixPartyAccount = {
   email: string;
   name: string;
   badges: string[];
+  stats: {
+    partiesJoined: number;
+    partiesHosted: number;
+    wins: number;
+    podiums: number;
+    votesGiven: number;
+    votesReceived: number;
+    songsAdded: number;
+    songsPlayed: number;
+    songsWith5Votes: number;
+    activeMinutes: number;
+  };
   badgeUnlocks?: Array<{
     badgeId: string;
     unlockedAt: number;
@@ -525,6 +537,66 @@ function rarityClass(rarity: Badge["rarity"]) {
   return "border-white/10 bg-white/[0.05] text-white/45";
 }
 
+
+type BadgeProgress = {
+  current: number;
+  target: number;
+  label: string;
+};
+
+function getBadgeProgress(
+  badgeId: string,
+  account: MixPartyAccount | null,
+): BadgeProgress | null {
+  if (!account) return null;
+
+  const stats = account.stats;
+
+  const map: Record<string, BadgeProgress> = {
+    "premiere-soiree": { current: stats.partiesJoined, target: 1, label: "soirée" },
+    "premier-son": { current: stats.songsAdded, target: 1, label: "morceau" },
+    "premier-vote": { current: stats.votesGiven, target: 1, label: "vote" },
+    "premier-vote-recu": { current: stats.votesReceived, target: 1, label: "vote reçu" },
+    "premier-host": { current: stats.partiesHosted, target: 1, label: "soirée organisée" },
+
+    "habitue": { current: stats.partiesJoined, target: 5, label: "soirées" },
+    "fetard": { current: stats.partiesJoined, target: 10, label: "soirées" },
+    "pilier-de-soiree": { current: stats.partiesJoined, target: 25, label: "soirées" },
+    "veteran-mixparty": { current: stats.partiesJoined, target: 50, label: "soirées" },
+    "centurion": { current: stats.partiesJoined, target: 100, label: "soirées" },
+
+    "supporter": { current: stats.votesGiven, target: 50, label: "votes" },
+    "super-votant": { current: stats.votesGiven, target: 250, label: "votes" },
+    "aimant-a-votes": { current: stats.votesReceived, target: 100, label: "votes reçus" },
+    "chouchou-du-public": { current: stats.votesReceived, target: 500, label: "votes reçus" },
+
+    "hitmaker": { current: stats.songsWith5Votes, target: 10, label: "morceaux ≥ 5 votes" },
+    "hitmaker-ii": { current: stats.songsWith5Votes, target: 50, label: "morceaux ≥ 5 votes" },
+    "hitmaker-iii": { current: stats.songsWith5Votes, target: 100, label: "morceaux ≥ 5 votes" },
+
+    "maitre-de-ceremonie": { current: stats.partiesHosted, target: 5, label: "soirées organisées" },
+    "maison-de-la-fete": { current: stats.partiesHosted, target: 25, label: "soirées organisées" },
+    "host-legendaire": { current: stats.partiesHosted, target: 50, label: "soirées organisées" },
+
+    "premier-podium": { current: stats.podiums, target: 1, label: "podium" },
+    "habitue-du-podium": { current: stats.podiums, target: 5, label: "podiums" },
+    "champion": { current: stats.wins, target: 1, label: "victoire" },
+    "double-couronne": { current: stats.wins, target: 2, label: "victoires" },
+    "collectionneur-de-couronnes": { current: stats.wins, target: 5, label: "victoires" },
+    "legende-mixparty": { current: stats.wins, target: 10, label: "victoires" },
+
+    "survivant": { current: stats.activeMinutes, target: 300, label: "minutes en soirée" },
+    "increvable": { current: stats.activeMinutes, target: 480, label: "minutes en soirée" },
+  };
+
+  return map[badgeId] || null;
+}
+
+function progressPercent(progress: BadgeProgress) {
+  if (progress.target <= 0) return 0;
+  return Math.min(100, Math.round((progress.current / progress.target) * 100));
+}
+
 export default function BadgeCollectionPage() {
   const [account, setAccount] = useState<MixPartyAccount | null>(null);
   const [loading, setLoading] = useState(true);
@@ -595,6 +667,13 @@ export default function BadgeCollectionPage() {
   const selectedUnlock = selectedBadge
     ? account?.badgeUnlocks?.find((item) => item.badgeId === selectedBadge.id)
     : undefined;
+
+  const selectedProgress = selectedBadge
+    ? getBadgeProgress(selectedBadge.id, account)
+    : null;
+  const selectedPercent = selectedProgress
+    ? progressPercent(selectedProgress)
+    : 0;
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#090611] text-white">
@@ -730,6 +809,8 @@ export default function BadgeCollectionPage() {
             const unlocked = unlockedIds.has(badge.id);
             const hideSecret = badge.secret && !unlocked;
             const unlockInfo = account?.badgeUnlocks?.find((item) => item.badgeId === badge.id);
+            const progress = getBadgeProgress(badge.id, account);
+            const percent = progress ? progressPercent(progress) : 0;
 
             return (
               <button
@@ -783,6 +864,27 @@ export default function BadgeCollectionPage() {
                   }`}>
                     {unlocked ? "Débloqué" : hideSecret ? "???" : "À débloquer"}
                   </p>
+
+                  {!hideSecret && progress ? (
+                    <div className="mt-3">
+                      <div className="flex items-center justify-between gap-2 text-[9px] font-black text-white/35">
+                        <span className="truncate">{progress.label}</span>
+                        <span className="shrink-0 text-white/55">
+                          {Math.min(progress.current, progress.target)} / {progress.target}
+                        </span>
+                      </div>
+                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-black/35">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            unlocked
+                              ? "bg-emerald-400"
+                              : "bg-gradient-to-r from-violet-500 via-fuchsia-500 to-orange-400"
+                          }`}
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  ) : null}
 
                   {unlockInfo?.unlockedAt ? (
                     <p className="mt-2 text-[9px] font-bold text-white/25">
@@ -856,6 +958,38 @@ export default function BadgeCollectionPage() {
                   {selectedUnlocked ? "Débloqué" : "À débloquer"}
                 </span>
               </div>
+
+              {!selectedBadge.secret && selectedProgress ? (
+                <div className="mx-auto mt-5 max-w-sm rounded-2xl border border-white/[0.07] bg-black/20 p-4 text-left">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[.14em] text-white/30">
+                        Progression
+                      </p>
+                      <p className="mt-1 text-sm font-black text-white/70">
+                        {selectedProgress.label}
+                      </p>
+                    </div>
+                    <p className="font-[family:var(--font-exo-2)] text-xl font-black">
+                      {Math.min(selectedProgress.current, selectedProgress.target)}
+                      <span className="text-white/25"> / {selectedProgress.target}</span>
+                    </p>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-black/35">
+                    <div
+                      className={`h-full rounded-full transition-all duration-500 ${
+                        selectedUnlocked
+                          ? "bg-emerald-400"
+                          : "bg-gradient-to-r from-violet-500 via-fuchsia-500 to-orange-400"
+                      }`}
+                      style={{ width: `${selectedPercent}%` }}
+                    />
+                  </div>
+                  <p className="mt-2 text-right text-[10px] font-black text-white/30">
+                    {selectedPercent} %
+                  </p>
+                </div>
+              ) : null}
 
               {selectedUnlocked && selectedUnlock ? (
                 <div className="mt-5 rounded-2xl border border-emerald-300/10 bg-emerald-500/[0.06] p-4">
