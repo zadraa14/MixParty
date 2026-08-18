@@ -9,6 +9,7 @@ import {
   Crown,
   Gem,
   History,
+  Disc3,
   Images,
   LockKeyhole,
   LogIn,
@@ -1730,7 +1731,7 @@ export default function ProfilePage() {
                             ) : isPodium ? (
                               <Trophy className="h-5 w-5" />
                             ) : (
-                              <Music2 className="h-5 w-5" />
+                              <Disc3 className="h-5 w-5" />
                             )}
                           </span>
 
