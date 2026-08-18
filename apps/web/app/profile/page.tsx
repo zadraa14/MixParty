@@ -56,6 +56,11 @@ type MixPartyAccount = {
     songsPlayed: number;
   };
   badges: string[];
+  badgeUnlocks?: Array<{
+    badgeId: string;
+    unlockedAt: number;
+    partyCode?: string;
+  }>;
   history?: Array<{ partyCode: string; joinedAt: number; lastSeenAt: number; role: "participant" | "host" }>;
   customization: {
     avatarFrame?: string;
@@ -71,6 +76,28 @@ const PROFILE_STAT_CARDS = [
   { key: "podiums", label: "Podiums", icon: Trophy, accent: "text-cyan-300", live: false },
   { key: "votesGiven", label: "Votes", icon: Vote, accent: "text-pink-300", live: true },
   { key: "songsAdded", label: "Morceaux", icon: Music2, accent: "text-orange-300", live: true },
+] as const;
+
+
+const PROFILE_BADGES = [
+  {
+    id: "premiere-soiree",
+    name: "Première Soirée",
+    condition: "Participer à sa première soirée",
+    image: "/badges/premiere-soiree.png",
+  },
+  {
+    id: "premier-son",
+    name: "Premier Son",
+    condition: "Ajouter son premier morceau",
+    image: "/badges/premier-son.png",
+  },
+  {
+    id: "premier-vote",
+    name: "Premier Vote",
+    condition: "Voter pour la première fois",
+    image: "/badges/premier-vote.png",
+  },
 ] as const;
 
 
@@ -517,7 +544,7 @@ export default function ProfilePage() {
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[.22em] text-fuchsia-300">Collection</p>
                 <h2 className="mt-1 font-[family:var(--font-exo-2)] text-2xl font-black">Mes badges</h2>
-                <p className="mt-2 max-w-xl text-sm leading-6 text-white/40">Les premières statistiques sont maintenant enregistrées. Les badges seront branchés sur ce moteur à l’étape suivante.</p>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-white/40">Tes premiers badges MixParty se débloquent maintenant automatiquement avec tes actions en soirée.</p>
               </div>
               <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/10 text-fuchsia-200">
                 <Medal className="h-5 w-5" />
@@ -525,19 +552,70 @@ export default function ProfilePage() {
             </div>
 
             <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-              {BADGE_PREVIEWS.map(({ title, tone, icon: Icon, ring }, index) => (
-                <div key={title} className={`group relative overflow-hidden rounded-[26px] border ${ring} bg-black/25 p-3 text-center transition hover:-translate-y-1 hover:bg-black/30`}>
-                  <div className={`absolute inset-0 bg-gradient-to-br ${tone} opacity-80`} />
-                  <div className="absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent" />
-                  <div className={`relative mx-auto grid aspect-square w-full max-w-[118px] place-items-center rounded-[28px] border ${ring} bg-[radial-gradient(circle_at_50%_30%,rgba(255,255,255,.10),rgba(0,0,0,.34)_72%)] shadow-[inset_0_0_30px_rgba(255,255,255,.03),0_16px_35px_rgba(0,0,0,.28)]`}>
-                    <div className="absolute inset-3 rounded-[22px] border border-white/[0.07]" />
-                    <Icon className="h-10 w-10 text-white/65 drop-shadow-[0_0_16px_rgba(255,255,255,.15)]" />
-                    <LockKeyhole className="absolute right-2.5 top-2.5 h-4 w-4 text-white/30" />
+              {PROFILE_BADGES.map((badge) => {
+                const unlocked = Boolean(account?.badges?.includes(badge.id));
+                const unlockInfo = account?.badgeUnlocks?.find((item) => item.badgeId === badge.id);
+
+                return (
+                  <article
+                    key={badge.id}
+                    className={`group relative overflow-hidden rounded-[24px] border p-3 text-center transition ${
+                      unlocked
+                        ? "border-emerald-300/20 bg-gradient-to-b from-white/[0.07] to-emerald-500/[0.04] shadow-[0_16px_45px_rgba(0,0,0,.24)]"
+                        : "border-white/[0.08] bg-black/15"
+                    }`}
+                  >
+                    <div className="relative mx-auto aspect-square w-full max-w-[150px] overflow-hidden rounded-[20px]">
+                      <img
+                        src={badge.image}
+                        alt={badge.name}
+                        className={`h-full w-full object-contain transition duration-500 ${
+                          unlocked
+                            ? "drop-shadow-[0_12px_24px_rgba(0,0,0,.38)] group-hover:scale-[1.04]"
+                            : "grayscale opacity-20 blur-[1.5px]"
+                        }`}
+                      />
+                      {!unlocked ? (
+                        <div className="absolute inset-0 grid place-items-center bg-black/25">
+                          <div className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-black/55 backdrop-blur-xl">
+                            <LockKeyhole className="h-4 w-4 text-white/45" />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full border border-emerald-300/25 bg-emerald-500/20 backdrop-blur-xl">
+                          <BadgeCheck className="h-4 w-4 text-emerald-200" />
+                        </div>
+                      )}
+                    </div>
+
+                    <p className={`mt-3 text-xs font-black ${unlocked ? "text-white" : "text-white/45"}`}>
+                      {badge.name}
+                    </p>
+                    <p className={`mt-1 text-[9px] font-black uppercase tracking-[.13em] ${
+                      unlocked ? "text-emerald-300" : "text-white/20"
+                    }`}>
+                      {unlocked ? "Débloqué" : "À débloquer"}
+                    </p>
+
+                    {unlocked && unlockInfo?.unlockedAt ? (
+                      <p className="mt-2 text-[9px] leading-4 text-white/35">
+                        Obtenu le {new Date(unlockInfo.unlockedAt).toLocaleDateString("fr-FR")}
+                      </p>
+                    ) : null}
+                  </article>
+                );
+              })}
+
+              <article className="relative overflow-hidden rounded-[24px] border border-cyan-300/10 bg-gradient-to-br from-cyan-500/[0.06] to-violet-500/[0.04] p-3 text-center">
+                <div className="mx-auto grid aspect-square w-full max-w-[150px] place-items-center rounded-[20px] border border-white/[0.08] bg-black/20">
+                  <div>
+                    <LockKeyhole className="mx-auto h-7 w-7 text-white/35" />
+                    <p className="mt-2 text-[11px] font-black text-white/35">???</p>
                   </div>
-                  <p className="relative mt-3 truncate text-xs font-black text-white/80">{title}</p>
-                  <p className="relative mt-1 text-[9px] font-black uppercase tracking-[.12em] text-white/30">{index === 3 ? "Secret" : "À débloquer"}</p>
                 </div>
-              ))}
+                <p className="mt-3 text-xs font-black text-white/55">Badge secret</p>
+                <p className="mt-1 text-[9px] font-black uppercase tracking-[.13em] text-cyan-200/35">Condition inconnue</p>
+              </article>
             </div>
 
             <button type="button" disabled className="mt-5 inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm font-black text-white/35">

@@ -28,6 +28,12 @@ export type MixPartyAccountHistoryEntry = {
   role: "participant" | "host";
 };
 
+export type MixPartyBadgeUnlock = {
+  badgeId: string;
+  unlockedAt: number;
+  partyCode?: string;
+};
+
 export type MixPartyAccount = {
   id: string;
   email: string;
@@ -41,6 +47,7 @@ export type MixPartyAccount = {
   premiumTrialEndsAt?: number;
   stats: MixPartyAccountStats;
   badges: string[];
+  badgeUnlocks: MixPartyBadgeUnlock[];
   history: MixPartyAccountHistoryEntry[];
   customization: {
     avatarFrame?: string;
@@ -66,6 +73,21 @@ type AccountsDatabase = {
 export type PublicMixPartyAccount = Omit<MixPartyAccount, "passwordHash">;
 
 const SESSION_DURATION_MS = 90 * 24 * 60 * 60 * 1000;
+
+const SIMPLE_BADGES = [
+  {
+    id: "premiere-soiree",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.partiesJoined >= 1,
+  },
+  {
+    id: "premier-son",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.songsAdded >= 1,
+  },
+  {
+    id: "premier-vote",
+    isUnlocked: (stats: MixPartyAccountStats) => stats.votesGiven >= 1,
+  },
+] as const;
 
 function createDefaultStats(): MixPartyAccountStats {
   return {
@@ -156,6 +178,17 @@ export function createAccountsStore(filePath: string) {
               ...(raw.stats && typeof raw.stats === "object" ? raw.stats : {}),
             },
             badges: Array.isArray(raw.badges) ? raw.badges.map(String) : [],
+            badgeUnlocks: Array.isArray(raw.badgeUnlocks)
+              ? raw.badgeUnlocks.flatMap((unlock: any) => {
+                  const badgeId = String(unlock?.badgeId || "").trim();
+                  if (!badgeId) return [];
+                  return [{
+                    badgeId,
+                    unlockedAt: Number(unlock.unlockedAt || Date.now()),
+                    partyCode: String(unlock.partyCode || "").trim().toUpperCase() || undefined,
+                  }];
+                })
+              : [],
             history: Array.isArray(raw.history)
               ? raw.history.flatMap((entry: any) => {
                   const partyCode = String(entry?.partyCode || "").trim().toUpperCase();
@@ -207,6 +240,26 @@ export function createAccountsStore(filePath: string) {
     };
   }
 
+  function syncSimpleBadges(account: MixPartyAccount, partyCode?: string) {
+    const known = new Set(account.badges);
+    let changed = false;
+
+    for (const badge of SIMPLE_BADGES) {
+      if (known.has(badge.id) || !badge.isUnlocked(account.stats)) continue;
+
+      account.badges.push(badge.id);
+      account.badgeUnlocks.push({
+        badgeId: badge.id,
+        unlockedAt: Date.now(),
+        partyCode: String(partyCode || "").trim().toUpperCase() || undefined,
+      });
+      known.add(badge.id);
+      changed = true;
+    }
+
+    if (changed) account.updatedAt = Date.now();
+  }
+
   function save() {
     database.updatedAt = Date.now();
     database.sessions = database.sessions.filter(
@@ -229,6 +282,9 @@ export function createAccountsStore(filePath: string) {
       database = sanitizeDatabase(
         JSON.parse(fs.readFileSync(filePath, "utf8")),
       );
+      for (const account of database.accounts) {
+        syncSimpleBadges(account);
+      }
       save();
     } catch (error) {
       console.error("MixParty Accounts: impossible de lire accounts.json", error);
@@ -306,6 +362,7 @@ export function createAccountsStore(filePath: string) {
       plan: "free",
       stats: createDefaultStats(),
       badges: [],
+      badgeUnlocks: [],
       history: [],
       customization: {},
     };
@@ -401,6 +458,7 @@ export function createAccountsStore(filePath: string) {
       account.stats.partiesHosted += 1;
     }
     account.updatedAt = now;
+    syncSimpleBadges(account, partyCode);
     save();
     return publicAccount(account);
   }
@@ -410,6 +468,7 @@ export function createAccountsStore(filePath: string) {
     if (!account) return null;
     account.stats.songsAdded += 1;
     account.updatedAt = Date.now();
+    syncSimpleBadges(account, account.history[account.history.length - 1]?.partyCode);
     save();
     return publicAccount(account);
   }
