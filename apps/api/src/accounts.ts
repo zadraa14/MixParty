@@ -59,6 +59,7 @@ export type MixPartyAccount = {
   premiumTrialEndsAt?: number;
   stats: MixPartyAccountStats;
   badges: string[];
+  featuredBadges: string[];
   badgeUnlocks: MixPartyBadgeUnlock[];
   history: MixPartyAccountHistoryEntry[];
   progress: {
@@ -313,6 +314,9 @@ export function createAccountsStore(filePath: string) {
               ...(raw.stats && typeof raw.stats === "object" ? raw.stats : {}),
             },
             badges: Array.isArray(raw.badges) ? raw.badges.map(String) : [],
+            featuredBadges: Array.isArray(raw.featuredBadges)
+              ? [...new Set(raw.featuredBadges.map(String).filter(Boolean))].slice(0, 5)
+              : [],
             badgeUnlocks: Array.isArray(raw.badgeUnlocks)
               ? raw.badgeUnlocks.flatMap((unlock: any) => {
                   const badgeId = String(unlock?.badgeId || "").trim();
@@ -598,6 +602,7 @@ export function createAccountsStore(filePath: string) {
       plan: "free",
       stats: createDefaultStats(),
       badges: [],
+      featuredBadges: [],
       badgeUnlocks: [],
       history: [],
       progress: {
@@ -650,7 +655,7 @@ export function createAccountsStore(filePath: string) {
 
   function updateProfile(
     token: string,
-    input: { name?: unknown; avatar?: unknown },
+    input: { name?: unknown; avatar?: unknown; featuredBadges?: unknown },
   ) {
     const account = accountFromToken(token);
     if (!account) throw new Error("UNAUTHORIZED");
@@ -665,6 +670,34 @@ export function createAccountsStore(filePath: string) {
       const avatar = String(input.avatar || "");
       if (avatar.length > 1_500_000) throw new Error("AVATAR_TOO_LARGE");
       account.avatar = avatar || undefined;
+    }
+
+    if (input.featuredBadges !== undefined) {
+      if (!Array.isArray(input.featuredBadges)) {
+        throw new Error("FEATURED_BADGES_INVALID");
+      }
+
+      const featuredBadges = [
+        ...new Set(
+          input.featuredBadges
+            .map((value) => String(value || "").trim())
+            .filter(Boolean),
+        ),
+      ];
+
+      if (featuredBadges.length > 5) {
+        throw new Error("FEATURED_BADGES_LIMIT");
+      }
+
+      const allUnlocked = featuredBadges.every((badgeId) =>
+        account.badges.includes(badgeId),
+      );
+
+      if (!allUnlocked) {
+        throw new Error("FEATURED_BADGES_LOCKED");
+      }
+
+      account.featuredBadges = featuredBadges;
     }
 
     account.updatedAt = Date.now();

@@ -63,6 +63,7 @@ type MixPartyAccount = {
     activeMinutes: number;
   };
   badges: string[];
+  featuredBadges?: string[];
   badgeUnlocks?: Array<{
     badgeId: string;
     unlockedAt: number;
@@ -467,6 +468,11 @@ export default function ProfilePage() {
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState("");
   const [selectedBadge, setSelectedBadge] = useState<ProfileBadge | null>(null);
+  const [showAllUnlockedBadges, setShowAllUnlockedBadges] = useState(false);
+  const [showBadgePicker, setShowBadgePicker] = useState(false);
+  const [featuredDraft, setFeaturedDraft] = useState<string[]>([]);
+  const [savingFeaturedBadges, setSavingFeaturedBadges] = useState(false);
+  const [featuredBadgesMessage, setFeaturedBadgesMessage] = useState("");
 
 
   useEffect(() => {
@@ -745,6 +751,114 @@ export default function ProfilePage() {
     { label: "Temps en soirée", value: account ? formatActiveTime(account.stats.activeMinutes ?? 0) : "—", icon: Clock3 },
   ];
 
+  const unlockedProfileBadges = PROFILE_BADGES.filter((badge) =>
+    account?.badges?.includes(badge.id),
+  );
+
+  const featuredBadgeIds =
+    account?.featuredBadges?.filter((badgeId) =>
+      account.badges.includes(badgeId),
+    ) || [];
+
+  const effectiveFeaturedBadgeIds =
+    featuredBadgeIds.length > 0
+      ? featuredBadgeIds.slice(0, 5)
+      : unlockedProfileBadges
+          .slice()
+          .sort((a, b) => {
+            const aDate =
+              account?.badgeUnlocks?.find((item) => item.badgeId === a.id)
+                ?.unlockedAt || 0;
+            const bDate =
+              account?.badgeUnlocks?.find((item) => item.badgeId === b.id)
+                ?.unlockedAt || 0;
+            return bDate - aDate;
+          })
+          .slice(0, 5)
+          .map((badge) => badge.id);
+
+  const visibleProfileBadges = (
+    showAllUnlockedBadges
+      ? unlockedProfileBadges
+      : PROFILE_BADGES.filter((badge) =>
+          effectiveFeaturedBadgeIds.includes(badge.id),
+        )
+  ).sort((a, b) => {
+    if (showAllUnlockedBadges) {
+      const aDate =
+        account?.badgeUnlocks?.find((item) => item.badgeId === a.id)
+          ?.unlockedAt || 0;
+      const bDate =
+        account?.badgeUnlocks?.find((item) => item.badgeId === b.id)
+          ?.unlockedAt || 0;
+      return bDate - aDate;
+    }
+
+    return (
+      effectiveFeaturedBadgeIds.indexOf(a.id) -
+      effectiveFeaturedBadgeIds.indexOf(b.id)
+    );
+  });
+
+  function openBadgePicker() {
+    setFeaturedDraft(effectiveFeaturedBadgeIds);
+    setFeaturedBadgesMessage("");
+    setShowBadgePicker(true);
+  }
+
+  function toggleFeaturedBadge(badgeId: string) {
+    setFeaturedBadgesMessage("");
+    setFeaturedDraft((current) => {
+      if (current.includes(badgeId)) {
+        return current.filter((id) => id !== badgeId);
+      }
+
+      if (current.length >= 5) {
+        setFeaturedBadgesMessage("Tu peux afficher 5 badges maximum.");
+        return current;
+      }
+
+      return [...current, badgeId];
+    });
+  }
+
+  async function saveFeaturedBadges() {
+    if (!account) return;
+
+    setSavingFeaturedBadges(true);
+    setFeaturedBadgesMessage("");
+
+    try {
+      const token = localStorage.getItem(ACCOUNT_TOKEN_KEY) || "";
+      const response = await fetch(`${getApiBaseUrl()}/account/me`, {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          featuredBadges: featuredDraft,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || "Impossible d’enregistrer.");
+      }
+
+      setAccount(data.account || account);
+      setShowBadgePicker(false);
+    } catch (error) {
+      setFeaturedBadgesMessage(
+        error instanceof Error ? error.message : "Impossible d’enregistrer.",
+      );
+    } finally {
+      setSavingFeaturedBadges(false);
+    }
+  }
+
+
   return (
     <main className="relative isolate min-h-screen overflow-hidden bg-[#070711] font-[family:var(--font-geist-sans)] text-white">
       <MixPartyBackground />
@@ -887,88 +1001,100 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-              {PROFILE_BADGES.map((badge) => {
-                const unlocked = Boolean(account?.badges?.includes(badge.id));
-                const isSecret = "secret" in badge && Boolean(badge.secret);
-                const hideSecret = isSecret && !unlocked;
-                const unlockInfo = account?.badgeUnlocks?.find((item) => item.badgeId === badge.id);
+            <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs font-bold text-white/35">
+                {showAllUnlockedBadges
+                  ? `${unlockedProfileBadges.length} badge${unlockedProfileBadges.length > 1 ? "s" : ""} débloqué${unlockedProfileBadges.length > 1 ? "s" : ""}`
+                  : "Les 5 badges que tu choisis d’afficher sur ton profil."}
+              </p>
 
-                return (
-                  <button
-                    type="button"
-                    key={badge.id}
-                    onClick={() => setSelectedBadge(badge)}
-                    className={`group relative overflow-hidden rounded-[24px] border p-3 text-center transition hover:-translate-y-0.5 hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-fuchsia-400/40 ${
-                      unlocked
-                        ? "border-emerald-300/20 bg-gradient-to-b from-white/[0.07] to-emerald-500/[0.04] shadow-[0_16px_45px_rgba(0,0,0,.24)]"
-                        : "border-white/[0.08] bg-black/15"
-                    }`}
-                  >
-                    <div className="relative mx-auto aspect-square w-full max-w-[150px] overflow-hidden rounded-[20px]">
-                      <img
-                        src={hideSecret ? "/branding/icon.png" : badge.image}
-                        alt={hideSecret ? "Badge secret" : badge.name}
-                        className={`h-full w-full object-contain transition duration-500 ${
-                          unlocked
-                            ? "drop-shadow-[0_12px_24px_rgba(0,0,0,.38)] group-hover:scale-[1.04]"
-                            : "grayscale opacity-20 blur-[1.5px]"
-                        }`}
-                      />
-                      {!unlocked ? (
-                        <div className="absolute inset-0 grid place-items-center bg-black/25">
-                          <div className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-black/55 backdrop-blur-xl">
-                            <LockKeyhole className="h-4 w-4 text-white/45" />
-                          </div>
-                        </div>
-                      ) : (
+              {!showAllUnlockedBadges ? (
+                <button
+                  type="button"
+                  onClick={openBadgePicker}
+                  disabled={!account || unlockedProfileBadges.length === 0}
+                  className="rounded-xl border border-fuchsia-300/15 bg-fuchsia-500/[0.08] px-3 py-2 text-[10px] font-black uppercase tracking-[.12em] text-fuchsia-100 transition hover:bg-fuchsia-500/[0.14] disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  Choisir mes badges
+                </button>
+              ) : null}
+            </div>
+
+            {visibleProfileBadges.length > 0 ? (
+              <div
+                className={`mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 ${
+                  showAllUnlockedBadges ? "xl:grid-cols-4" : "xl:grid-cols-5"
+                }`}
+              >
+                {visibleProfileBadges.map((badge) => {
+                  const unlockInfo = account?.badgeUnlocks?.find(
+                    (item) => item.badgeId === badge.id,
+                  );
+
+                  return (
+                    <button
+                      type="button"
+                      key={badge.id}
+                      onClick={() => setSelectedBadge(badge)}
+                      className="group relative overflow-hidden rounded-[24px] border border-emerald-300/20 bg-gradient-to-b from-white/[0.07] to-emerald-500/[0.04] p-3 text-center shadow-[0_16px_45px_rgba(0,0,0,.24)] transition hover:-translate-y-0.5 hover:border-white/20 focus:outline-none focus:ring-2 focus:ring-fuchsia-400/40"
+                    >
+                      <div className="relative mx-auto aspect-square w-full max-w-[150px] overflow-hidden rounded-[20px]">
+                        <img
+                          src={badge.image}
+                          alt={badge.name}
+                          className="h-full w-full object-contain drop-shadow-[0_12px_24px_rgba(0,0,0,.38)] transition duration-500 group-hover:scale-[1.04]"
+                        />
                         <div className="absolute right-2 top-2 grid h-8 w-8 place-items-center rounded-full border border-emerald-300/25 bg-emerald-500/20 backdrop-blur-xl">
                           <BadgeCheck className="h-4 w-4 text-emerald-200" />
                         </div>
-                      )}
-                    </div>
+                      </div>
 
-                    <p className={`mt-3 text-xs font-black ${unlocked ? "text-white" : "text-white/45"}`}>
-                      {hideSecret ? "Badge secret" : badge.name}
-                    </p>
-                    <p className={`mt-1 text-[9px] font-black uppercase tracking-[.13em] ${
-                      unlocked ? "text-emerald-300" : "text-white/20"
-                    }`}>
-                      {unlocked ? "Débloqué" : "À débloquer"}
-                    </p>
-
-                    {unlocked && unlockInfo?.unlockedAt ? (
-                      <p className="mt-2 text-[9px] leading-4 text-white/35">
-                        Obtenu le {new Date(unlockInfo.unlockedAt).toLocaleDateString("fr-FR")}
+                      <p className="mt-3 text-xs font-black text-white">
+                        {badge.name}
                       </p>
-                    ) : null}
-                  </button>
-                );
-              })}
 
-              <article className="relative overflow-hidden rounded-[24px] border border-cyan-300/10 bg-gradient-to-br from-cyan-500/[0.06] to-violet-500/[0.04] p-3 text-center">
-                <div className="mx-auto grid aspect-square w-full max-w-[150px] place-items-center rounded-[20px] border border-white/[0.08] bg-black/20">
-                  <div>
-                    <LockKeyhole className="mx-auto h-7 w-7 text-white/35" />
-                    <p className="mt-2 text-[11px] font-black text-white/35">???</p>
-                  </div>
-                </div>
-                <p className="mt-3 text-xs font-black text-white/55">Badge secret</p>
-                <p className="mt-1 text-[9px] font-black uppercase tracking-[.13em] text-cyan-200/35">Condition inconnue</p>
-              </article>
+                      {unlockInfo?.unlockedAt ? (
+                        <p className="mt-2 text-[9px] leading-4 text-white/35">
+                          Obtenu le{" "}
+                          {new Date(unlockInfo.unlockedAt).toLocaleDateString(
+                            "fr-FR",
+                          )}
+                        </p>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-[24px] border border-white/[0.07] bg-black/15 p-6 text-center">
+                <Medal className="mx-auto h-7 w-7 text-white/20" />
+                <p className="mt-3 text-sm font-black text-white/45">
+                  Aucun badge débloqué pour le moment.
+                </p>
+              </div>
+            )}
+
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setShowAllUnlockedBadges((value) => !value)}
+                disabled={unlockedProfileBadges.length === 0}
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-300/15 bg-emerald-500/[0.07] px-4 text-sm font-black text-emerald-100 transition hover:bg-emerald-500/[0.12] disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                <Medal className="h-4 w-4" />
+                {showAllUnlockedBadges
+                  ? "Revenir à mes 5 badges"
+                  : "Tout voir — badges débloqués"}
+              </button>
+
+              <Link
+                href="/badges"
+                className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/[0.07] px-4 text-sm font-black text-fuchsia-100 transition hover:bg-fuchsia-500/[0.12]"
+              >
+                <LockKeyhole className="h-4 w-4" />
+                Explorer tous les badges
+              </Link>
             </div>
-
-            <p className="mt-3 text-center text-[10px] font-bold text-white/25">
-              Clique sur un badge pour l’agrandir et voir sa condition.
-            </p>
-
-            <Link
-              href="/badges"
-              className="mt-5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/[0.07] px-4 text-sm font-black text-fuchsia-100 transition hover:bg-fuchsia-500/[0.12]"
-            >
-              <Medal className="h-4 w-4" />
-              Voir toute la collection
-            </Link>
           </section>
 
           <section className="relative overflow-hidden rounded-[32px] border border-amber-300/20 bg-[linear-gradient(145deg,rgba(245,158,11,.14),rgba(236,72,153,.09)_46%,rgba(139,92,246,.10))] p-5 shadow-[0_28px_90px_rgba(245,158,11,.08),0_24px_70px_rgba(0,0,0,.30)] backdrop-blur-2xl sm:p-6">
@@ -1099,6 +1225,111 @@ export default function ProfilePage() {
         </footer>
       </div>
 
+
+      {showBadgePicker ? (
+        <div
+          className="fixed inset-0 z-[60] grid place-items-center bg-black/80 p-4 backdrop-blur-xl"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowBadgePicker(false);
+            }
+          }}
+        >
+          <section className="w-full max-w-[760px] overflow-hidden rounded-[32px] border border-white/10 bg-[#15101f] p-5 shadow-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[.16em] text-fuchsia-300">
+                  Profil public
+                </p>
+                <h3 className="mt-1 font-[family:var(--font-exo-2)] text-2xl font-black">
+                  Choisis tes 5 badges
+                </h3>
+                <p className="mt-2 text-sm text-white/40">
+                  Sélectionne jusqu’à 5 badges déjà débloqués. Ils seront affichés
+                  dans la section « Mes badges » de ton profil.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowBadgePicker(false)}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-black/25 text-white/45 transition hover:text-white"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="mt-4 flex items-center justify-between rounded-2xl border border-white/[0.07] bg-black/20 px-4 py-3">
+              <p className="text-xs font-black text-white/45">
+                Sélection
+              </p>
+              <p className="font-[family:var(--font-exo-2)] text-lg font-black text-fuchsia-200">
+                {featuredDraft.length} / 5
+              </p>
+            </div>
+
+            <div className="mt-4 grid max-h-[52vh] grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3 md:grid-cols-4">
+              {unlockedProfileBadges.map((badge) => {
+                const selected = featuredDraft.includes(badge.id);
+
+                return (
+                  <button
+                    key={badge.id}
+                    type="button"
+                    onClick={() => toggleFeaturedBadge(badge.id)}
+                    className={`relative overflow-hidden rounded-[22px] border p-3 text-center transition ${
+                      selected
+                        ? "border-fuchsia-300/35 bg-fuchsia-500/[0.10] ring-2 ring-fuchsia-400/20"
+                        : "border-white/[0.07] bg-black/20 hover:bg-white/[0.05]"
+                    }`}
+                  >
+                    <div className="relative mx-auto aspect-square w-full max-w-[120px]">
+                      <img
+                        src={badge.image}
+                        alt={badge.name}
+                        className="h-full w-full object-contain"
+                      />
+                      {selected ? (
+                        <div className="absolute right-0 top-0 grid h-8 w-8 place-items-center rounded-full border border-fuchsia-300/25 bg-fuchsia-500/25">
+                          <BadgeCheck className="h-4 w-4 text-fuchsia-100" />
+                        </div>
+                      ) : null}
+                    </div>
+                    <p className="mt-2 text-[11px] font-black text-white/75">
+                      {badge.name}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+
+            {featuredBadgesMessage ? (
+              <p className="mt-3 text-sm font-bold text-amber-200">
+                {featuredBadgesMessage}
+              </p>
+            ) : null}
+
+            <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={() => setShowBadgePicker(false)}
+                className="min-h-11 rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm font-black text-white/55 transition hover:bg-white/[0.08]"
+              >
+                Annuler
+              </button>
+
+              <button
+                type="button"
+                onClick={saveFeaturedBadges}
+                disabled={savingFeaturedBadges}
+                className="min-h-11 rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/[0.12] px-5 text-sm font-black text-fuchsia-100 transition hover:bg-fuchsia-500/[0.18] disabled:opacity-50"
+              >
+                {savingFeaturedBadges ? "Enregistrement…" : "Enregistrer mes badges"}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {selectedBadge ? (() => {
         const unlocked = Boolean(account?.badges?.includes(selectedBadge.id));
