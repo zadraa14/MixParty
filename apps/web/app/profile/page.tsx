@@ -769,6 +769,92 @@ export default function ProfilePage() {
     { label: "Temps en soirée", value: account ? formatActiveTime(account.stats.activeMinutes ?? 0) : "—", icon: Clock3 },
   ];
 
+  const qualifiedParties = account?.stats.partiesJoined || 0;
+  const wins = account?.stats.wins || 0;
+  const podiums = account?.stats.podiums || 0;
+  const songsAdded = account?.stats.songsAdded || 0;
+  const songsWith5Votes = account?.stats.songsWith5Votes || 0;
+  const votesReceived = account?.stats.votesReceived || 0;
+  const activeMinutes = account?.stats.activeMinutes || 0;
+
+  const winRate =
+    qualifiedParties > 0 ? Math.round((wins / qualifiedParties) * 100) : 0;
+  const podiumRate =
+    qualifiedParties > 0 ? Math.round((podiums / qualifiedParties) * 100) : 0;
+  const hitRate =
+    songsAdded > 0 ? Math.round((songsWith5Votes / songsAdded) * 100) : 0;
+  const averageVotesPerSong =
+    songsAdded > 0 ? votesReceived / songsAdded : 0;
+  const averagePartyMinutes =
+    qualifiedParties > 0 ? Math.round(activeMinutes / qualifiedParties) : 0;
+
+  const rankedHistory = (account?.history || []).filter(
+    (entry) => typeof entry.finalRank === "number" && entry.finalRank > 0,
+  );
+  const scoredHistory = (account?.history || []).filter(
+    (entry) => typeof entry.partyScore === "number",
+  );
+
+  const bestRank =
+    rankedHistory.length > 0
+      ? Math.min(...rankedHistory.map((entry) => Number(entry.finalRank)))
+      : null;
+  const bestPartyScore =
+    scoredHistory.length > 0
+      ? Math.max(...scoredHistory.map((entry) => Number(entry.partyScore || 0)))
+      : null;
+
+  const performanceStats = [
+    {
+      label: "Taux de victoire",
+      value: `${winRate} %`,
+      percent: Math.min(100, winRate),
+      detail: `${wins} victoire${wins > 1 ? "s" : ""} / ${qualifiedParties} soirée${qualifiedParties > 1 ? "s" : ""}`,
+      icon: Crown,
+    },
+    {
+      label: "Taux de podium",
+      value: `${podiumRate} %`,
+      percent: Math.min(100, podiumRate),
+      detail: `${podiums} podium${podiums > 1 ? "s" : ""} / ${qualifiedParties} soirée${qualifiedParties > 1 ? "s" : ""}`,
+      icon: Trophy,
+    },
+    {
+      label: "Taux de Hit",
+      value: `${hitRate} %`,
+      percent: Math.min(100, hitRate),
+      detail: `${songsWith5Votes} morceau${songsWith5Votes > 1 ? "x" : ""} à 5+ votes`,
+      icon: TrendingUp,
+    },
+  ];
+
+  const personalRecords = [
+    {
+      label: "Meilleur classement",
+      value: bestRank ? `#${bestRank}` : "—",
+      detail: bestRank === 1 ? "Victoire" : bestRank ? "Classement final" : "Aucun classement final",
+      icon: Trophy,
+    },
+    {
+      label: "Meilleur PartyScore",
+      value: bestPartyScore !== null ? String(bestPartyScore) : "—",
+      detail: "Record sur une soirée terminée",
+      icon: Zap,
+    },
+    {
+      label: "Votes / morceau",
+      value: averageVotesPerSong > 0 ? averageVotesPerSong.toFixed(1).replace(".", ",") : "0",
+      detail: "Moyenne de votes reçus",
+      icon: Heart,
+    },
+    {
+      label: "Durée moyenne",
+      value: averagePartyMinutes > 0 ? formatActiveTime(averagePartyMinutes) : "—",
+      detail: "Par soirée validée",
+      icon: Clock3,
+    },
+  ];
+
   const unlockedProfileBadges = PROFILE_BADGES.filter((badge) =>
     account?.badges?.includes(badge.id),
   );
@@ -1010,25 +1096,167 @@ export default function ProfilePage() {
           ))}
         </section>
 
-        <section ref={statsSectionRef} className="mt-4 scroll-mt-6 rounded-[26px] border border-white/[0.08] bg-white/[0.035] p-4 backdrop-blur-xl sm:p-5">
-          <div className="flex items-center justify-between gap-3">
+        <section
+          ref={statsSectionRef}
+          className="mt-4 scroll-mt-6 rounded-[30px] border border-white/[0.08] bg-white/[0.035] p-4 shadow-[0_22px_65px_rgba(0,0,0,.18)] backdrop-blur-xl sm:p-5"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[.2em] text-fuchsia-300">Stats V2</p>
-              <h2 className="mt-1 font-[family:var(--font-exo-2)] text-lg font-black">Progression détaillée</h2>
+              <p className="text-[10px] font-black uppercase tracking-[.2em] text-fuchsia-300">
+                Stats V3
+              </p>
+              <h2 className="mt-1 font-[family:var(--font-exo-2)] text-xl font-black">
+                Progression & performances
+              </h2>
+              <p className="mt-2 text-xs leading-5 text-white/35">
+                Tes statistiques MixParty calculées à partir de tes soirées validées.
+              </p>
             </div>
+
             <span className="rounded-full border border-emerald-300/15 bg-emerald-500/[0.07] px-3 py-1 text-[9px] font-black uppercase tracking-[.14em] text-emerald-200/80">
               En direct
             </span>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             {detailedStats.map(({ label, value, icon: Icon }) => (
-              <article key={label} className="rounded-[20px] border border-white/[0.07] bg-black/15 p-3.5">
+              <article
+                key={label}
+                className="rounded-[20px] border border-white/[0.07] bg-black/15 p-3.5"
+              >
                 <Icon className="h-4 w-4 text-white/40" />
-                <p className="mt-3 font-[family:var(--font-exo-2)] text-xl font-black">{value}</p>
-                <p className="mt-1 text-[10px] font-bold leading-4 text-white/35">{label}</p>
+                <p className="mt-3 font-[family:var(--font-exo-2)] text-xl font-black">
+                  {value}
+                </p>
+                <p className="mt-1 text-[10px] font-bold leading-4 text-white/35">
+                  {label}
+                </p>
               </article>
             ))}
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-[1.15fr_.85fr]">
+            <div className="rounded-[24px] border border-white/[0.07] bg-black/15 p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[.16em] text-cyan-300">
+                    Performance
+                  </p>
+                  <h3 className="mt-1 font-[family:var(--font-exo-2)] text-lg font-black">
+                    Tes ratios
+                  </h3>
+                </div>
+                <TrendingUp className="h-5 w-5 text-cyan-300/70" />
+              </div>
+
+              <div className="mt-5 space-y-5">
+                {performanceStats.map(({ label, value, percent, detail, icon: Icon }) => (
+                  <div key={label}>
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/[0.07] bg-white/[0.04] text-white/45">
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-xs font-black text-white/70">
+                            {label}
+                          </p>
+                          <p className="mt-0.5 truncate text-[9px] font-bold text-white/25">
+                            {detail}
+                          </p>
+                        </div>
+                      </div>
+
+                      <p className="font-[family:var(--font-exo-2)] text-lg font-black">
+                        {account ? value : "—"}
+                      </p>
+                    </div>
+
+                    <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-black/35">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-cyan-400 transition-all duration-700"
+                        style={{ width: `${account ? percent : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-white/[0.07] bg-gradient-to-br from-white/[0.04] to-amber-500/[0.025] p-4 sm:p-5">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[.16em] text-amber-300">
+                    Records personnels
+                  </p>
+                  <h3 className="mt-1 font-[family:var(--font-exo-2)] text-lg font-black">
+                    Tes meilleurs chiffres
+                  </h3>
+                </div>
+                <Star className="h-5 w-5 text-amber-300/75" />
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                {personalRecords.map(({ label, value, detail, icon: Icon }) => (
+                  <article
+                    key={label}
+                    className="rounded-[18px] border border-white/[0.07] bg-black/15 p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <Icon className="h-4 w-4 text-white/35" />
+                      <Sparkles className="h-3 w-3 text-amber-300/35" />
+                    </div>
+                    <p className="mt-3 font-[family:var(--font-exo-2)] text-lg font-black">
+                      {account ? value : "—"}
+                    </p>
+                    <p className="mt-1 text-[10px] font-black text-white/45">
+                      {label}
+                    </p>
+                    <p className="mt-1 text-[8px] font-bold leading-3 text-white/20">
+                      {detail}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <article className="rounded-[20px] border border-violet-300/10 bg-violet-500/[0.045] p-4">
+              <p className="text-[9px] font-black uppercase tracking-[.14em] text-violet-300/75">
+                Soirées jouées
+              </p>
+              <p className="mt-2 font-[family:var(--font-exo-2)] text-2xl font-black">
+                {account ? qualifiedParties : "—"}
+              </p>
+              <p className="mt-1 text-[9px] font-bold text-white/25">
+                Participations validées
+              </p>
+            </article>
+
+            <article className="rounded-[20px] border border-pink-300/10 bg-pink-500/[0.045] p-4">
+              <p className="text-[9px] font-black uppercase tracking-[.14em] text-pink-300/75">
+                Efficacité musicale
+              </p>
+              <p className="mt-2 font-[family:var(--font-exo-2)] text-2xl font-black">
+                {account ? `${hitRate} %` : "—"}
+              </p>
+              <p className="mt-1 text-[9px] font-bold text-white/25">
+                De tes morceaux atteignent 5+ votes
+              </p>
+            </article>
+
+            <article className="rounded-[20px] border border-orange-300/10 bg-orange-500/[0.045] p-4">
+              <p className="text-[9px] font-black uppercase tracking-[.14em] text-orange-300/75">
+                Temps cumulé
+              </p>
+              <p className="mt-2 font-[family:var(--font-exo-2)] text-2xl font-black">
+                {account ? formatActiveTime(activeMinutes) : "—"}
+              </p>
+              <p className="mt-1 text-[9px] font-bold text-white/25">
+                Passé dans des soirées MixParty
+              </p>
+            </article>
           </div>
         </section>
 
