@@ -730,6 +730,7 @@ export function createAccountsStore(filePath: string) {
       account.progress.fiveVoteSongKeys.push(songKey);
       account.progress.fiveVoteSongKeys = account.progress.fiveVoteSongKeys.slice(-2000);
       account.stats.songsWith5Votes += 1;
+      syncSimpleBadges(account, partyCode);
     }
 
     account.updatedAt = Date.now();
@@ -756,6 +757,7 @@ export function createAccountsStore(filePath: string) {
       account.progress.fiveVoteSongKeys = account.progress.fiveVoteSongKeys.slice(-2000);
       account.stats.songsWith5Votes += 1;
       account.updatedAt = Date.now();
+      syncSimpleBadges(account, partyCode);
       save();
     }
 
@@ -1062,6 +1064,7 @@ export function createAccountsStore(filePath: string) {
 
     owner.stats.votesReceived += 1;
     owner.updatedAt = Date.now();
+    syncSimpleBadges(owner);
     save();
     return publicAccount(owner);
   }
