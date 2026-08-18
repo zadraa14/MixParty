@@ -116,6 +116,15 @@ const MIXPARTY_DEFAULT_COVER = "/branding/icon.png";
 const MIXPARTY_CAST_APP_ID = "111703F0";
 const MIXPARTY_CAST_NAMESPACE = "urn:x-cast:fr.mixparty.display";
 
+const MIXPARTY_ACCOUNT_TOKEN_KEY = "mixparty.account.token.v1";
+
+function mixPartyAccountAuthHeader(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const token = localStorage.getItem(MIXPARTY_ACCOUNT_TOKEN_KEY) || "";
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+
 // Karaoké is paused. All implementation stays in this file for future reactivation.
 const KARAOKE_ENABLED = false;
 
@@ -825,7 +834,7 @@ export default function PartyPage() {
       try {
         const response = await fetch(`${getApiBaseUrl()}/party/${code}/presence`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", ...mixPartyAccountAuthHeader() },
           body: JSON.stringify({
             id: participantId,
             name: playerName,
@@ -1083,7 +1092,8 @@ export default function PartyPage() {
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          ...mixPartyAccountAuthHeader(),
         },
         body: JSON.stringify({
           id: participantId,
@@ -1435,7 +1445,8 @@ export default function PartyPage() {
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          ...mixPartyAccountAuthHeader(),
         },
         body: JSON.stringify({
           song: video.title,
@@ -1554,7 +1565,8 @@ async function removeSong(index: number, song: Song) {
       {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
+          ...mixPartyAccountAuthHeader(),
         },
         body: JSON.stringify({
           name: playerName

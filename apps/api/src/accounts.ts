@@ -21,6 +21,13 @@ export type MixPartyAccountStats = {
   songsPlayed: number;
 };
 
+export type MixPartyAccountHistoryEntry = {
+  partyCode: string;
+  joinedAt: number;
+  lastSeenAt: number;
+  role: "participant" | "host";
+};
+
 export type MixPartyAccount = {
   id: string;
   email: string;
@@ -34,6 +41,7 @@ export type MixPartyAccount = {
   premiumTrialEndsAt?: number;
   stats: MixPartyAccountStats;
   badges: string[];
+  history: MixPartyAccountHistoryEntry[];
   customization: {
     avatarFrame?: string;
     profileTheme?: string;
@@ -148,6 +156,18 @@ export function createAccountsStore(filePath: string) {
               ...(raw.stats && typeof raw.stats === "object" ? raw.stats : {}),
             },
             badges: Array.isArray(raw.badges) ? raw.badges.map(String) : [],
+            history: Array.isArray(raw.history)
+              ? raw.history.flatMap((entry: any) => {
+                  const partyCode = String(entry?.partyCode || "").trim().toUpperCase();
+                  if (!partyCode) return [];
+                  return [{
+                    partyCode,
+                    joinedAt: Number(entry.joinedAt || Date.now()),
+                    lastSeenAt: Number(entry.lastSeenAt || entry.joinedAt || Date.now()),
+                    role: entry.role === "host" ? "host" : "participant",
+                  }];
+                }).slice(-500)
+              : [],
             customization: {
               ...(raw.customization && typeof raw.customization === "object"
                 ? raw.customization
@@ -286,6 +306,7 @@ export function createAccountsStore(filePath: string) {
       plan: "free",
       stats: createDefaultStats(),
       badges: [],
+      history: [],
       customization: {},
     };
 
@@ -342,6 +363,83 @@ export function createAccountsStore(filePath: string) {
     return publicAccount(account);
   }
 
+  function accountMutableFromToken(token: string) {
+    return accountFromToken(token);
+  }
+
+  function recordPartyJoined(token: string, partyCodeValue: unknown) {
+    const account = accountMutableFromToken(token);
+    if (!account) return null;
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    if (!partyCode) return publicAccount(account);
+    const now = Date.now();
+    const existing = account.history.find((entry) => entry.partyCode === partyCode);
+    if (existing) { existing.lastSeenAt = now; }
+    else {
+      account.history.push({ partyCode, joinedAt: now, lastSeenAt: now, role: "participant" });
+      account.stats.partiesJoined += 1;
+      account.updatedAt = now;
+    }
+    if (account.history.length > 500) account.history = account.history.slice(-500);
+    save();
+    return publicAccount(account);
+  }
+
+  function recordPartyHosted(token: string, partyCodeValue: unknown) {
+    const account = accountMutableFromToken(token);
+    if (!account) return null;
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    if (!partyCode) return publicAccount(account);
+    const now = Date.now();
+    const existing = account.history.find((entry) => entry.partyCode === partyCode);
+    if (existing) {
+      if (existing.role !== "host") { existing.role = "host"; account.stats.partiesHosted += 1; }
+      existing.lastSeenAt = now;
+    } else {
+      account.history.push({ partyCode, joinedAt: now, lastSeenAt: now, role: "host" });
+      account.stats.partiesJoined += 1;
+      account.stats.partiesHosted += 1;
+    }
+    account.updatedAt = now;
+    save();
+    return publicAccount(account);
+  }
+
+  function recordSongAdded(token: string) {
+    const account = accountMutableFromToken(token);
+    if (!account) return null;
+    account.stats.songsAdded += 1;
+    account.updatedAt = Date.now();
+    save();
+    return publicAccount(account);
+  }
+
+  function recordVoteGiven(token: string, songOwnerAccountId?: string) {
+    const account = accountMutableFromToken(token);
+    if (!account) return null;
+    account.stats.votesGiven += 1;
+    account.updatedAt = Date.now();
+    if (songOwnerAccountId && songOwnerAccountId !== account.id) {
+      const owner = database.accounts.find((item) => item.id === songOwnerAccountId);
+      if (owner) { owner.stats.votesReceived += 1; owner.updatedAt = Date.now(); }
+    }
+    save();
+    return publicAccount(account);
+  }
+
+  function recordVoteRemoved(token: string, songOwnerAccountId?: string) {
+    const account = accountMutableFromToken(token);
+    if (!account) return null;
+    account.stats.votesGiven = Math.max(0, account.stats.votesGiven - 1);
+    account.updatedAt = Date.now();
+    if (songOwnerAccountId && songOwnerAccountId !== account.id) {
+      const owner = database.accounts.find((item) => item.id === songOwnerAccountId);
+      if (owner) { owner.stats.votesReceived = Math.max(0, owner.stats.votesReceived - 1); owner.updatedAt = Date.now(); }
+    }
+    save();
+    return publicAccount(account);
+  }
+
   function logout(token: string) {
     const tokenHash = hashToken(token);
     const previousLength = database.sessions.length;
@@ -358,6 +456,11 @@ export function createAccountsStore(filePath: string) {
     login,
     authenticate,
     updateProfile,
+    recordPartyJoined,
+    recordPartyHosted,
+    recordSongAdded,
+    recordVoteGiven,
+    recordVoteRemoved,
     logout,
   };
 }

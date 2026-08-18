@@ -108,6 +108,7 @@ type Song = {
   votes:number;
 addedBy:string;
 addedById?:string;
+addedByAccountId?:string;
 voters:string[];
   played:boolean;
   addedAt:number;
@@ -653,7 +654,7 @@ function partyIntelligenceStats() {
   };
 }
 
-type Participant = { id:string; name:string; avatar?:string; lastSeen:number };
+type Participant = { id:string; name:string; avatar?:string; accountId?:string; lastSeen:number };
 
 type Party = {
   code: string;
@@ -2778,6 +2779,11 @@ const party:Party = {
 parties.push(party);
 recordPartyEvent(party, "PARTY_CREATED");
 
+const creatorAccountToken = readBearerToken(req);
+if (creatorAccountToken) {
+  accountsStore.recordPartyHosted(creatorAccountToken, party.code);
+}
+
 saveParties();
 
 res.json({ ...toPublicParty(party), creatorToken: party.creatorToken });
@@ -2847,15 +2853,22 @@ app.post("/party/:code/join",(req,res)=>{
 
   const participantId = req.body.id || `guest-${name.toLowerCase()}`;
   const avatar = typeof req.body.avatar === "string" ? req.body.avatar : undefined;
+  const accountToken = readBearerToken(req);
+  const authenticatedAccount = accountToken ? accountsStore.authenticate(accountToken) : null;
   const existingParticipant = party.participants.find((participant) => participant.id === participantId);
   const isNewParticipant = !existingParticipant;
 
   if(existingParticipant){
     existingParticipant.name = name;
     existingParticipant.avatar = avatar || existingParticipant.avatar;
+    existingParticipant.accountId = authenticatedAccount?.id || existingParticipant.accountId;
     existingParticipant.lastSeen = Date.now();
   } else {
-    party.participants.push({ id: participantId, name, avatar, lastSeen: Date.now() });
+    party.participants.push({ id: participantId, name, avatar, accountId: authenticatedAccount?.id, lastSeen: Date.now() });
+  }
+
+  if (accountToken && authenticatedAccount) {
+    accountsStore.recordPartyJoined(accountToken, party.code);
   }
 
 
@@ -2885,6 +2898,8 @@ app.post("/party/:code/presence", (req, res) => {
   const id = String(req.body.id || "").trim();
   const name = String(req.body.name || "").trim();
   const avatar = typeof req.body.avatar === "string" ? req.body.avatar : undefined;
+  const accountToken = readBearerToken(req);
+  const authenticatedAccount = accountToken ? accountsStore.authenticate(accountToken) : null;
   if (!id || !name) return res.status(400).json({ error: "Participant invalide" });
 
   const participant = party.participants.find((item) => item.id === id);
@@ -2893,9 +2908,14 @@ app.post("/party/:code/presence", (req, res) => {
   if (participant) {
     participant.name = name;
     participant.avatar = avatar || participant.avatar;
+    participant.accountId = authenticatedAccount?.id || participant.accountId;
     participant.lastSeen = Date.now();
   } else {
-    party.participants.push({ id, name, avatar, lastSeen: Date.now() });
+    party.participants.push({ id, name, avatar, accountId: authenticatedAccount?.id, lastSeen: Date.now() });
+  }
+
+  if (accountToken && authenticatedAccount) {
+    accountsStore.recordPartyJoined(accountToken, party.code);
   }
 
   if (isNewParticipant) {
@@ -2970,6 +2990,8 @@ sourceQuery,
 
 
 console.log("CHANSON RECUE API :", req.body);
+const accountToken = readBearerToken(req);
+const authenticatedAccount = accountToken ? accountsStore.authenticate(accountToken) : null;
 const learnedCover = learnedCoverFor(String(videoId || ""));
 party.songs.push({
 
@@ -2987,6 +3009,7 @@ party.songs.push({
 addedById: typeof addedById === "string" && addedById.trim()
   ? addedById.trim()
   : undefined,
+  addedByAccountId: authenticatedAccount?.id,
   voters: [],
 
   played:false,
@@ -3024,6 +3047,7 @@ addedById: typeof addedById === "string" && addedById.trim()
 });
 
   const addedSong = party.songs[party.songs.length - 1];
+  if (accountToken && authenticatedAccount) accountsStore.recordSongAdded(accountToken);
   recordMusicBrainAddition(addedSong);
   recordPartyEvent(party, "SONG_ADDED", {
     song: songEventSnapshot(party, addedSong),
@@ -3116,6 +3140,9 @@ console.log("Résultat includes :", song.voters.includes(name));
   song.voters.push(name);
 
   song.votes++;
+  const accountToken = readBearerToken(req);
+  const authenticatedAccount = accountToken ? accountsStore.authenticate(accountToken) : null;
+  if (accountToken && authenticatedAccount) accountsStore.recordVoteGiven(accountToken, song.addedByAccountId);
   recordMusicBrainVote(song);
   recordPartyEvent(party, "SONG_VOTED", {
     song: songEventSnapshot(party, song),
@@ -3155,6 +3182,10 @@ app.post("/party/:code/song/:index/downvote", (req, res) => {
 
   song.voters.splice(voterIndex, 1);
   song.votes = Math.max(0, Number(song.votes || 0) - 1);
+
+  const accountToken = readBearerToken(req);
+  const authenticatedAccount = accountToken ? accountsStore.authenticate(accountToken) : null;
+  if (accountToken && authenticatedAccount) accountsStore.recordVoteRemoved(accountToken, song.addedByAccountId);
 
   recordPartyEvent(party, "SONG_DOWNVOTED", {
     song: songEventSnapshot(party, song),

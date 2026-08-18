@@ -56,6 +56,7 @@ type MixPartyAccount = {
     songsPlayed: number;
   };
   badges: string[];
+  history?: Array<{ partyCode: string; joinedAt: number; lastSeenAt: number; role: "participant" | "host" }>;
   customization: {
     avatarFrame?: string;
     profileTheme?: string;
@@ -64,13 +65,14 @@ type MixPartyAccount = {
 };
 
 
-const DEFAULT_STATS = [
-  { label: "Soirées", value: "—", icon: History, accent: "text-violet-300" },
-  { label: "Victoires", value: "—", icon: Crown, accent: "text-amber-300" },
-  { label: "Podiums", value: "—", icon: Trophy, accent: "text-cyan-300" },
-  { label: "Votes", value: "—", icon: Vote, accent: "text-pink-300" },
-  { label: "Morceaux", value: "—", icon: Music2, accent: "text-orange-300" },
+const PROFILE_STAT_CARDS = [
+  { key: "partiesJoined", label: "Soirées", icon: History, accent: "text-violet-300", live: true },
+  { key: "wins", label: "Victoires", icon: Crown, accent: "text-amber-300", live: false },
+  { key: "podiums", label: "Podiums", icon: Trophy, accent: "text-cyan-300", live: false },
+  { key: "votesGiven", label: "Votes", icon: Vote, accent: "text-pink-300", live: true },
+  { key: "songsAdded", label: "Morceaux", icon: Music2, accent: "text-orange-300", live: true },
 ] as const;
+
 
 const BADGE_PREVIEWS = [
   { title: "Premier Son", tone: "from-violet-500/40 via-fuchsia-500/15 to-transparent", icon: Music2, ring: "border-violet-300/20" },
@@ -397,6 +399,10 @@ export default function ProfilePage() {
 
   const displayName = name || "Ton profil";
   const displayInitial = (name || "M").charAt(0).toUpperCase();
+  const profileStats = PROFILE_STAT_CARDS.map((item) => ({
+    ...item,
+    value: account ? String(account.stats[item.key] ?? 0) : "—",
+  }));
 
   return (
     <main className="relative isolate min-h-screen overflow-hidden bg-[#070711] font-[family:var(--font-geist-sans)] text-white">
@@ -491,11 +497,13 @@ export default function ProfilePage() {
         </section>
 
         <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5 sm:gap-4">
-          {DEFAULT_STATS.map(({ label, value, icon: Icon, accent }) => (
+          {profileStats.map(({ label, value, icon: Icon, accent, live }) => (
             <article key={label} className="rounded-[26px] border border-white/10 bg-white/[0.055] p-4 shadow-[0_18px_45px_rgba(0,0,0,.18)] backdrop-blur-xl sm:p-5">
               <div className="flex items-center justify-between gap-3">
                 <Icon className={`h-5 w-5 ${accent}`} />
-                <span className="text-[9px] font-black uppercase tracking-[.15em] text-white/25">Bientôt</span>
+                <span className={`text-[9px] font-black uppercase tracking-[.15em] ${account && live ? "text-emerald-300/70" : "text-white/25"}`}>
+                  {account ? (live ? "À jour" : "Phase 2") : "Compte requis"}
+                </span>
               </div>
               <p className="mt-4 font-[family:var(--font-exo-2)] text-2xl font-black sm:text-3xl">{value}</p>
               <p className="mt-1 text-xs font-bold text-white/40">{label}</p>
@@ -509,7 +517,7 @@ export default function ProfilePage() {
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[.22em] text-fuchsia-300">Collection</p>
                 <h2 className="mt-1 font-[family:var(--font-exo-2)] text-2xl font-black">Mes badges</h2>
-                <p className="mt-2 max-w-xl text-sm leading-6 text-white/40">Tes réussites apparaîtront ici dès que le moteur de progression sera connecté.</p>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-white/40">Les premières statistiques sont maintenant enregistrées. Les badges seront branchés sur ce moteur à l’étape suivante.</p>
               </div>
               <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/10 text-fuchsia-200">
                 <Medal className="h-5 w-5" />
