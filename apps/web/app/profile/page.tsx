@@ -207,6 +207,44 @@ const PROFILE_BADGES = [
     condition: "Organiser 50 soirées validées",
     image: "/badges/host-legendaire.png",
   },
+  {
+    id: "banger",
+    name: "Banger",
+    condition: "Faire atteindre au moins 10 votes à un de tes morceaux",
+    image: "/badges/banger.png",
+  },
+  {
+    id: "banger-nucleaire",
+    name: "Banger Nucléaire",
+    condition: "Faire atteindre au moins 25 votes à un de tes morceaux",
+    image: "/badges/banger-nucleaire.png",
+  },
+  {
+    id: "dans-le-mille",
+    name: "Dans le mille",
+    condition: "Avoir 5 de tes morceaux joués consécutivement sans skip",
+    image: "/badges/dans-le-mille.png",
+  },
+  {
+    id: "encore-lui",
+    name: "Encore lui ?!",
+    condition: "Ajouter 3 titres différents du même artiste en moins de 10 minutes",
+    image: "/badges/encore-lui.png",
+  },
+  {
+    id: "secret-comeback",
+    name: "COMEBACK",
+    condition: "Ajouter un morceau qui reste à 0 vote pendant au moins 30 min puis atteint 10 votes",
+    image: "/badges/secret-comeback.png",
+    secret: true,
+  },
+  {
+    id: "secret-jackpot",
+    name: "JACKPOT",
+    condition: "Ajouter 5 morceaux dans une même soirée et faire atteindre au moins 5 votes aux cinq",
+    image: "/badges/secret-jackpot.png",
+    secret: true,
+  },
 ] as const;
 
 type ProfileBadge = (typeof PROFILE_BADGES)[number];
@@ -704,6 +742,8 @@ export default function ProfilePage() {
             <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
               {PROFILE_BADGES.map((badge) => {
                 const unlocked = Boolean(account?.badges?.includes(badge.id));
+                const isSecret = "secret" in badge && Boolean(badge.secret);
+                const hideSecret = isSecret && !unlocked;
                 const unlockInfo = account?.badgeUnlocks?.find((item) => item.badgeId === badge.id);
 
                 return (
@@ -719,8 +759,8 @@ export default function ProfilePage() {
                   >
                     <div className="relative mx-auto aspect-square w-full max-w-[150px] overflow-hidden rounded-[20px]">
                       <img
-                        src={badge.image}
-                        alt={badge.name}
+                        src={hideSecret ? "/branding/icon.png" : badge.image}
+                        alt={hideSecret ? "Badge secret" : badge.name}
                         className={`h-full w-full object-contain transition duration-500 ${
                           unlocked
                             ? "drop-shadow-[0_12px_24px_rgba(0,0,0,.38)] group-hover:scale-[1.04]"
@@ -741,7 +781,7 @@ export default function ProfilePage() {
                     </div>
 
                     <p className={`mt-3 text-xs font-black ${unlocked ? "text-white" : "text-white/45"}`}>
-                      {badge.name}
+                      {hideSecret ? "Badge secret" : badge.name}
                     </p>
                     <p className={`mt-1 text-[9px] font-black uppercase tracking-[.13em] ${
                       unlocked ? "text-emerald-300" : "text-white/20"
@@ -936,8 +976,8 @@ export default function ProfilePage() {
 
               <div className="mx-auto mt-5 w-full max-w-[320px]">
                 <img
-                  src={selectedBadge.image}
-                  alt={selectedBadge.name}
+                  src={("secret" in selectedBadge && selectedBadge.secret && !unlocked) ? "/branding/icon.png" : selectedBadge.image}
+                  alt={("secret" in selectedBadge && selectedBadge.secret && !unlocked) ? "Badge secret" : selectedBadge.name}
                   className={`mx-auto aspect-square w-full object-contain transition ${
                     unlocked
                       ? "drop-shadow-[0_24px_55px_rgba(0,0,0,.5)]"
@@ -958,11 +998,13 @@ export default function ProfilePage() {
                 </span>
 
                 <h2 className="mt-3 font-[family:var(--font-exo-2)] text-2xl font-black sm:text-3xl">
-                  {selectedBadge.name}
+                  {"secret" in selectedBadge && selectedBadge.secret && !unlocked ? "Badge secret" : selectedBadge.name}
                 </h2>
 
                 <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-white/50">
-                  {selectedBadge.condition}
+                  {"secret" in selectedBadge && selectedBadge.secret && !unlocked
+                    ? "Condition inconnue"
+                    : selectedBadge.condition}
                 </p>
 
                 {unlocked && unlockInfo?.unlockedAt ? (

@@ -106,6 +106,7 @@ type Song = {
   thumbnail:string;
   durationSeconds?:number;
   votes:number;
+  firstVoteAt?:number;
 addedBy:string;
 addedById?:string;
 addedByAccountId?:string;
@@ -388,6 +389,14 @@ function finalizePlayback(party: Party, reason: "ended" | "dj_skip" | "dj_previo
       reason,
     },
   });
+
+  if (song.addedByAccountId) {
+    accountsStore.recordSongPlaybackOutcomeByAccountId(
+      song.addedByAccountId,
+      party.code,
+      completed,
+    );
+  }
 }
 
 function startPlaybackTelemetry(party: Party, song: Song) {
@@ -3066,7 +3075,15 @@ addedById: typeof addedById === "string" && addedById.trim()
 });
 
   const addedSong = party.songs[party.songs.length - 1];
-  if (accountToken && authenticatedAccount) accountsStore.recordSongAdded(accountToken);
+  if (accountToken && authenticatedAccount) {
+    accountsStore.recordSongAdded(
+      accountToken,
+      party.code,
+      accountSongKey(addedSong),
+      addedSong.artistName,
+      addedSong.addedAt,
+    );
+  }
   recordMusicBrainAddition(addedSong);
   recordPartyEvent(party, "SONG_ADDED", {
     song: songEventSnapshot(party, addedSong),
@@ -3159,6 +3176,8 @@ console.log("Résultat includes :", song.voters.includes(name));
   song.voters.push(name);
 
   song.votes++;
+  if (!song.firstVoteAt) song.firstVoteAt = Date.now();
+
   const accountToken = readBearerToken(req);
   const authenticatedAccount = accountToken ? accountsStore.authenticate(accountToken) : null;
   if (accountToken && authenticatedAccount) {
@@ -3174,6 +3193,17 @@ console.log("Résultat includes :", song.voters.includes(name));
       song.addedByAccountId,
       party.code,
       accountSongKey(song),
+    );
+  }
+
+  if (song.addedByAccountId) {
+    accountsStore.recordSongVoteMilestoneByAccountId(
+      song.addedByAccountId,
+      party.code,
+      accountSongKey(song),
+      song.votes,
+      song.addedAt,
+      song.firstVoteAt,
     );
   }
 
