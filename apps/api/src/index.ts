@@ -3165,8 +3165,75 @@ app.post("/admin/account/me/advance-party", (req, res) => {
   );
 
   writeAdminAudit(account, "ADVANCE_PARTY_TIME", {
+    targetAccountId: account.id,
     partyCode,
     minutes,
+  });
+
+  return res.json({ ok: true, account: updated });
+});
+
+app.post("/admin/account/:accountId/advance-party", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const targetAccountId = String(req.params.accountId || "").trim();
+  const partyCode = String(req.body?.partyCode || "").trim().toUpperCase();
+  const minutes = Math.trunc(Number(req.body?.minutes || 0));
+
+  if (!targetAccountId || !partyCode || !minutes || minutes < 1 || minutes > 1440) {
+    return res.status(400).json({
+      error: "accountId, partyCode requis et minutes entre 1 et 1440.",
+    });
+  }
+
+  const updated = accountsStore.adminAdvancePartyTime(
+    targetAccountId,
+    partyCode,
+    minutes,
+  );
+
+  if (!updated) return res.status(404).json({ error: "Compte introuvable." });
+
+  writeAdminAudit(account, "ADVANCE_PARTY_TIME", {
+    targetAccountId,
+    partyCode,
+    minutes,
+  });
+
+  return res.json({ ok: true, account: updated });
+});
+
+app.post("/admin/account/:accountId/timing-badge", (req, res) => {
+  const account = readAdminAccount(req);
+  if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
+
+  const targetAccountId = String(req.params.accountId || "").trim();
+  const partyCode = String(req.body?.partyCode || "").trim().toUpperCase();
+  const badgeId = String(req.body?.badgeId || "").trim();
+
+  if (
+    !targetAccountId ||
+    !partyCode ||
+    !["speed-dj", "oiseau-de-nuit"].includes(badgeId)
+  ) {
+    return res.status(400).json({
+      error: "accountId, partyCode et badgeId valide requis.",
+    });
+  }
+
+  const updated = accountsStore.adminSimulateTimingBadge(
+    targetAccountId,
+    partyCode,
+    badgeId,
+  );
+
+  if (!updated) return res.status(404).json({ error: "Compte introuvable." });
+
+  writeAdminAudit(account, "SIMULATE_TIMING_BADGE", {
+    targetAccountId,
+    partyCode,
+    badgeId,
   });
 
   return res.json({ ok: true, account: updated });

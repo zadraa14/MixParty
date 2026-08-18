@@ -232,6 +232,30 @@ const PROFILE_BADGES = [
     image: "/badges/encore-lui.png",
   },
   {
+    id: "speed-dj",
+    name: "Speed DJ",
+    condition: "Ajouter un morceau moins de 30 secondes après avoir rejoint la soirée",
+    image: "/badges/speed-dj.png",
+  },
+  {
+    id: "survivant",
+    name: "Survivant",
+    condition: "Rester dans une même soirée pendant au moins 5 heures",
+    image: "/badges/survivant.png",
+  },
+  {
+    id: "increvable",
+    name: "Increvable",
+    condition: "Rester dans une même soirée pendant au moins 8 heures",
+    image: "/badges/increvable.png",
+  },
+  {
+    id: "oiseau-de-nuit",
+    name: "Oiseau de nuit",
+    condition: "Ajouter un morceau après au moins 3 heures sans avoir ajouté de musique dans cette soirée",
+    image: "/badges/oiseau-de-nuit.png",
+  },
+  {
     id: "secret-comeback",
     name: "COMEBACK",
     condition: "Ajouter un morceau qui reste à 0 vote pendant au moins 30 min puis atteint 10 votes",

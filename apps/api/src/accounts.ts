@@ -97,6 +97,10 @@ export type PublicMixPartyAccount = Omit<MixPartyAccount, "passwordHash">;
 
 const SESSION_DURATION_MS = 90 * 24 * 60 * 60 * 1000;
 const PARTY_QUALIFICATION_MS = 30 * 60 * 1000;
+const SPEED_DJ_MS = 30 * 1000;
+const SURVIVANT_MS = 5 * 60 * 60 * 1000;
+const INCREVABLE_MS = 8 * 60 * 60 * 1000;
+const OISEAU_DE_NUIT_GAP_MS = 3 * 60 * 60 * 1000;
 
 const SIMPLE_BADGES = [
   {
@@ -630,14 +634,24 @@ export function createAccountsStore(filePath: string) {
 
     creditPartyElapsedTime(account, entry, effectiveNow);
 
+    const elapsedSinceJoin = effectiveNow - entry.joinedAt;
+
     if (
       !entry.participationCounted &&
-      effectiveNow - entry.joinedAt >= PARTY_QUALIFICATION_MS
+      elapsedSinceJoin >= PARTY_QUALIFICATION_MS
     ) {
       entry.participationCounted = true;
       entry.participationQualifiedAt = entry.joinedAt + PARTY_QUALIFICATION_MS;
       account.stats.partiesJoined += 1;
       syncSimpleBadges(account, entry.partyCode);
+    }
+
+    if (elapsedSinceJoin >= SURVIVANT_MS) {
+      unlockBadge(account, "survivant", entry.partyCode);
+    }
+
+    if (elapsedSinceJoin >= INCREVABLE_MS) {
+      unlockBadge(account, "increvable", entry.partyCode);
     }
 
     const hostStartedAt = Number(entry.hostStartedAt || 0);
@@ -827,6 +841,38 @@ export function createAccountsStore(filePath: string) {
     return publicAccount(account);
   }
 
+  function evaluateSongTimingBadges(
+    account: MixPartyAccount,
+    partyCode: string,
+    addedAt: number,
+  ) {
+    const entry = account.history.find((item) => item.partyCode === partyCode);
+
+    if (
+      entry &&
+      addedAt >= entry.joinedAt &&
+      addedAt - entry.joinedAt < SPEED_DJ_MS
+    ) {
+      unlockBadge(account, "speed-dj", partyCode);
+    }
+
+    const previousSongEvents = account.progress.songAddedEvents
+      .filter(
+        (event) =>
+          event.partyCode === partyCode &&
+          event.addedAt < addedAt,
+      )
+      .sort((a, b) => b.addedAt - a.addedAt);
+
+    const previousSong = previousSongEvents[0];
+    if (
+      previousSong &&
+      addedAt - previousSong.addedAt >= OISEAU_DE_NUIT_GAP_MS
+    ) {
+      unlockBadge(account, "oiseau-de-nuit", partyCode);
+    }
+  }
+
   function recordSongAdded(
     token: string,
     partyCodeValue?: unknown,
@@ -849,6 +895,10 @@ export function createAccountsStore(filePath: string) {
       .toLocaleLowerCase("fr-FR")
       .replace(/\s+/g, " ");
     const addedAt = Number(addedAtValue || Date.now());
+
+    if (partyCode) {
+      evaluateSongTimingBadges(account, partyCode, addedAt);
+    }
 
     if (partyCode && songKey) {
       const exists = account.progress.songAddedEvents.some(
@@ -1109,6 +1159,53 @@ export function createAccountsStore(filePath: string) {
     return publicAccount(account);
   }
 
+  function adminSimulateTimingBadge(
+    accountId: string,
+    partyCodeValue: unknown,
+    badgeIdValue: unknown,
+  ) {
+    const account = database.accounts.find((item) => item.id === accountId);
+    if (!account) return null;
+
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    const badgeId = String(badgeIdValue || "").trim();
+    if (!partyCode || !badgeId) return publicAccount(account);
+
+    const now = Date.now();
+    let entry = account.history.find((item) => item.partyCode === partyCode);
+
+    if (!entry) {
+      entry = {
+        partyCode,
+        joinedAt: now,
+        lastSeenAt: now,
+        role: "participant",
+        participationCounted: false,
+        hostCounted: false,
+        durationCreditedMs: 0,
+      };
+      account.history.push(entry);
+    }
+
+    if (badgeId === "speed-dj") {
+      entry.joinedAt = now - 10_000;
+      entry.lastSeenAt = now;
+      evaluateSongTimingBadges(account, partyCode, now);
+    } else if (badgeId === "oiseau-de-nuit") {
+      account.progress.songAddedEvents.push({
+        partyCode,
+        songKey: `ADMIN_PREVIOUS_${now}`,
+        addedAt: now - OISEAU_DE_NUIT_GAP_MS - 60_000,
+      });
+      account.progress.songAddedEvents = account.progress.songAddedEvents.slice(-2000);
+      evaluateSongTimingBadges(account, partyCode, now);
+    }
+
+    account.updatedAt = now;
+    save();
+    return publicAccount(account);
+  }
+
   function adminSetBadge(
     accountId: string,
     badgeIdValue: unknown,
@@ -1169,6 +1266,7 @@ export function createAccountsStore(filePath: string) {
     adminListAccounts,
     adminResetAccountStats,
     adminAdvancePartyTime,
+    adminSimulateTimingBadge,
     adminSetBadge,
     logout,
   };

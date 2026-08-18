@@ -230,12 +230,28 @@ export default function AdminPage() {
   }
 
   async function advanceTime(minutes: number) {
-    if (!selectedParty) return;
+    if (!selectedParty || !selectedAccount) return;
     await runAction(
       `time-${minutes}`,
-      "/admin/account/me/advance-party",
+      `/admin/account/${selectedAccount.id}/advance-party`,
       { partyCode: selectedParty.code, minutes },
-      `Temps de test avancé de ${minutes} minute(s) pour ${selectedParty.code}.`,
+      `Temps de test avancé de ${minutes} minute(s) pour ${selectedAccount.name || selectedAccount.email}.`,
+    );
+  }
+
+  async function simulateTimingBadge(badgeId: "speed-dj" | "oiseau-de-nuit") {
+    if (!selectedParty || !selectedAccount) return;
+
+    await runAction(
+      `timing-${badgeId}`,
+      `/admin/account/${selectedAccount.id}/timing-badge`,
+      {
+        partyCode: selectedParty.code,
+        badgeId,
+      },
+      badgeId === "speed-dj"
+        ? `Scénario Speed DJ appliqué à ${selectedAccount.name || selectedAccount.email}.`
+        : `Scénario Oiseau de nuit appliqué à ${selectedAccount.name || selectedAccount.email}.`,
     );
   }
 
@@ -462,7 +478,7 @@ export default function AdminPage() {
                 {selectedParty && (
                   <div className="mt-5 border-t border-white/[0.07] pt-5">
                     <p className="text-[10px] font-black uppercase tracking-[.16em] text-cyan-300">
-                      Temps de test — ton compte
+                      Temps de test — compte sélectionné
                     </p>
                     <div className="mt-3 grid grid-cols-2 gap-2">
                       {[30, 300, 480].map((minutes) => (
@@ -477,6 +493,25 @@ export default function AdminPage() {
                           {minutes === 30 ? "+30 min" : minutes === 300 ? "+5 h" : "+8 h"}
                         </button>
                       ))}
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        disabled={busy !== "" || !selectedAccount}
+                        onClick={() => simulateTimingBadge("speed-dj")}
+                        className="rounded-xl border border-fuchsia-300/15 bg-fuchsia-500/[0.08] px-3 py-2.5 text-xs font-black text-fuchsia-100 transition hover:bg-fuchsia-500/[0.14] disabled:opacity-40"
+                      >
+                        ⚡ Speed DJ
+                      </button>
+                      <button
+                        type="button"
+                        disabled={busy !== "" || !selectedAccount}
+                        onClick={() => simulateTimingBadge("oiseau-de-nuit")}
+                        className="rounded-xl border border-indigo-300/15 bg-indigo-500/[0.08] px-3 py-2.5 text-xs font-black text-indigo-100 transition hover:bg-indigo-500/[0.14] disabled:opacity-40"
+                      >
+                        🌙 Oiseau de nuit
+                      </button>
                     </div>
 
                     <button
