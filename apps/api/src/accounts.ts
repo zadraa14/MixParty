@@ -1195,13 +1195,11 @@ export function createAccountsStore(filePath: string) {
       entry.lastSeenAt = now;
       evaluateSongTimingBadges(account, partyCode, now);
     } else if (badgeId === "oiseau-de-nuit") {
-      account.progress.songAddedEvents.push({
-        partyCode,
-        songKey: `ADMIN_PREVIOUS_${now}`,
-        addedAt: now - OISEAU_DE_NUIT_GAP_MS - 60_000,
-      });
-      account.progress.songAddedEvents = account.progress.songAddedEvents.slice(-2000);
-      evaluateSongTimingBadges(account, partyCode, now);
+      // Simule un nouvel ajout après plus de 3 h sans ajout.
+      // On avance uniquement l'instant simulé afin que même un vrai morceau
+      // ajouté récemment ne masque pas le scénario Admin.
+      const simulatedAddedAt = now + OISEAU_DE_NUIT_GAP_MS + 60_000;
+      evaluateSongTimingBadges(account, partyCode, simulatedAddedAt);
     }
 
     account.updatedAt = now;
