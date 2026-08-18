@@ -28,6 +28,13 @@ export type MixPartyAccountHistoryEntry = {
   joinedAt: number;
   lastSeenAt: number;
   role: "participant" | "host";
+  hostStartedAt?: number;
+  participationCounted: boolean;
+  hostCounted: boolean;
+  participationQualifiedAt?: number;
+  hostQualifiedAt?: number;
+  endedAt?: number;
+  durationCreditedMs: number;
 };
 
 export type MixPartyBadgeUnlock = {
@@ -81,6 +88,7 @@ type AccountsDatabase = {
 export type PublicMixPartyAccount = Omit<MixPartyAccount, "passwordHash">;
 
 const SESSION_DURATION_MS = 90 * 24 * 60 * 60 * 1000;
+const PARTY_QUALIFICATION_MS = 30 * 60 * 1000;
 
 const SIMPLE_BADGES = [
   {
@@ -235,11 +243,41 @@ export function createAccountsStore(filePath: string) {
               ? raw.history.flatMap((entry: any) => {
                   const partyCode = String(entry?.partyCode || "").trim().toUpperCase();
                   if (!partyCode) return [];
+
+                  const joinedAt = Number(entry.joinedAt || Date.now());
+                  const lastSeenAt = Number(entry.lastSeenAt || joinedAt);
+                  const role = entry.role === "host" ? "host" : "participant";
+
+                  // Legacy entries were already counted immediately in older builds.
+                  // Mark them as counted so the migration never awards the same soirée twice.
+                  const participationCounted =
+                    entry.participationCounted === undefined
+                      ? true
+                      : Boolean(entry.participationCounted);
+                  const hostCounted =
+                    entry.hostCounted === undefined
+                      ? role === "host"
+                      : Boolean(entry.hostCounted);
+
                   return [{
                     partyCode,
-                    joinedAt: Number(entry.joinedAt || Date.now()),
-                    lastSeenAt: Number(entry.lastSeenAt || entry.joinedAt || Date.now()),
-                    role: entry.role === "host" ? "host" : "participant",
+                    joinedAt,
+                    lastSeenAt,
+                    role,
+                    hostStartedAt:
+                      Number(entry.hostStartedAt || 0) ||
+                      (role === "host" ? joinedAt : undefined),
+                    participationCounted,
+                    hostCounted,
+                    participationQualifiedAt:
+                      Number(entry.participationQualifiedAt || 0) || undefined,
+                    hostQualifiedAt:
+                      Number(entry.hostQualifiedAt || 0) || undefined,
+                    endedAt: Number(entry.endedAt || 0) || undefined,
+                    durationCreditedMs:
+                      entry.durationCreditedMs === undefined
+                        ? Math.max(0, lastSeenAt - joinedAt)
+                        : Math.max(0, Number(entry.durationCreditedMs || 0)),
                   }];
                 }).slice(-500)
               : [],
@@ -485,28 +523,95 @@ export function createAccountsStore(filePath: string) {
     return accountFromToken(token);
   }
 
-  function touchActiveTime(account: MixPartyAccount, partyCodeValue: unknown) {
-    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
-    if (!partyCode) return;
+  function creditPartyElapsedTime(
+    account: MixPartyAccount,
+    entry: MixPartyAccountHistoryEntry,
+    effectiveNowValue: unknown,
+  ) {
+    const effectiveNow = Math.max(
+      entry.joinedAt,
+      Number(effectiveNowValue || Date.now()),
+    );
+    const elapsedMs = Math.max(0, effectiveNow - entry.joinedAt);
+    const deltaMs = Math.max(0, elapsedMs - entry.durationCreditedMs);
 
-    const now = Date.now();
-    const previous = Number(account.progress.activePartyLastSeen[partyCode] || 0);
+    if (deltaMs > 0) {
+      account.progress.activeMilliseconds += deltaMs;
+      entry.durationCreditedMs = elapsedMs;
+      account.stats.activeMinutes = Math.floor(
+        account.progress.activeMilliseconds / 60_000,
+      );
+    }
+  }
 
-    if (previous > 0) {
-      const elapsed = Math.max(0, Math.min(now - previous, 60_000));
-      account.progress.activeMilliseconds += elapsed;
-      account.stats.activeMinutes = Math.floor(account.progress.activeMilliseconds / 60_000);
+  function qualifyPartyEntry(
+    account: MixPartyAccount,
+    entry: MixPartyAccountHistoryEntry,
+    effectiveNowValue: unknown,
+  ) {
+    const effectiveNow = Math.max(
+      entry.joinedAt,
+      Number(effectiveNowValue || Date.now()),
+    );
+
+    creditPartyElapsedTime(account, entry, effectiveNow);
+
+    if (
+      !entry.participationCounted &&
+      effectiveNow - entry.joinedAt >= PARTY_QUALIFICATION_MS
+    ) {
+      entry.participationCounted = true;
+      entry.participationQualifiedAt = entry.joinedAt + PARTY_QUALIFICATION_MS;
+      account.stats.partiesJoined += 1;
+      syncSimpleBadges(account, entry.partyCode);
     }
 
-    account.progress.activePartyLastSeen[partyCode] = now;
+    const hostStartedAt = Number(entry.hostStartedAt || 0);
+    if (
+      entry.role === "host" &&
+      hostStartedAt > 0 &&
+      !entry.hostCounted &&
+      effectiveNow - hostStartedAt >= PARTY_QUALIFICATION_MS
+    ) {
+      entry.hostCounted = true;
+      entry.hostQualifiedAt = hostStartedAt + PARTY_QUALIFICATION_MS;
+      account.stats.partiesHosted += 1;
+      syncSimpleBadges(account, entry.partyCode);
+    }
+
+    account.updatedAt = Date.now();
   }
 
   function recordPresence(token: string, partyCodeValue: unknown) {
     const account = accountMutableFromToken(token);
     if (!account) return null;
 
-    touchActiveTime(account, partyCodeValue);
-    account.updatedAt = Date.now();
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    if (!partyCode) return publicAccount(account);
+
+    const now = Date.now();
+    let entry = account.history.find((item) => item.partyCode === partyCode);
+
+    if (!entry) {
+      entry = {
+        partyCode,
+        joinedAt: now,
+        lastSeenAt: now,
+        role: "participant",
+        participationCounted: false,
+        hostCounted: false,
+        durationCreditedMs: 0,
+      };
+      account.history.push(entry);
+    }
+
+    entry.lastSeenAt = now;
+    qualifyPartyEntry(account, entry, now);
+
+    if (account.history.length > 500) {
+      account.history = account.history.slice(-500);
+    }
+
     save();
     return publicAccount(account);
   }
@@ -572,17 +677,34 @@ export function createAccountsStore(filePath: string) {
   function recordPartyJoined(token: string, partyCodeValue: unknown) {
     const account = accountMutableFromToken(token);
     if (!account) return null;
+
     const partyCode = String(partyCodeValue || "").trim().toUpperCase();
     if (!partyCode) return publicAccount(account);
+
     const now = Date.now();
-    const existing = account.history.find((entry) => entry.partyCode === partyCode);
-    if (existing) { existing.lastSeenAt = now; }
-    else {
-      account.history.push({ partyCode, joinedAt: now, lastSeenAt: now, role: "participant" });
-      account.stats.partiesJoined += 1;
-      account.updatedAt = now;
+    let entry = account.history.find((item) => item.partyCode === partyCode);
+
+    if (!entry) {
+      entry = {
+        partyCode,
+        joinedAt: now,
+        lastSeenAt: now,
+        role: "participant",
+        participationCounted: false,
+        hostCounted: false,
+        durationCreditedMs: 0,
+      };
+      account.history.push(entry);
+    } else {
+      entry.lastSeenAt = now;
     }
-    if (account.history.length > 500) account.history = account.history.slice(-500);
+
+    qualifyPartyEntry(account, entry, now);
+
+    if (account.history.length > 500) {
+      account.history = account.history.slice(-500);
+    }
+
     save();
     return publicAccount(account);
   }
@@ -590,21 +712,43 @@ export function createAccountsStore(filePath: string) {
   function recordPartyHosted(token: string, partyCodeValue: unknown) {
     const account = accountMutableFromToken(token);
     if (!account) return null;
+
     const partyCode = String(partyCodeValue || "").trim().toUpperCase();
     if (!partyCode) return publicAccount(account);
+
     const now = Date.now();
-    const existing = account.history.find((entry) => entry.partyCode === partyCode);
-    if (existing) {
-      if (existing.role !== "host") { existing.role = "host"; account.stats.partiesHosted += 1; }
-      existing.lastSeenAt = now;
+    let entry = account.history.find((item) => item.partyCode === partyCode);
+
+    if (!entry) {
+      entry = {
+        partyCode,
+        joinedAt: now,
+        lastSeenAt: now,
+        role: "host",
+        hostStartedAt: now,
+        participationCounted: false,
+        hostCounted: false,
+        durationCreditedMs: 0,
+      };
+      account.history.push(entry);
     } else {
-      account.history.push({ partyCode, joinedAt: now, lastSeenAt: now, role: "host" });
-      account.stats.partiesJoined += 1;
-      account.stats.partiesHosted += 1;
+      entry.lastSeenAt = now;
+      if (entry.role !== "host") {
+        entry.role = "host";
+        entry.hostStartedAt = now;
+        entry.hostCounted = false;
+        entry.hostQualifiedAt = undefined;
+      } else if (!entry.hostStartedAt) {
+        entry.hostStartedAt = entry.joinedAt;
+      }
     }
-    account.updatedAt = now;
-    touchActiveTime(account, partyCode);
-    syncSimpleBadges(account, partyCode);
+
+    qualifyPartyEntry(account, entry, now);
+
+    if (account.history.length > 500) {
+      account.history = account.history.slice(-500);
+    }
+
     save();
     return publicAccount(account);
   }
@@ -635,6 +779,30 @@ export function createAccountsStore(filePath: string) {
     account.updatedAt = Date.now();
     save();
     return publicAccount(account);
+  }
+
+  function finalizePartyParticipation(
+    partyCodeValue: unknown,
+    endedAtValue: unknown,
+  ) {
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    if (!partyCode) return;
+
+    const endedAt = Number(endedAtValue || Date.now());
+    let changed = false;
+
+    for (const account of database.accounts) {
+      const entry = account.history.find((item) => item.partyCode === partyCode);
+      if (!entry || entry.endedAt) continue;
+
+      const effectiveEnd = Math.max(entry.joinedAt, endedAt);
+      entry.lastSeenAt = Math.max(entry.lastSeenAt, effectiveEnd);
+      entry.endedAt = effectiveEnd;
+      qualifyPartyEntry(account, entry, effectiveEnd);
+      changed = true;
+    }
+
+    if (changed) save();
   }
 
   function recordVoteReceivedByAccountId(accountId: string | undefined) {
@@ -683,6 +851,7 @@ export function createAccountsStore(filePath: string) {
     recordSongAdded,
     recordVoteGiven,
     recordVoteRemoved,
+    finalizePartyParticipation,
     recordVoteReceivedByAccountId,
     recordVoteReceivedRemovedByAccountId,
     logout,

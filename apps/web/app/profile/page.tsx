@@ -502,7 +502,7 @@ export default function ProfilePage() {
     { label: "Votes reçus", value: account ? String(account.stats.votesReceived ?? 0) : "—", icon: Heart },
     { label: "Morceaux joués", value: account ? String(account.stats.songsPlayed ?? 0) : "—", icon: Play },
     { label: "Morceaux ≥ 5 votes", value: account ? String(account.stats.songsWith5Votes ?? 0) : "—", icon: TrendingUp },
-    { label: "Temps actif", value: account ? formatActiveTime(account.stats.activeMinutes ?? 0) : "—", icon: Clock3 },
+    { label: "Temps en soirée", value: account ? formatActiveTime(account.stats.activeMinutes ?? 0) : "—", icon: Clock3 },
   ];
 
   return (

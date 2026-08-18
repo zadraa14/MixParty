@@ -2588,6 +2588,8 @@ function cleanOldParties(){
       finalizePlayback(party, "song_change");
     }
 
+    const endedAt = Number(party.lastActivityAt || now);
+
     recordPartyEvent(party, "PARTY_ENDED", {
       context: {
         reason: "expired_6h_inactivity",
@@ -2596,6 +2598,7 @@ function cleanOldParties(){
       },
     });
 
+    accountsStore.finalizePartyParticipation(party.code, endedAt);
     playbackTelemetry.delete(party.code);
   }
 
@@ -3371,6 +3374,8 @@ app.post("/party/:code/end", (req, res) => {
     finalizePlayback(party, "song_change");
   }
 
+  const endedAt = Date.now();
+
   recordPartyEvent(party, "PARTY_ENDED", {
     actorHash: anonymizeActor(req.body.actor),
     context: {
@@ -3381,6 +3386,7 @@ app.post("/party/:code/end", (req, res) => {
     },
   });
 
+  accountsStore.finalizePartyParticipation(party.code, endedAt);
   playbackTelemetry.delete(party.code);
   parties = parties.filter((item) => item.code !== party.code);
   saveParties();
