@@ -34,6 +34,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import MixPartyBackground from "../../components/MixPartyBackground";
 
 const NAME_KEY = "playerName";
@@ -509,6 +510,8 @@ async function compressProfilePhoto(file: File): Promise<string> {
 }
 
 export default function ProfilePage() {
+  const searchParams = useSearchParams();
+  const embedded = searchParams.get("embedded") === "1";
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -1120,13 +1123,13 @@ export default function ProfilePage() {
 
       <div ref={profileTopRef} className="relative z-10 mx-auto w-full max-w-[1480px] scroll-mt-6 px-4 pb-16 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6 lg:px-8">
         <header className="flex items-center justify-between gap-3 py-2 sm:py-4">
-          <Link
+          {!embedded ? (<Link
             href="/"
             className="inline-flex min-h-11 items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.055] px-3.5 text-sm font-black text-white/75 backdrop-blur-xl transition hover:border-white/20 hover:bg-white/[0.09] hover:text-white"
           >
             <ArrowLeft className="h-4 w-4" />
             <span>Retour</span>
-          </Link>
+          </Link>) : null}
 
           <div className="flex items-center gap-2.5">
             <img src="/branding/icon.png" alt="MixParty" className="h-10 w-10 object-contain sm:h-12 sm:w-12" />

@@ -37,6 +37,7 @@ import {
   SkipForward,
   TrendingUp,
   UserPlus,
+  UserRound,
   Zap,
   UsersRound,
   WandSparkles,
@@ -306,11 +307,14 @@ export default function PartyPage() {
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [voteBurst, setVoteBurst] = useState<string | null>(null);
-  const [activeMobileTab, setActiveMobileTab] = useState<"playback" | "add" | "karaoke" | "queue" | "guests">("playback");
+  const [activeMobileTab, setActiveMobileTab] = useState<
+    "playback" | "add" | "karaoke" | "queue" | "guests" | "profile"
+  >("playback");
   const [isPlaybackController, setIsPlaybackController] = useState(false);
   const [remotePlayback, setRemotePlayback] = useState({ state: 2, time: 0, receivedAt: Date.now() });
   const [youtubeError, setYoutubeError] = useState<number | null>(null);
   const [djModeActive, setDjModeActive] = useState(false);
+  const [profileOverlayOpen, setProfileOverlayOpen] = useState(false);
   const [partyBrainRelayUpdating, setPartyBrainRelayUpdating] = useState(false);
   const [clipDisplayUpdating, setClipDisplayUpdating] = useState(false);
   const [djModeStartedAt, setDjModeStartedAt] = useState<number | null>(null);
@@ -2326,7 +2330,7 @@ async function removeSong(index: number, song: Song) {
     : 0;
   const totalSessionVotes = [...(party.history || []), ...queue].reduce((total, song) => total + Number(song.votes || 0), 0);
 
-  const mobileTabs = ["playback", "add", "queue", "guests"] as const;
+  const mobileTabs = ["playback", "add", "queue", "guests", "profile"] as const;
 
   function normalizeKaraokeText(value: unknown) {
     return String(value || "")
@@ -2507,6 +2511,15 @@ async function removeSong(index: number, song: Song) {
 
     if (typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate?.(8);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function openProfileFromParty() {
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
+      switchMobileTab("profile");
+      return;
+    }
+
+    setProfileOverlayOpen(true);
   }
 
   function handleMobileTouchStart(event: React.TouchEvent<HTMLElement>) {
@@ -2886,6 +2899,38 @@ async function removeSong(index: number, song: Song) {
         </div>
       ) : null}
 
+      {profileOverlayOpen ? (
+        <div className="fixed inset-0 z-[9998] hidden bg-[#05030c]/92 backdrop-blur-2xl md:flex md:flex-col">
+          <div className="flex shrink-0 items-center justify-between gap-4 border-b border-white/10 bg-[#0b0914]/95 px-5 py-3 lg:px-8">
+            <div className="flex min-w-0 items-center gap-3">
+              <img src="/branding/icon.png" alt="" className="h-10 w-10 object-contain" />
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-fuchsia-300">
+                  MixParty
+                </p>
+                <p className="truncate font-[family:var(--font-exo-2)] text-lg font-black">
+                  Mon profil
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setProfileOverlayOpen(false)}
+              className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-black text-white/70 transition hover:bg-white/[0.10]"
+            >
+              ← Retour à la soirée
+            </button>
+          </div>
+
+          <iframe
+            src="/profile?embedded=1"
+            title="Mon profil MixParty"
+            className="min-h-0 w-full flex-1 border-0 bg-[#070711]"
+          />
+        </div>
+      ) : null}
+
       <MixPartyBackground />
 
       <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(to_bottom,rgba(7,7,17,.03),rgba(7,7,17,.14)_54%,rgba(7,7,17,.32))]" />
@@ -2953,6 +2998,15 @@ async function removeSong(index: number, song: Song) {
               <span>{party.participants.length}</span>
               <span className="hidden text-emerald-200/70 sm:inline">en ligne</span>
             </div>
+
+            <button
+              type="button"
+              onClick={() => setProfileOverlayOpen(true)}
+              className="group inline-flex items-center gap-2 rounded-full border border-fuchsia-300/15 bg-fuchsia-500/[0.08] px-3 py-2 text-xs font-black text-fuchsia-100 transition hover:border-fuchsia-300/30 hover:bg-fuchsia-500/[0.14]"
+            >
+              <UserRound className="h-4 w-4 transition group-hover:scale-110" />
+              <span className="hidden lg:inline">Mon profil</span>
+            </button>
 
           </div>
 
@@ -4035,6 +4089,15 @@ const canRemove =
                   Sans photo personnelle, MixParty t’attribue automatiquement un avatar unique.
                 </div>
 
+                <button
+                  type="button"
+                  onClick={openProfileFromParty}
+                  className="group mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-fuchsia-300/20 bg-gradient-to-r from-violet-500/[0.12] via-fuchsia-500/[0.12] to-orange-400/[0.08] px-4 py-3 text-sm font-black text-fuchsia-100 transition hover:-translate-y-0.5 hover:border-fuchsia-300/35 hover:bg-fuchsia-500/[0.14]"
+                >
+                  <UserRound className="h-4 w-4 transition group-hover:scale-110" />
+                  Voir mon profil
+                </button>
+
               </section>
             )}
 
@@ -4447,6 +4510,41 @@ const canRemove =
           </section>
         )}
 
+        <section
+          className={`${activeMobileTab === "profile" ? "block" : "hidden"} md:hidden`}
+          aria-label="Mon profil MixParty"
+        >
+          <div className="overflow-hidden rounded-[26px] border border-fuchsia-300/15 bg-[#0b0813]/95 shadow-[0_20px_70px_rgba(0,0,0,.35)]">
+            <div className="flex items-center justify-between gap-3 border-b border-white/[0.07] bg-gradient-to-r from-violet-500/[0.08] via-fuchsia-500/[0.08] to-orange-400/[0.05] px-4 py-3">
+              <div className="flex items-center gap-2">
+                <span className="grid h-9 w-9 place-items-center rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/10 text-fuchsia-200">
+                  <UserRound className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-[9px] font-black uppercase tracking-[0.18em] text-fuchsia-300">
+                    Compte MixParty
+                  </p>
+                  <p className="text-sm font-black text-white">Mon profil</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => switchMobileTab("playback")}
+                className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-[10px] font-black text-white/55"
+              >
+                Retour soirée
+              </button>
+            </div>
+
+            <iframe
+              src="/profile?embedded=1"
+              title="Mon profil MixParty"
+              className="h-[calc(100dvh-190px)] min-h-[620px] w-full border-0 bg-[#070711]"
+            />
+          </div>
+        </section>
+
         <footer className="mt-8 hidden border-t border-white/[0.07] py-8 text-center md:block">
 
           <div className="flex items-center justify-center gap-3">
@@ -4465,7 +4563,7 @@ const canRemove =
 
         </footer>
 
-        <nav className={`v54-mobile-nav fixed inset-x-2 bottom-3 z-50 grid ${KARAOKE_ENABLED ? "grid-cols-5" : "grid-cols-4"} gap-0.5 rounded-[22px] border border-white/12 bg-[#11111d]/95 p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.55)] backdrop-blur-2xl md:hidden`} aria-label="Navigation de la soirée">
+        <nav className={`v54-mobile-nav fixed inset-x-2 bottom-3 z-50 grid ${KARAOKE_ENABLED ? "grid-cols-6" : "grid-cols-5"} gap-0.5 rounded-[22px] border border-white/12 bg-[#11111d]/95 p-1.5 shadow-[0_18px_60px_rgba(0,0,0,0.55)] backdrop-blur-2xl md:hidden`} aria-label="Navigation de la soirée">
           {[
             { id: "playback", label: "Lecture", Icon: Music4 },
             { id: "add", label: "Ajouter", Icon: Plus },
@@ -4474,13 +4572,18 @@ const canRemove =
               : []),
             { id: "queue", label: "File", Icon: ListMusic },
             { id: "guests", label: "Invités", Icon: UserPlus },
+            { id: "profile", label: "Profil", Icon: UserRound },
           ].map(({ id, label, Icon }) => {
             const active = activeMobileTab === id;
             return (
               <button
                 key={id}
                 type="button"
-                onClick={() => switchMobileTab(id as "playback" | "add" | "karaoke" | "queue" | "guests")}
+                onClick={() =>
+                  switchMobileTab(
+                    id as "playback" | "add" | "karaoke" | "queue" | "guests" | "profile",
+                  )
+                }
                 className={`v54-mobile-nav__item flex min-w-0 flex-col items-center justify-center gap-1 rounded-[17px] px-0.5 py-2.5 text-[9px] font-black transition ${active ? "v54-mobile-nav__item--active bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 text-white shadow-[0_8px_24px_rgba(168,85,247,0.28)]" : "text-white/45 active:bg-white/[0.06]"}`}
                 aria-current={active ? "page" : undefined}
               >
