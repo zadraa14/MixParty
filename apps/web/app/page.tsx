@@ -94,7 +94,13 @@ export default function Home() {
     if (creatingParty) return;
     setCreatingParty(true);
     try {
-      const response = await fetch(`${getApiBaseUrl()}/party`, { method: "POST" });
+      const accountToken = localStorage.getItem("mixparty.account.token.v1") || "";
+      const response = await fetch(`${getApiBaseUrl()}/party`, {
+        method: "POST",
+        headers: accountToken
+          ? { Authorization: `Bearer ${accountToken}` }
+          : undefined,
+      });
       if (!response.ok) throw new Error(`Erreur API ${response.status}`);
       const party = (await response.json()) as { code?: string; creatorToken?: string };
       if (!party.code || !party.creatorToken) throw new Error("La réponse de création est incomplète.");
