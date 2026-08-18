@@ -487,6 +487,7 @@ export default function ProfilePage() {
   const [activeProfileTab, setActiveProfileTab] = useState<
     "profile" | "badges" | "stats" | "history"
   >("profile");
+  const [historyVisibleCount, setHistoryVisibleCount] = useState(5);
   const profileTopRef = useRef<HTMLDivElement | null>(null);
   const badgesSectionRef = useRef<HTMLElement | null>(null);
   const statsSectionRef = useRef<HTMLElement | null>(null);
@@ -980,13 +981,14 @@ export default function ProfilePage() {
     target?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
-  const profileHistory = [...(account?.history || [])]
-    .sort(
-      (a, b) =>
-        (b.endedAt || b.lastSeenAt || b.joinedAt) -
-        (a.endedAt || a.lastSeenAt || a.joinedAt),
-    )
-    .slice(0, 20);
+  const allProfileHistory = [...(account?.history || [])].sort(
+    (a, b) =>
+      (b.endedAt || b.lastSeenAt || b.joinedAt) -
+      (a.endedAt || a.lastSeenAt || a.joinedAt),
+  );
+
+  const profileHistory = allProfileHistory.slice(0, historyVisibleCount);
+  const hasMoreHistory = historyVisibleCount < allProfileHistory.length;
 
 
   return (
@@ -1419,7 +1421,7 @@ export default function ProfilePage() {
             </div>
 
             <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[.14em] text-white/40">
-              {account?.history?.length || 0} entrée{(account?.history?.length || 0) > 1 ? "s" : ""}
+              {allProfileHistory.length} entrée{allProfileHistory.length > 1 ? "s" : ""}
             </div>
           </div>
 
@@ -1509,6 +1511,34 @@ export default function ProfilePage() {
                   </article>
                 );
               })}
+
+              {allProfileHistory.length > 5 ? (
+                <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:justify-center">
+                  {hasMoreHistory ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setHistoryVisibleCount((current) =>
+                          Math.min(current + 5, allProfileHistory.length),
+                        )
+                      }
+                      className="min-h-11 rounded-2xl border border-cyan-300/15 bg-cyan-500/[0.07] px-5 text-sm font-black text-cyan-100 transition hover:bg-cyan-500/[0.12]"
+                    >
+                      Voir 5 soirées de plus
+                    </button>
+                  ) : null}
+
+                  {historyVisibleCount > 5 ? (
+                    <button
+                      type="button"
+                      onClick={() => setHistoryVisibleCount(5)}
+                      className="min-h-11 rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm font-black text-white/50 transition hover:bg-white/[0.08]"
+                    >
+                      Réduire l’historique
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ) : (
             <div className="mt-5 rounded-[24px] border border-white/[0.07] bg-black/15 p-7 text-center">
