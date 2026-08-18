@@ -3030,7 +3030,6 @@ app.post("/account/register", (req, res) => {
       password: req.body?.password,
       name: req.body?.name,
       avatar: req.body?.avatar,
-      featuredBadges: req.body?.featuredBadges,
     });
     return res.status(201).json(result);
   } catch (error) {
@@ -3070,6 +3069,7 @@ app.patch("/account/me", (req, res) => {
     const account = accountsStore.updateProfile(token, {
       name: req.body?.name,
       avatar: req.body?.avatar,
+      featuredBadges: req.body?.featuredBadges,
     });
     return res.json({ account });
   } catch (error) {
