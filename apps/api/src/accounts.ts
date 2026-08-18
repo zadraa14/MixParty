@@ -1,0 +1,363 @@
+import fs from "fs";
+import path from "path";
+import {
+  createHash,
+  randomBytes,
+  randomUUID,
+  scryptSync,
+  timingSafeEqual,
+} from "crypto";
+
+export type MixPartyPlan = "free" | "premium";
+
+export type MixPartyAccountStats = {
+  partiesJoined: number;
+  partiesHosted: number;
+  wins: number;
+  podiums: number;
+  votesGiven: number;
+  votesReceived: number;
+  songsAdded: number;
+  songsPlayed: number;
+};
+
+export type MixPartyAccount = {
+  id: string;
+  email: string;
+  passwordHash: string;
+  name: string;
+  avatar?: string;
+  createdAt: number;
+  updatedAt: number;
+  plan: MixPartyPlan;
+  premiumTrialStartedAt?: number;
+  premiumTrialEndsAt?: number;
+  stats: MixPartyAccountStats;
+  badges: string[];
+  customization: {
+    avatarFrame?: string;
+    profileTheme?: string;
+    joinEffect?: string;
+  };
+};
+
+type AccountSession = {
+  tokenHash: string;
+  accountId: string;
+  createdAt: number;
+  expiresAt: number;
+};
+
+type AccountsDatabase = {
+  version: 1;
+  updatedAt: number;
+  accounts: MixPartyAccount[];
+  sessions: AccountSession[];
+};
+
+export type PublicMixPartyAccount = Omit<MixPartyAccount, "passwordHash">;
+
+const SESSION_DURATION_MS = 90 * 24 * 60 * 60 * 1000;
+
+function createDefaultStats(): MixPartyAccountStats {
+  return {
+    partiesJoined: 0,
+    partiesHosted: 0,
+    wins: 0,
+    podiums: 0,
+    votesGiven: 0,
+    votesReceived: 0,
+    songsAdded: 0,
+    songsPlayed: 0,
+  };
+}
+
+function createEmptyDatabase(): AccountsDatabase {
+  return {
+    version: 1,
+    updatedAt: Date.now(),
+    accounts: [],
+    sessions: [],
+  };
+}
+
+function normalizeEmail(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeName(value: unknown) {
+  return String(value || "").trim().replace(/\s+/g, " ").slice(0, 24);
+}
+
+function validateEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && email.length <= 160;
+}
+
+function hashPassword(password: string) {
+  const salt = randomBytes(16).toString("hex");
+  const derived = scryptSync(password, salt, 64).toString("hex");
+  return `scrypt$${salt}$${derived}`;
+}
+
+function passwordMatches(password: string, stored: string) {
+  try {
+    const [scheme, salt, expectedHex] = stored.split("$");
+    if (scheme !== "scrypt" || !salt || !expectedHex) return false;
+    const actual = scryptSync(password, salt, 64);
+    const expected = Buffer.from(expectedHex, "hex");
+    return actual.length === expected.length && timingSafeEqual(actual, expected);
+  } catch {
+    return false;
+  }
+}
+
+function hashToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function publicAccount(account: MixPartyAccount): PublicMixPartyAccount {
+  const { passwordHash: _passwordHash, ...safe } = account;
+  return safe;
+}
+
+export function createAccountsStore(filePath: string) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+
+  let database: AccountsDatabase = createEmptyDatabase();
+
+  function sanitizeDatabase(value: any): AccountsDatabase {
+    const accounts: MixPartyAccount[] = Array.isArray(value?.accounts)
+      ? value.accounts.flatMap((raw: any) => {
+          const email = normalizeEmail(raw?.email);
+          const name = normalizeName(raw?.name);
+          if (!raw?.id || !email || !name || !raw?.passwordHash) return [];
+
+          return [{
+            id: String(raw.id),
+            email,
+            passwordHash: String(raw.passwordHash),
+            name,
+            avatar: typeof raw.avatar === "string" && raw.avatar ? raw.avatar : undefined,
+            createdAt: Number(raw.createdAt || Date.now()),
+            updatedAt: Number(raw.updatedAt || raw.createdAt || Date.now()),
+            plan: raw.plan === "premium" ? "premium" : "free",
+            premiumTrialStartedAt: Number(raw.premiumTrialStartedAt || 0) || undefined,
+            premiumTrialEndsAt: Number(raw.premiumTrialEndsAt || 0) || undefined,
+            stats: {
+              ...createDefaultStats(),
+              ...(raw.stats && typeof raw.stats === "object" ? raw.stats : {}),
+            },
+            badges: Array.isArray(raw.badges) ? raw.badges.map(String) : [],
+            customization: {
+              ...(raw.customization && typeof raw.customization === "object"
+                ? raw.customization
+                : {}),
+            },
+          }];
+        })
+      : [];
+
+    const accountIds = new Set(accounts.map((account) => account.id));
+    const sessions: AccountSession[] = Array.isArray(value?.sessions)
+      ? value.sessions.flatMap((raw: any) => {
+          const expiresAt = Number(raw?.expiresAt || 0);
+          if (
+            !raw?.tokenHash ||
+            !raw?.accountId ||
+            !accountIds.has(String(raw.accountId)) ||
+            expiresAt <= Date.now()
+          ) {
+            return [];
+          }
+
+          return [{
+            tokenHash: String(raw.tokenHash),
+            accountId: String(raw.accountId),
+            createdAt: Number(raw.createdAt || Date.now()),
+            expiresAt,
+          }];
+        })
+      : [];
+
+    return {
+      version: 1,
+      updatedAt: Date.now(),
+      accounts,
+      sessions,
+    };
+  }
+
+  function save() {
+    database.updatedAt = Date.now();
+    database.sessions = database.sessions.filter(
+      (session) => session.expiresAt > Date.now(),
+    );
+
+    const tempPath = `${filePath}.tmp`;
+    fs.writeFileSync(tempPath, JSON.stringify(database, null, 2), "utf8");
+    fs.renameSync(tempPath, filePath);
+  }
+
+  function load() {
+    if (!fs.existsSync(filePath)) {
+      database = createEmptyDatabase();
+      save();
+      return;
+    }
+
+    try {
+      database = sanitizeDatabase(
+        JSON.parse(fs.readFileSync(filePath, "utf8")),
+      );
+      save();
+    } catch (error) {
+      console.error("MixParty Accounts: impossible de lire accounts.json", error);
+      database = createEmptyDatabase();
+      save();
+    }
+  }
+
+  function createSession(accountId: string) {
+    const token = randomBytes(32).toString("base64url");
+    const now = Date.now();
+
+    database.sessions.push({
+      tokenHash: hashToken(token),
+      accountId,
+      createdAt: now,
+      expiresAt: now + SESSION_DURATION_MS,
+    });
+
+    save();
+    return token;
+  }
+
+  function accountFromToken(token: string) {
+    const tokenHash = hashToken(token);
+    const session = database.sessions.find(
+      (item) => item.tokenHash === tokenHash && item.expiresAt > Date.now(),
+    );
+    if (!session) return null;
+
+    const account = database.accounts.find(
+      (item) => item.id === session.accountId,
+    );
+    return account || null;
+  }
+
+  function register(input: {
+    email: unknown;
+    password: unknown;
+    name: unknown;
+    avatar?: unknown;
+  }) {
+    const email = normalizeEmail(input.email);
+    const name = normalizeName(input.name);
+    const password = String(input.password || "");
+
+    if (!validateEmail(email)) {
+      throw new Error("EMAIL_INVALID");
+    }
+
+    if (password.length < 8 || password.length > 200) {
+      throw new Error("PASSWORD_INVALID");
+    }
+
+    if (name.length < 2) {
+      throw new Error("NAME_INVALID");
+    }
+
+    if (database.accounts.some((account) => account.email === email)) {
+      throw new Error("EMAIL_ALREADY_USED");
+    }
+
+    const now = Date.now();
+    const account: MixPartyAccount = {
+      id: randomUUID(),
+      email,
+      passwordHash: hashPassword(password),
+      name,
+      avatar:
+        typeof input.avatar === "string" && input.avatar.length <= 1_500_000
+          ? input.avatar
+          : undefined,
+      createdAt: now,
+      updatedAt: now,
+      plan: "free",
+      stats: createDefaultStats(),
+      badges: [],
+      customization: {},
+    };
+
+    database.accounts.push(account);
+    save();
+
+    return {
+      account: publicAccount(account),
+      token: createSession(account.id),
+    };
+  }
+
+  function login(input: { email: unknown; password: unknown }) {
+    const email = normalizeEmail(input.email);
+    const password = String(input.password || "");
+    const account = database.accounts.find((item) => item.email === email);
+
+    if (!account || !passwordMatches(password, account.passwordHash)) {
+      throw new Error("INVALID_CREDENTIALS");
+    }
+
+    return {
+      account: publicAccount(account),
+      token: createSession(account.id),
+    };
+  }
+
+  function authenticate(token: string) {
+    const account = accountFromToken(token);
+    return account ? publicAccount(account) : null;
+  }
+
+  function updateProfile(
+    token: string,
+    input: { name?: unknown; avatar?: unknown },
+  ) {
+    const account = accountFromToken(token);
+    if (!account) throw new Error("UNAUTHORIZED");
+
+    if (input.name !== undefined) {
+      const name = normalizeName(input.name);
+      if (name.length < 2) throw new Error("NAME_INVALID");
+      account.name = name;
+    }
+
+    if (input.avatar !== undefined) {
+      const avatar = String(input.avatar || "");
+      if (avatar.length > 1_500_000) throw new Error("AVATAR_TOO_LARGE");
+      account.avatar = avatar || undefined;
+    }
+
+    account.updatedAt = Date.now();
+    save();
+    return publicAccount(account);
+  }
+
+  function logout(token: string) {
+    const tokenHash = hashToken(token);
+    const previousLength = database.sessions.length;
+    database.sessions = database.sessions.filter(
+      (session) => session.tokenHash !== tokenHash,
+    );
+    if (database.sessions.length !== previousLength) save();
+  }
+
+  load();
+
+  return {
+    register,
+    login,
+    authenticate,
+    updateProfile,
+    logout,
+  };
+}

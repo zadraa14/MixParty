@@ -6,6 +6,7 @@ import { Server } from "socket.io";
 import fs from "fs";
 import path from "path";
 import { createHash, randomUUID } from "crypto";
+import { createAccountsStore } from "./accounts";
 import {
   cleanArtist as coreCleanArtist,
   cleanTitle as coreCleanTitle,
@@ -38,6 +39,7 @@ fs.mkdirSync(persistentDataDir, { recursive: true });
 const dataFilePath = path.resolve(persistentDataDir, "data.json");
 const partyEventsFilePath = path.resolve(persistentDataDir, "party-intelligence-events.jsonl");
 const attendanceHistoryFilePath = path.resolve(persistentDataDir, "party-attendance-history.json");
+const accountsFilePath = path.resolve(persistentDataDir, "accounts.json");
 const karaokeAuditFilePath = path.resolve(persistentDataDir, "karaoke-audit.json");
 const karaokeLyricsAuditFilePath = path.resolve(persistentDataDir, "karaoke-lyrics-audit.json");
 const karaokeSyncEngineFilePath = path.resolve(persistentDataDir, "karaoke-sync-engine.json");
@@ -55,7 +57,9 @@ const io = new Server(httpServer, {
 });
 
 app.use(cors({ origin: corsOrigin }));
-app.use(express.json());
+app.use(express.json({ limit: "2mb" }));
+
+const accountsStore = createAccountsStore(accountsFilePath);
 
 // Public/admin Karaoké endpoints are frozen while the feature is paused.
 // Nothing is deleted; KARAOKE_ENABLED=true will reactivate them later.
@@ -2635,6 +2639,102 @@ function updateParty(party:Party) {
 
 
 loadMusicBrain();
+
+function readBearerToken(req: express.Request) {
+  const authorization = String(req.headers.authorization || "");
+  const [scheme, token] = authorization.split(" ");
+  return scheme?.toLowerCase() === "bearer" && token ? token.trim() : "";
+}
+
+function accountErrorResponse(error: unknown) {
+  const code = error instanceof Error ? error.message : "UNKNOWN";
+
+  if (code === "EMAIL_INVALID") {
+    return { status: 400, body: { error: "Entre une adresse e-mail valide." } };
+  }
+  if (code === "PASSWORD_INVALID") {
+    return { status: 400, body: { error: "Le mot de passe doit contenir au moins 8 caractères." } };
+  }
+  if (code === "NAME_INVALID") {
+    return { status: 400, body: { error: "Le pseudo doit contenir au moins 2 caractères." } };
+  }
+  if (code === "EMAIL_ALREADY_USED") {
+    return { status: 409, body: { error: "Un compte MixParty existe déjà avec cette adresse e-mail." } };
+  }
+  if (code === "INVALID_CREDENTIALS") {
+    return { status: 401, body: { error: "E-mail ou mot de passe incorrect." } };
+  }
+  if (code === "AVATAR_TOO_LARGE") {
+    return { status: 413, body: { error: "La photo de profil est trop volumineuse." } };
+  }
+  if (code === "UNAUTHORIZED") {
+    return { status: 401, body: { error: "Session MixParty expirée ou invalide." } };
+  }
+
+  console.error("MixParty Accounts:", error);
+  return { status: 500, body: { error: "Une erreur MixParty est survenue." } };
+}
+
+app.post("/account/register", (req, res) => {
+  try {
+    const result = accountsStore.register({
+      email: req.body?.email,
+      password: req.body?.password,
+      name: req.body?.name,
+      avatar: req.body?.avatar,
+    });
+    return res.status(201).json(result);
+  } catch (error) {
+    const response = accountErrorResponse(error);
+    return res.status(response.status).json(response.body);
+  }
+});
+
+app.post("/account/login", (req, res) => {
+  try {
+    const result = accountsStore.login({
+      email: req.body?.email,
+      password: req.body?.password,
+    });
+    return res.json(result);
+  } catch (error) {
+    const response = accountErrorResponse(error);
+    return res.status(response.status).json(response.body);
+  }
+});
+
+app.get("/account/me", (req, res) => {
+  const token = readBearerToken(req);
+  const account = token ? accountsStore.authenticate(token) : null;
+
+  if (!account) {
+    return res.status(401).json({ error: "Session MixParty expirée ou invalide." });
+  }
+
+  return res.json({ account });
+});
+
+app.patch("/account/me", (req, res) => {
+  const token = readBearerToken(req);
+
+  try {
+    const account = accountsStore.updateProfile(token, {
+      name: req.body?.name,
+      avatar: req.body?.avatar,
+    });
+    return res.json({ account });
+  } catch (error) {
+    const response = accountErrorResponse(error);
+    return res.status(response.status).json(response.body);
+  }
+});
+
+app.post("/account/logout", (req, res) => {
+  const token = readBearerToken(req);
+  if (token) accountsStore.logout(token);
+  return res.json({ ok: true });
+});
+
 
 // Test API
 app.get("/", (req, res) => {

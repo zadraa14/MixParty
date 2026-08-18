@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { getApiBaseUrl } from "../../lib/config";
 import {
   ArrowLeft,
   BadgeCheck,
@@ -10,6 +11,10 @@ import {
   History,
   Images,
   LockKeyhole,
+  LogIn,
+  LogOut,
+  Mail,
+  KeyRound,
   Medal,
   Music2,
   Pencil,
@@ -27,6 +32,37 @@ import MixPartyBackground from "../../components/MixPartyBackground";
 const NAME_KEY = "playerName";
 const PHOTO_KEY = "mixparty.profile.photo.v1";
 const PARTICIPANT_ID_KEY = "mixparty.participant.id";
+
+const ACCOUNT_TOKEN_KEY = "mixparty.account.token.v1";
+
+type MixPartyAccount = {
+  id: string;
+  email: string;
+  name: string;
+  avatar?: string;
+  createdAt: number;
+  updatedAt: number;
+  plan: "free" | "premium";
+  premiumTrialStartedAt?: number;
+  premiumTrialEndsAt?: number;
+  stats: {
+    partiesJoined: number;
+    partiesHosted: number;
+    wins: number;
+    podiums: number;
+    votesGiven: number;
+    votesReceived: number;
+    songsAdded: number;
+    songsPlayed: number;
+  };
+  badges: string[];
+  customization: {
+    avatarFrame?: string;
+    profileTheme?: string;
+    joinEffect?: string;
+  };
+};
+
 
 const DEFAULT_STATS = [
   { label: "Soirées", value: "—", icon: History, accent: "text-violet-300" },
@@ -87,6 +123,16 @@ export default function ProfilePage() {
   const [photo, setPhoto] = useState("");
   const [draftPhoto, setDraftPhoto] = useState("");
   const [participantId, setParticipantId] = useState("");
+  const [account, setAccount] = useState<MixPartyAccount | null>(null);
+  const [accountLoading, setAccountLoading] = useState(true);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"register" | "login">("register");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authName, setAuthName] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState("");
+
 
   useEffect(() => {
     const savedName = localStorage.getItem(NAME_KEY)?.trim() || "";
@@ -102,10 +148,52 @@ export default function ProfilePage() {
 
     setName(savedName);
     setDraftName(savedName);
+    setAuthName(savedName);
     setPhoto(savedPhoto);
     setDraftPhoto(savedPhoto);
     setParticipantId(savedParticipantId);
     setReady(true);
+
+    const token = localStorage.getItem(ACCOUNT_TOKEN_KEY) || "";
+    if (!token) {
+      setAccountLoading(false);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const response = await fetch(`${getApiBaseUrl()}/account/me`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          localStorage.removeItem(ACCOUNT_TOKEN_KEY);
+          return;
+        }
+
+        const data = await response.json();
+        const nextAccount = data?.account as MixPartyAccount | undefined;
+        if (!nextAccount?.id) return;
+
+        setAccount(nextAccount);
+        setName(nextAccount.name);
+        setDraftName(nextAccount.name);
+        setAuthName(nextAccount.name);
+
+        if (nextAccount.avatar) {
+          setPhoto(nextAccount.avatar);
+          setDraftPhoto(nextAccount.avatar);
+          localStorage.setItem(PHOTO_KEY, nextAccount.avatar);
+        }
+
+        localStorage.setItem(NAME_KEY, nextAccount.name);
+      } catch (loadAccountError) {
+        console.error("Impossible de charger le compte MixParty", loadAccountError);
+      } finally {
+        setAccountLoading(false);
+      }
+    })();
   }, []);
 
   async function choosePhoto(file: File | null) {
@@ -143,7 +231,7 @@ export default function ProfilePage() {
     setEditing(false);
   }
 
-  function saveProfile() {
+  async function saveProfile() {
     const normalizedName = draftName.trim();
 
     if (!normalizedName) {
@@ -159,24 +247,152 @@ export default function ProfilePage() {
     setSaving(true);
     setError("");
 
-    localStorage.setItem(NAME_KEY, normalizedName);
-    localStorage.setItem(PHOTO_KEY, draftPhoto);
+    try {
+      const token = localStorage.getItem(ACCOUNT_TOKEN_KEY) || "";
 
-    setName(normalizedName);
-    setPhoto(draftPhoto);
+      if (account && token) {
+        const response = await fetch(`${getApiBaseUrl()}/account/me`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            name: normalizedName,
+            avatar: draftPhoto,
+          }),
+        });
 
-    window.dispatchEvent(
-      new CustomEvent("mixparty-profile-updated", {
-        detail: {
-          name: normalizedName,
-          photo: draftPhoto,
-          participantId,
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data?.error || "Impossible de modifier ton compte.");
+        }
+
+        if (data?.account) setAccount(data.account as MixPartyAccount);
+      }
+
+      localStorage.setItem(NAME_KEY, normalizedName);
+      localStorage.setItem(PHOTO_KEY, draftPhoto);
+
+      setName(normalizedName);
+      setPhoto(draftPhoto);
+
+      window.dispatchEvent(
+        new CustomEvent("mixparty-profile-updated", {
+          detail: {
+            name: normalizedName,
+            photo: draftPhoto,
+            participantId,
+          },
+        }),
+      );
+
+      setEditing(false);
+    } catch (saveError) {
+      console.error(saveError);
+      setError(saveError instanceof Error ? saveError.message : "Impossible d’enregistrer ton profil.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function openAuth(mode: "register" | "login") {
+    setAuthMode(mode);
+    setAuthName(name);
+    setAuthEmail("");
+    setAuthPassword("");
+    setAuthError("");
+    setAuthOpen(true);
+  }
+
+  async function submitAuth() {
+    setAuthError("");
+    const email = authEmail.trim().toLowerCase();
+    const password = authPassword;
+    const nextName = (authMode === "register" ? authName : name).trim();
+
+    if (!email) {
+      setAuthError("Entre ton adresse e-mail.");
+      return;
+    }
+    if (password.length < 8) {
+      setAuthError("Le mot de passe doit contenir au moins 8 caractères.");
+      return;
+    }
+    if (authMode === "register" && nextName.length < 2) {
+      setAuthError("Choisis un pseudo d’au moins 2 caractères.");
+      return;
+    }
+
+    setAuthBusy(true);
+
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/account/${authMode === "register" ? "register" : "login"}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            authMode === "register"
+              ? { email, password, name: nextName, avatar: photo || undefined }
+              : { email, password },
+          ),
         },
-      }),
-    );
+      );
 
-    setEditing(false);
-    setSaving(false);
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || "Connexion MixParty impossible.");
+      }
+
+      const nextAccount = data?.account as MixPartyAccount | undefined;
+      const token = String(data?.token || "");
+      if (!nextAccount?.id || !token) {
+        throw new Error("Réponse du compte MixParty incomplète.");
+      }
+
+      localStorage.setItem(ACCOUNT_TOKEN_KEY, token);
+      localStorage.setItem(NAME_KEY, nextAccount.name);
+      if (nextAccount.avatar) localStorage.setItem(PHOTO_KEY, nextAccount.avatar);
+
+      setAccount(nextAccount);
+      setName(nextAccount.name);
+      setDraftName(nextAccount.name);
+      setAuthName(nextAccount.name);
+
+      if (nextAccount.avatar) {
+        setPhoto(nextAccount.avatar);
+        setDraftPhoto(nextAccount.avatar);
+      }
+
+      setAuthOpen(false);
+      setAuthPassword("");
+    } catch (submitError) {
+      console.error(submitError);
+      setAuthError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Connexion MixParty impossible.",
+      );
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function logoutAccount() {
+    const token = localStorage.getItem(ACCOUNT_TOKEN_KEY) || "";
+
+    try {
+      if (token) {
+        await fetch(`${getApiBaseUrl()}/account/logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+    } catch {}
+
+    localStorage.removeItem(ACCOUNT_TOKEN_KEY);
+    setAccount(null);
   }
 
   const displayName = name || "Ton profil";
@@ -244,7 +460,13 @@ export default function ProfilePage() {
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
                     <span className="rounded-full border border-violet-300/15 bg-violet-500/10 px-3 py-1 text-[10px] font-black uppercase tracking-[.18em] text-violet-200">Profil MixParty</span>
-                    <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 text-[10px] font-black uppercase tracking-[.16em] text-white/40">Compte à venir</span>
+                    <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[.16em] ${
+                      account
+                        ? "border-emerald-300/20 bg-emerald-400/10 text-emerald-200"
+                        : "border-white/10 bg-white/[0.05] text-white/40"
+                    }`}>
+                      {account ? `Compte ${account.plan === "premium" ? "Premium" : "Free"}` : "Profil local"}
+                    </span>
                   </div>
 
                   <h1 className="mt-3 truncate font-[family:var(--font-exo-2)] text-4xl font-black tracking-tight sm:text-5xl lg:text-6xl">
@@ -376,22 +598,66 @@ export default function ProfilePage() {
           ))}
         </section>
 
-        <section className="mt-5 rounded-[30px] border border-white/10 bg-white/[0.045] p-5 backdrop-blur-xl sm:p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-3">
-              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-cyan-300/15 bg-cyan-500/10 text-cyan-200">
+        <section className="mt-6 overflow-hidden rounded-[30px] border border-cyan-300/10 bg-white/[0.05] shadow-[0_22px_70px_rgba(0,0,0,.24)] backdrop-blur-2xl">
+          <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+            <div className="flex min-w-0 items-start gap-4">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-cyan-300/15 bg-cyan-500/10 text-cyan-200">
                 <ShieldCheck className="h-5 w-5" />
               </div>
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[.2em] text-cyan-300">Compte & sécurité</p>
-                <h2 className="mt-1 font-[family:var(--font-exo-2)] text-lg font-black">Ton compte MixParty</h2>
-                <p className="mt-1 max-w-3xl text-sm leading-6 text-white/40">Connexion multi-appareils, sécurité, statut Free/Premium et sauvegarde de la progression seront centralisés ici.</p>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300">Compte & sécurité</p>
+                <h2 className="mt-1 font-[family:var(--font-exo-2)] text-xl font-black">
+                  {account ? "Ton compte MixParty" : "Sauvegarde ta progression"}
+                </h2>
+                {account ? (
+                  <div className="mt-2 space-y-1 text-sm text-white/45">
+                    <p className="truncate"><span className="text-white/70">E-mail :</span> {account.email}</p>
+                    <p>
+                      <span className="text-white/70">Statut :</span>{" "}
+                      {account.plan === "premium" ? "MixParty Premium" : "MixParty Free"}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-2 max-w-3xl text-sm leading-6 text-white/40">
+                    Crée un compte permanent pour retrouver plus tard tes badges, tes statistiques et l’historique de tes soirées sur tous tes appareils.
+                  </p>
+                )}
               </div>
             </div>
-            <span className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-cyan-300/15 bg-cyan-500/10 px-4 py-2 text-[10px] font-black uppercase tracking-[.16em] text-cyan-200">
-              <Sparkles className="h-3.5 w-3.5" />
-              Compte à connecter
-            </span>
+
+            {accountLoading ? (
+              <span className="inline-flex min-h-11 items-center rounded-2xl border border-white/10 bg-white/[0.05] px-4 text-xs font-black text-white/40">
+                Vérification…
+              </span>
+            ) : account ? (
+              <button
+                type="button"
+                onClick={() => void logoutAccount()}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-2xl border border-red-300/15 bg-red-500/[0.08] px-4 text-xs font-black uppercase tracking-[.12em] text-red-100 transition hover:bg-red-500/[0.14]"
+              >
+                <LogOut className="h-4 w-4" />
+                Déconnexion
+              </button>
+            ) : (
+              <div className="grid shrink-0 grid-cols-2 gap-2 sm:flex">
+                <button
+                  type="button"
+                  onClick={() => openAuth("login")}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-4 text-xs font-black text-white/75 transition hover:bg-white/[0.1]"
+                >
+                  <LogIn className="h-4 w-4" />
+                  Connexion
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openAuth("register")}
+                  className="inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-cyan-300/20 bg-cyan-500/10 px-4 text-xs font-black text-cyan-100 transition hover:bg-cyan-500/15"
+                >
+                  <BadgeCheck className="h-4 w-4" />
+                  Créer mon compte
+                </button>
+              </div>
+            )}
           </div>
         </section>
 
@@ -399,6 +665,118 @@ export default function ProfilePage() {
           <span className="font-black text-white/35">MixParty</span> · Ton profil, ta progression, tes soirées.
         </footer>
       </div>
+
+
+      {authOpen ? (
+        <div className="fixed inset-0 z-[9999] flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-[#05030c]/92 px-4 py-[max(1rem,env(safe-area-inset-top))] backdrop-blur-2xl">
+          <section className="relative w-full max-w-md overflow-hidden rounded-[32px] border border-white/10 bg-[#100b19]/95 p-5 shadow-[0_35px_120px_rgba(0,0,0,.68)] sm:p-7">
+            <div className="absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-cyan-400/70 to-transparent" />
+
+            <div className="text-center">
+              <p className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300">Compte MixParty</p>
+              <h2 className="mt-2 font-[family:var(--font-exo-2)] text-2xl font-black">
+                {authMode === "register" ? "Créer mon compte" : "Me connecter"}
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-white/40">
+                {authMode === "register"
+                  ? "Ton profil devient permanent. Les statistiques et badges seront branchés ensuite."
+                  : "Retrouve ton identité MixParty sur cet appareil."}
+              </p>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              {authMode === "register" ? (
+                <label className="block">
+                  <span className="text-[11px] font-black uppercase tracking-[.16em] text-white/45">Pseudo</span>
+                  <div className="relative mt-2">
+                    <UserRound className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+                    <input
+                      value={authName}
+                      onChange={(event) => setAuthName(event.target.value)}
+                      maxLength={24}
+                      autoComplete="nickname"
+                      className="h-14 w-full rounded-2xl border border-white/10 bg-black/30 pl-11 pr-4 text-base font-bold outline-none transition focus:border-cyan-400/45 focus:ring-4 focus:ring-cyan-500/10"
+                    />
+                  </div>
+                </label>
+              ) : null}
+
+              <label className="block">
+                <span className="text-[11px] font-black uppercase tracking-[.16em] text-white/45">E-mail</span>
+                <div className="relative mt-2">
+                  <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+                  <input
+                    type="email"
+                    value={authEmail}
+                    onChange={(event) => setAuthEmail(event.target.value)}
+                    autoComplete="email"
+                    placeholder="toi@exemple.fr"
+                    className="h-14 w-full rounded-2xl border border-white/10 bg-black/30 pl-11 pr-4 text-base font-bold outline-none transition placeholder:text-white/20 focus:border-cyan-400/45 focus:ring-4 focus:ring-cyan-500/10"
+                  />
+                </div>
+              </label>
+
+              <label className="block">
+                <span className="text-[11px] font-black uppercase tracking-[.16em] text-white/45">Mot de passe</span>
+                <div className="relative mt-2">
+                  <KeyRound className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+                  <input
+                    type="password"
+                    value={authPassword}
+                    onChange={(event) => setAuthPassword(event.target.value)}
+                    autoComplete={authMode === "register" ? "new-password" : "current-password"}
+                    placeholder="8 caractères minimum"
+                    className="h-14 w-full rounded-2xl border border-white/10 bg-black/30 pl-11 pr-4 text-base font-bold outline-none transition placeholder:text-white/20 focus:border-cyan-400/45 focus:ring-4 focus:ring-cyan-500/10"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !authBusy) void submitAuth();
+                    }}
+                  />
+                </div>
+              </label>
+            </div>
+
+            {authError ? (
+              <p className="mt-4 rounded-2xl border border-red-400/15 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-200">
+                {authError}
+              </p>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => void submitAuth()}
+              disabled={authBusy}
+              className="mt-5 min-h-14 w-full rounded-2xl border border-white/15 bg-gradient-to-r from-violet-600 via-fuchsia-500 to-orange-400 px-4 text-sm font-black shadow-[0_14px_35px_rgba(236,72,153,.22)] transition hover:brightness-110 disabled:opacity-50"
+            >
+              {authBusy
+                ? "Connexion…"
+                : authMode === "register"
+                  ? "Créer mon compte MixParty"
+                  : "Se connecter"}
+            </button>
+
+            <div className="mt-4 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode(authMode === "register" ? "login" : "register");
+                  setAuthError("");
+                  setAuthPassword("");
+                }}
+                className="text-xs font-black text-cyan-200/75 hover:text-cyan-100"
+              >
+                {authMode === "register" ? "J’ai déjà un compte" : "Créer un compte"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setAuthOpen(false)}
+                className="rounded-xl border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-black text-white/55"
+              >
+                Fermer
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {editing ? (
         <div className="fixed inset-0 z-[9998] flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-[#05030c]/92 px-4 py-[max(1rem,env(safe-area-inset-top))] backdrop-blur-2xl">
