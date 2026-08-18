@@ -624,10 +624,6 @@ export function createAccountsStore(filePath: string) {
     if (!account) return null;
     account.stats.votesGiven += 1;
     account.updatedAt = Date.now();
-    if (songOwnerAccountId && songOwnerAccountId !== account.id) {
-      const owner = database.accounts.find((item) => item.id === songOwnerAccountId);
-      if (owner) { owner.stats.votesReceived += 1; owner.updatedAt = Date.now(); }
-    }
     save();
     return publicAccount(account);
   }
@@ -637,12 +633,30 @@ export function createAccountsStore(filePath: string) {
     if (!account) return null;
     account.stats.votesGiven = Math.max(0, account.stats.votesGiven - 1);
     account.updatedAt = Date.now();
-    if (songOwnerAccountId && songOwnerAccountId !== account.id) {
-      const owner = database.accounts.find((item) => item.id === songOwnerAccountId);
-      if (owner) { owner.stats.votesReceived = Math.max(0, owner.stats.votesReceived - 1); owner.updatedAt = Date.now(); }
-    }
     save();
     return publicAccount(account);
+  }
+
+  function recordVoteReceivedByAccountId(accountId: string | undefined) {
+    if (!accountId) return null;
+    const owner = database.accounts.find((item) => item.id === accountId);
+    if (!owner) return null;
+
+    owner.stats.votesReceived += 1;
+    owner.updatedAt = Date.now();
+    save();
+    return publicAccount(owner);
+  }
+
+  function recordVoteReceivedRemovedByAccountId(accountId: string | undefined) {
+    if (!accountId) return null;
+    const owner = database.accounts.find((item) => item.id === accountId);
+    if (!owner) return null;
+
+    owner.stats.votesReceived = Math.max(0, owner.stats.votesReceived - 1);
+    owner.updatedAt = Date.now();
+    save();
+    return publicAccount(owner);
   }
 
   function logout(token: string) {
@@ -669,6 +683,8 @@ export function createAccountsStore(filePath: string) {
     recordSongAdded,
     recordVoteGiven,
     recordVoteRemoved,
+    recordVoteReceivedByAccountId,
+    recordVoteReceivedRemovedByAccountId,
     logout,
   };
 }

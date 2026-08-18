@@ -3162,6 +3162,10 @@ console.log("Résultat includes :", song.voters.includes(name));
     accountsStore.recordVoteGiven(accountToken, song.addedByAccountId);
   }
 
+  if (song.addedByAccountId) {
+    accountsStore.recordVoteReceivedByAccountId(song.addedByAccountId);
+  }
+
   if (song.votes >= 5 && song.addedByAccountId) {
     accountsStore.recordSongReachedFiveVotesByAccountId(
       song.addedByAccountId,
@@ -3212,7 +3216,13 @@ app.post("/party/:code/song/:index/downvote", (req, res) => {
 
   const accountToken = readBearerToken(req);
   const authenticatedAccount = accountToken ? accountsStore.authenticate(accountToken) : null;
-  if (accountToken && authenticatedAccount) accountsStore.recordVoteRemoved(accountToken, song.addedByAccountId);
+  if (accountToken && authenticatedAccount) {
+    accountsStore.recordVoteRemoved(accountToken, song.addedByAccountId);
+  }
+
+  if (song.addedByAccountId) {
+    accountsStore.recordVoteReceivedRemovedByAccountId(song.addedByAccountId);
+  }
 
   recordPartyEvent(party, "SONG_DOWNVOTED", {
     song: songEventSnapshot(party, song),
