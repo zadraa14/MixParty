@@ -30,6 +30,7 @@ import {
   Heart,
   Play,
   TrendingUp,
+  ChevronDown,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import MixPartyBackground from "../../components/MixPartyBackground";
@@ -488,6 +489,7 @@ export default function ProfilePage() {
     "profile" | "badges" | "stats" | "history"
   >("profile");
   const [historyVisibleCount, setHistoryVisibleCount] = useState(5);
+  const [showDetailedStats, setShowDetailedStats] = useState(false);
   const profileTopRef = useRef<HTMLDivElement | null>(null);
   const badgesSectionRef = useRef<HTMLElement | null>(null);
   const statsSectionRef = useRef<HTMLElement | null>(null);
@@ -1098,9 +1100,39 @@ export default function ProfilePage() {
           ))}
         </section>
 
+        <div ref={statsSectionRef} className="mt-4 scroll-mt-6">
+          <button
+            type="button"
+            onClick={() => setShowDetailedStats((value) => !value)}
+            className="group flex min-h-12 w-full items-center justify-between gap-4 rounded-[22px] border border-white/[0.08] bg-white/[0.035] px-4 py-3 text-left shadow-[0_14px_40px_rgba(0,0,0,.14)] backdrop-blur-xl transition hover:border-fuchsia-300/20 hover:bg-white/[0.055]"
+            aria-expanded={showDetailedStats}
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-fuchsia-300/15 bg-gradient-to-br from-violet-500/15 to-fuchsia-500/10 text-fuchsia-200">
+                <TrendingUp className="h-4 w-4" />
+              </span>
+
+              <div className="min-w-0">
+                <p className="font-[family:var(--font-exo-2)] text-sm font-black text-white/80">
+                  {showDetailedStats ? "Masquer les stats détaillées" : "Voir les stats détaillées"}
+                </p>
+                <p className="mt-0.5 text-[10px] font-bold text-white/30">
+                  Ratios, records personnels et performances
+                </p>
+              </div>
+            </div>
+
+            <ChevronDown
+              className={`h-5 w-5 shrink-0 text-white/35 transition-transform duration-300 ${
+                showDetailedStats ? "rotate-180 text-fuchsia-200" : ""
+              }`}
+            />
+          </button>
+
+          {showDetailedStats ? (
+            <div className="mt-3 animate-[statsReveal_.22s_ease-out]">
         <section
-          ref={statsSectionRef}
-          className="mt-4 scroll-mt-6 rounded-[30px] border border-white/[0.08] bg-white/[0.035] p-4 shadow-[0_22px_65px_rgba(0,0,0,.18)] backdrop-blur-xl sm:p-5"
+          className="rounded-[30px] border border-white/[0.08] bg-white/[0.035] p-4 shadow-[0_22px_65px_rgba(0,0,0,.18)] backdrop-blur-xl sm:p-5"
         >
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -1261,6 +1293,9 @@ export default function ProfilePage() {
             </article>
           </div>
         </section>
+            </div>
+          ) : null}
+        </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[1.7fr_.8fr]">
           <section ref={badgesSectionRef} className="scroll-mt-6 rounded-[32px] border border-white/10 bg-white/[0.055] p-5 shadow-[0_24px_70px_rgba(0,0,0,.26)] backdrop-blur-2xl sm:p-6">
@@ -2002,6 +2037,18 @@ export default function ProfilePage() {
           </section>
         </div>
       ) : null}
+      <style jsx global>{`
+        @keyframes statsReveal {
+          from {
+            opacity: 0;
+            transform: translateY(-8px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </main>
   );
 }
