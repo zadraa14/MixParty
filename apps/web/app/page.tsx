@@ -8,11 +8,13 @@ import {
   Check,
   Headphones,
   KeyRound,
+  LayoutGrid,
   LogIn,
   Mail,
   Play,
   QrCode,
   Radio,
+  RotateCcw,
   Sparkles,
   UserRound,
   UsersRound,
@@ -64,6 +66,10 @@ export default function Home() {
   const [showLoader, setShowLoader] = useState(true);
   const [loaderVisible, setLoaderVisible] = useState(true);
   const [account, setAccount] = useState<MixPartyAccount | null>(null);
+  const [lastParty, setLastParty] = useState<{
+    code: string;
+    role: "dj" | "guest";
+  } | null>(null);
   const [onboardingIntent, setOnboardingIntent] = useState<OnboardingIntent>(null);
   const [emailFormOpen, setEmailFormOpen] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>("register");
@@ -107,6 +113,57 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function detectLastParty() {
+      const raw = localStorage.getItem("mixparty.lastParty.v1");
+      if (!raw) return;
+
+      try {
+        const saved = JSON.parse(raw) as {
+          code?: string;
+          role?: "dj" | "guest";
+        };
+
+        const code = String(saved?.code || "").trim().toUpperCase();
+
+        if (!code) {
+          localStorage.removeItem("mixparty.lastParty.v1");
+          return;
+        }
+
+        const response = await fetch(
+          `${getApiBaseUrl()}/party/${encodeURIComponent(code)}`,
+          { cache: "no-store" },
+        );
+
+        if (!response.ok) {
+          localStorage.removeItem("mixparty.lastParty.v1");
+          if (!cancelled) setLastParty(null);
+          return;
+        }
+
+        const creatorToken = localStorage.getItem(`mixparty_creator_${code}`);
+
+        if (!cancelled) {
+          setLastParty({
+            code,
+            role: creatorToken ? "dj" : "guest",
+          });
+        }
+      } catch {
+        localStorage.removeItem("mixparty.lastParty.v1");
+      }
+    }
+
+    void detectLastParty();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   function accountAuthHeaders(): Record<string, string> {
     const token = localStorage.getItem(ACCOUNT_TOKEN_KEY) || "";
     return token ? { Authorization: `Bearer ${token}` } : {};
@@ -130,6 +187,14 @@ export default function Home() {
       }
 
       localStorage.setItem(`mixparty_creator_${party.code}`, party.creatorToken);
+      localStorage.setItem(
+        "mixparty.lastParty.v1",
+        JSON.stringify({
+          code: party.code,
+          role: "dj",
+          savedAt: Date.now(),
+        }),
+      );
       router.push(`/party/${party.code}`);
     } catch (error) {
       console.error(error);
@@ -177,6 +242,11 @@ export default function Home() {
     setAuthError("");
     setSocialNotice("");
     setOnboardingIntent("join");
+  }
+
+  function resumeLastParty() {
+    if (!lastParty?.code) return;
+    router.push(`/party/${lastParty.code}`);
   }
 
   function closeOnboarding() {
@@ -303,141 +373,167 @@ export default function Home() {
     <>
       {showLoader && <MixPartyLoader visible={loaderVisible} />}
 
-      <main className="mp521-page relative isolate min-h-[100dvh] overflow-hidden bg-[#070711] text-white">
+      <main className="relative isolate min-h-[100dvh] overflow-hidden bg-[#070711] text-white">
         <MixPartyBackground />
-        <div className="mp521-depth pointer-events-none fixed inset-0 z-[1]" />
-        <div className="mp521-particles pointer-events-none fixed inset-0 z-[2]" aria-hidden="true" />
+        <div className="pointer-events-none fixed inset-0 z-[1] bg-[radial-gradient(circle_at_18%_16%,rgba(124,58,237,.15),transparent_30%),radial-gradient(circle_at_82%_20%,rgba(236,72,153,.13),transparent_28%),radial-gradient(circle_at_72%_78%,rgba(249,115,22,.09),transparent_32%),linear-gradient(to_bottom,rgba(7,7,17,.02),rgba(7,7,17,.28))]" />
 
-        <div className="relative z-10 mx-auto max-w-[1440px] px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(.75rem,env(safe-area-inset-top))] sm:px-6 lg:px-10 xl:px-14">
+        <div className="relative z-10 mx-auto w-full max-w-[1440px] px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-[max(.75rem,env(safe-area-inset-top))] sm:px-6 lg:px-10 xl:px-14">
           <MixPartyHeader />
 
-          <section className="grid min-h-[calc(100dvh-104px)] items-center gap-10 py-10 sm:py-14 lg:min-h-[760px] lg:grid-cols-[minmax(0,1.12fr)_minmax(470px,.88fr)] lg:gap-12 lg:py-12 xl:min-h-[820px] xl:gap-20">
-            <div className="relative z-10 max-w-2xl lg:max-w-[720px]">
-              <div className="mp521-reveal mp521-reveal-1 inline-flex items-center gap-2 rounded-full border border-purple-300/20 bg-purple-400/[0.08] px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-purple-200 shadow-[inset_0_1px_0_rgba(255,255,255,.08)] backdrop-blur-xl sm:text-xs">
-                <span className="mp521-live-dot h-2 w-2 rounded-full bg-emerald-400" />
-                La soirée devient collaborative
+          <section className="grid items-center gap-8 pb-12 pt-7 sm:pb-16 sm:pt-12 lg:min-h-[760px] lg:grid-cols-[minmax(0,1.02fr)_minmax(460px,.98fr)] lg:gap-14 lg:pb-20 lg:pt-10">
+            <div className="mx-auto w-full max-w-2xl text-center lg:mx-0 lg:text-left">
+              <div className="inline-flex items-center gap-2 rounded-full border border-fuchsia-300/20 bg-fuchsia-400/[0.08] px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-100 shadow-[inset_0_1px_0_rgba(255,255,255,.08)] backdrop-blur-xl sm:text-xs">
+                <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,.9)]" />
+                La musique, tous ensemble
               </div>
 
-              <h1 className="mp521-reveal mp521-reveal-2 mt-6 font-[family:var(--font-exo-2)] text-[clamp(3.25rem,8vw,6.7rem)] font-black leading-[.88] tracking-[-.065em] lg:text-[clamp(5.4rem,7vw,7.6rem)]">
-                <span className="block text-white drop-shadow-[0_0_22px_rgba(255,255,255,.11)]">Ta soirée.</span>
-                <span className="mp521-hero-gradient block">Leur playlist.</span>
+              <h1 className="mt-6 font-[family:var(--font-exo-2)] text-[clamp(3.25rem,12vw,5.8rem)] font-black leading-[.92] tracking-[-.055em] sm:text-[clamp(4.5rem,10vw,6.8rem)] lg:text-[clamp(5rem,6.4vw,7.4rem)]">
+                <span className="block text-white">La soirée appartient</span>
+                <span className="block bg-gradient-to-r from-fuchsia-400 via-pink-400 to-orange-300 bg-clip-text text-transparent">
+                  à tout le monde !
+                </span>
               </h1>
 
-              <p className="mp521-reveal mp521-reveal-3 mt-7 max-w-xl text-base font-medium leading-7 text-white/52 sm:text-lg sm:leading-8 lg:max-w-2xl lg:text-xl lg:leading-9">
-                Crée une salle, partage le QR Code et laisse tes invités proposer puis voter pour les prochains titres. MixParty s’occupe du reste.
+              <p className="mx-auto mt-6 max-w-xl text-base font-medium leading-7 text-white/52 sm:text-lg sm:leading-8 lg:mx-0 lg:text-xl lg:leading-9">
+                Crée ta soirée, partage le QR Code et laisse chacun ajouter ses sons et voter. MixParty garde tout le monde dans la même ambiance.
               </p>
 
-              <div className="mp521-reveal mp521-reveal-4 mt-8 flex flex-col gap-3 sm:flex-row lg:mt-10 lg:gap-4">
-                <button type="button" onClick={createParty} disabled={creatingParty} className="mp521-primary-button group">
-                  <span className="mp521-button-shine" aria-hidden="true" />
-                  <span className="relative z-10 flex items-center justify-center gap-2.5">
-                    {creatingParty ? <span className="mp-button-spinner" /> : <Sparkles className="h-5 w-5" />}
-                    {creatingParty ? "Création..." : "Créer ma soirée"}
-                    {!creatingParty && <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />}
+              <div className="mt-8 grid gap-3 sm:grid-cols-2 lg:mt-10">
+                <button
+                  type="button"
+                  onClick={createParty}
+                  disabled={creatingParty}
+                  className="group relative overflow-hidden rounded-[26px] border border-fuchsia-300/20 bg-gradient-to-br from-fuchsia-500 via-pink-500 to-orange-400 p-[1px] text-left shadow-[0_22px_70px_rgba(236,72,153,.22)] transition hover:-translate-y-1 disabled:opacity-60"
+                >
+                  <span className="flex min-h-[112px] items-center gap-4 rounded-[25px] bg-[#120b1d]/75 px-5 py-5 backdrop-blur-xl sm:min-h-[126px]">
+                    <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-black/35 shadow-[inset_0_1px_0_rgba(255,255,255,.09)]">
+                      {creatingParty ? <span className="mp-button-spinner" /> : <Sparkles className="h-7 w-7 text-fuchsia-200" />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <strong className="block text-lg font-black text-white sm:text-xl">
+                        {creatingParty ? "Création..." : "Créer ma soirée"}
+                      </strong>
+                      <span className="mt-1 block text-sm font-semibold text-white/50">Deviens le DJ</span>
+                    </span>
+                    <ArrowRight className="h-5 w-5 shrink-0 text-white/65 transition group-hover:translate-x-1" />
                   </span>
                 </button>
 
-                <a href="#rejoindre" className="mp521-secondary-button group">
-                  <span className="flex items-center justify-center gap-2.5">
-                    <UsersRound className="h-5 w-5" />
-                    Rejoindre une soirée
+                <button
+                  type="button"
+                  onClick={() => document.getElementById("rejoindre")?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                  className="group flex min-h-[114px] items-center gap-4 rounded-[26px] border border-violet-300/20 bg-gradient-to-br from-violet-500/22 via-purple-500/15 to-fuchsia-500/10 px-5 py-5 text-left shadow-[0_22px_70px_rgba(124,58,237,.14)] backdrop-blur-xl transition hover:-translate-y-1 hover:border-violet-300/35 sm:min-h-[128px]"
+                >
+                  <span className="grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-violet-400/10 text-violet-200">
+                    <UsersRound className="h-7 w-7" />
                   </span>
-                </a>
+                  <span className="min-w-0 flex-1">
+                    <strong className="block text-lg font-black text-white sm:text-xl">Rejoindre une soirée</strong>
+                    <span className="mt-1 block text-sm font-semibold text-white/50">Avec un code</span>
+                  </span>
+                  <ArrowRight className="h-5 w-5 shrink-0 text-white/50 transition group-hover:translate-x-1" />
+                </button>
               </div>
 
-              <div className="mp521-reveal mp521-reveal-5 mt-7 flex flex-wrap gap-x-5 gap-y-2 text-xs font-bold text-white/35 lg:mt-8 lg:gap-x-7 lg:text-sm">
-                <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" />Sans compte</span>
+              {lastParty ? (
+                <button
+                  type="button"
+                  onClick={resumeLastParty}
+                  className="mt-3 flex w-full items-center gap-3 rounded-[22px] border border-emerald-300/15 bg-emerald-400/[0.06] px-4 py-3.5 text-left backdrop-blur-xl transition hover:border-emerald-300/30 hover:bg-emerald-400/[0.09]"
+                >
+                  <span className="relative flex h-3 w-3 shrink-0">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-45" />
+                    <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.85)]" />
+                  </span>
+                  <RotateCcw className="h-4 w-4 shrink-0 text-emerald-200" />
+                  <span className="min-w-0 flex-1">
+                    <strong className="block text-sm font-black text-white">Reprendre la soirée</strong>
+                    <span className="block truncate text-xs font-semibold text-white/40">
+                      {lastParty.code} • {lastParty.role === "dj" ? "Organisateur" : "Invité"}
+                    </span>
+                  </span>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-white/35" />
+                </button>
+              ) : null}
+
+              <div className="mt-6 flex flex-wrap justify-center gap-x-5 gap-y-2 text-xs font-bold text-white/38 lg:justify-start">
+                <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" />Profil éphémère possible</span>
                 <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" />En temps réel</span>
-                <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" />Pensé pour mobile</span>
+                <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" />Mobile & PC</span>
               </div>
             </div>
 
-            <div className="mp521-reveal mp521-reveal-3 relative mx-auto w-full max-w-[570px] lg:mx-0 lg:justify-self-end lg:rounded-[44px] lg:border lg:border-white/[0.08] lg:bg-white/[0.025] lg:px-8 lg:py-10 lg:shadow-[0_35px_120px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.05)] lg:backdrop-blur-sm xl:px-10 xl:py-12">
-              <div className="mp521-phone-aura pointer-events-none absolute inset-[10%] rounded-full" />
-              <div className="mp521-orbit mp521-orbit-one" />
-              <div className="mp521-orbit mp521-orbit-two" />
+            <div className="relative mx-auto w-full max-w-[620px] lg:justify-self-end">
+              <div className="pointer-events-none absolute inset-[12%] rounded-full bg-gradient-to-br from-fuchsia-500/25 via-purple-500/12 to-orange-400/20 blur-[70px]" />
 
-              <div className="mp521-phone-shell relative mx-auto w-[min(100%,390px)] rounded-[48px] p-[7px] sm:w-[390px] lg:w-[410px] xl:w-[430px]">
-                <div className="relative overflow-hidden rounded-[41px] border border-white/[0.09] bg-[#090913] px-5 pb-6 pt-4 shadow-[inset_0_1px_0_rgba(255,255,255,.08)]">
+              <div className="relative mx-auto w-full max-w-[430px] rotate-[1deg] rounded-[46px] border border-white/10 bg-[#0a0912]/95 p-2 shadow-[0_40px_120px_rgba(0,0,0,.55),0_0_80px_rgba(168,85,247,.12)] sm:p-2.5">
+                <div className="overflow-hidden rounded-[39px] border border-white/[0.08] bg-gradient-to-b from-[#11101b] to-[#080811] px-5 pb-5 pt-4">
                   <div className="mx-auto h-1.5 w-20 rounded-full bg-white/10" />
 
                   <div className="mt-5 flex items-center justify-between">
                     <div>
-                      <p className="text-[9px] font-black uppercase tracking-[0.23em] text-orange-300/75">En lecture</p>
-                      <p className="mt-1 text-sm font-black text-white">MixParty Live</p>
+                      <p className="text-[9px] font-black uppercase tracking-[0.22em] text-orange-300">En lecture</p>
+                      <p className="mt-1 text-sm font-black">MixParty Live</p>
                     </div>
-                    <div className="flex items-center gap-1.5 rounded-full border border-emerald-400/15 bg-emerald-400/[0.08] px-2.5 py-1.5 text-[9px] font-black text-emerald-300">
-                      <span className="mp521-live-dot h-1.5 w-1.5 rounded-full bg-emerald-400" /> LIVE
-                    </div>
+                    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/15 bg-emerald-400/[0.08] px-2.5 py-1.5 text-[9px] font-black text-emerald-300">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> LIVE
+                    </span>
                   </div>
 
-                  <div className="mp521-cover relative mx-auto mt-6 aspect-square w-full max-w-[285px] overflow-hidden rounded-[32px]">
-                    <div className="mp521-cover-grid absolute inset-0" />
-                    <div className="mp521-cover-glow absolute -left-10 top-8 h-40 w-40 rounded-full bg-purple-500/60 blur-[45px]" />
-                    <div className="mp521-cover-glow absolute -right-12 bottom-0 h-44 w-44 rounded-full bg-orange-500/55 blur-[50px] [animation-delay:1.2s]" />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="mp521-vinyl flex h-[68%] w-[68%] items-center justify-center rounded-full border border-white/15 bg-[radial-gradient(circle_at_center,#0a0a12_0_13%,#f97316_14%_17%,#18111f_18%_26%,#0a0a12_27%_36%,#211228_37%_48%,#07070d_49%_100%)] shadow-[0_24px_70px_rgba(0,0,0,.55),0_0_55px_rgba(236,72,153,.24)]">
-                        <div className="h-3 w-3 rounded-full bg-white/85 shadow-[0_0_16px_rgba(255,255,255,.65)]" />
+                  <div className="relative mt-5 aspect-[1.05/1] overflow-hidden rounded-[30px] border border-white/[0.07] bg-[radial-gradient(circle_at_30%_28%,rgba(168,85,247,.48),transparent_28%),radial-gradient(circle_at_72%_70%,rgba(249,115,22,.38),transparent_32%),linear-gradient(145deg,#100b1d,#181025_58%,#35160d)]">
+                    <div className="absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(255,255,255,.04)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.04)_1px,transparent_1px)] [background-size:34px_34px]" />
+                    <div className="absolute inset-0 grid place-items-center">
+                      <div className="grid h-44 w-44 place-items-center rounded-full border border-white/10 bg-[radial-gradient(circle,#fff_0_3%,#f97316_4%_8%,#11111b_9%_20%,#29132f_21%_34%,#08080f_35%_100%)] shadow-[0_22px_65px_rgba(0,0,0,.55),0_0_45px_rgba(236,72,153,.24)]">
+                        <div className="h-3 w-3 rounded-full bg-white" />
                       </div>
                     </div>
-                    <div className="absolute inset-x-5 bottom-5 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 backdrop-blur-xl">
-                      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">PartyBrain selection</p>
-                      <p className="mt-1 truncate font-[family:var(--font-exo-2)] text-base font-black">Midnight Energy</p>
+                    <div className="absolute inset-x-4 bottom-4 rounded-2xl border border-white/10 bg-black/40 px-4 py-3 backdrop-blur-xl">
+                      <p className="text-[8px] font-black uppercase tracking-[0.19em] text-fuchsia-200/70">PartyBrain sélection</p>
+                      <p className="mt-1 truncate text-base font-black">Midnight Energy</p>
                     </div>
                   </div>
 
-                  <div className="mt-5 text-center">
-                    <p className="font-[family:var(--font-exo-2)] text-xl font-black tracking-tight">Midnight Energy</p>
-                    <p className="mt-1 text-xs font-semibold text-white/35">MixParty Session • 3:42</p>
+                  <div className="mt-5">
+                    <p className="text-xl font-black">Midnight Energy</p>
+                    <p className="mt-1 text-xs font-semibold text-white/38">MixParty Session • 3:42</p>
                   </div>
 
-                  <div className="mp521-waveform mt-5" aria-label="Visualisation audio">
-                    {WAVE.map((height, index) => (
-                      <span key={index} style={{ height: `${height}%`, animationDelay: `${index * 48}ms` }} />
-                    ))}
+                  <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
+                    <div className="h-full w-[54%] rounded-full bg-gradient-to-r from-fuchsia-500 via-pink-500 to-orange-400" />
                   </div>
 
                   <div className="mt-5 flex items-center justify-center gap-5">
-                    <button type="button" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/45 transition hover:bg-white/10 hover:text-white" aria-label="Titre précédent">
+                    <button type="button" className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-white/45" aria-label="Précédent">
                       <ArrowRight className="h-4 w-4 rotate-180" />
                     </button>
-                    <button type="button" className="mp521-play-button" aria-label="Lecture">
-                      <span className="mp521-play-ring" />
-                      <Play className="relative z-10 ml-1 h-7 w-7 fill-current" />
+                    <button type="button" className="grid h-16 w-16 place-items-center rounded-full border border-fuchsia-300/30 bg-gradient-to-br from-fuchsia-500/22 to-orange-400/16 text-white shadow-[0_0_32px_rgba(236,72,153,.24)]" aria-label="Lecture">
+                      <Play className="ml-1 h-7 w-7 fill-current" />
                     </button>
-                    <button type="button" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/45 transition hover:bg-white/10 hover:text-white" aria-label="Titre suivant">
+                    <button type="button" className="grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-white/45" aria-label="Suivant">
                       <ArrowRight className="h-4 w-4" />
                     </button>
                   </div>
 
-                  <div className="mt-6 grid grid-cols-3 gap-2">
-                    <div className="mp521-mini-stat"><UsersRound className="h-4 w-4 text-purple-300" /><strong>24</strong><span>invités</span></div>
-                    <div className="mp521-mini-stat"><Vote className="h-4 w-4 text-pink-300" /><strong>186</strong><span>votes</span></div>
-                    <div className="mp521-mini-stat"><Headphones className="h-4 w-4 text-orange-300" /><strong>38</strong><span>titres</span></div>
+                  <div className="mt-5 grid grid-cols-3 gap-2">
+                    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] px-2 py-3 text-center"><UsersRound className="mx-auto h-4 w-4 text-violet-300" /><strong className="mt-1 block text-sm">24</strong><span className="text-[9px] font-bold text-white/35">invités</span></div>
+                    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] px-2 py-3 text-center"><Vote className="mx-auto h-4 w-4 text-pink-300" /><strong className="mt-1 block text-sm">186</strong><span className="text-[9px] font-bold text-white/35">votes</span></div>
+                    <div className="rounded-2xl border border-white/[0.07] bg-white/[0.035] px-2 py-3 text-center"><Headphones className="mx-auto h-4 w-4 text-orange-300" /><strong className="mt-1 block text-sm">38</strong><span className="text-[9px] font-bold text-white/35">titres</span></div>
                   </div>
                 </div>
-              </div>
-
-              <div className="mp521-floating-card mp521-floating-card-left hidden sm:flex">
-                <div className="mp521-floating-icon bg-purple-400/10 text-purple-200"><UsersRound className="h-4 w-4" /></div>
-                <div><strong>+8 invités</strong><span>viennent de rejoindre</span></div>
-              </div>
-              <div className="mp521-floating-card mp521-floating-card-right hidden sm:flex">
-                <div className="mp521-floating-icon bg-orange-400/10 text-orange-200"><WandSparkles className="h-4 w-4" /></div>
-                <div><strong>PartyBrain</strong><span>ambiance optimisée</span></div>
               </div>
             </div>
           </section>
 
-          <div className="mx-auto hidden h-px w-[88%] bg-gradient-to-r from-transparent via-white/10 to-transparent lg:block" />
-
-          <section id="rejoindre" className="py-14 sm:py-20 lg:py-16">
-            <div className="mp521-join-card mx-auto grid max-w-6xl gap-7 rounded-[34px] border border-white/[0.10] bg-white/[0.045] p-5 shadow-[0_24px_90px_rgba(0,0,0,.28),inset_0_1px_0_rgba(255,255,255,.055)] backdrop-blur-xl sm:p-8 lg:grid-cols-[1fr_auto] lg:items-center lg:p-10 xl:p-12">
+          <section id="rejoindre" className="py-8 sm:py-12 lg:py-14">
+            <div className="mx-auto grid max-w-6xl gap-6 rounded-[32px] border border-white/10 bg-white/[0.045] p-5 shadow-[0_26px_90px_rgba(0,0,0,.24)] backdrop-blur-xl sm:p-7 lg:grid-cols-[1fr_auto] lg:items-center lg:p-9">
               <div>
-                <span className="mp521-section-kicker">Déjà invité ?</span>
-                <h2 className="mt-3 font-[family:var(--font-exo-2)] text-3xl font-black tracking-tight sm:text-4xl">Entre dans la soirée.</h2>
-                <p className="mt-3 max-w-xl text-sm leading-6 text-white/42 sm:text-base">Saisis le code affiché par l’organisateur et rejoins instantanément la playlist collective.</p>
+                <span className="text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-300">Déjà invité ?</span>
+                <h2 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Entre dans la soirée.</h2>
+                <p className="mt-2 max-w-xl text-sm leading-6 text-white/44 sm:text-base">
+                  Entre le code affiché par l’organisateur et rejoins la playlist collective.
+                </p>
               </div>
+
               <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
                 <input
                   value={partyCode}
@@ -445,51 +541,90 @@ export default function Home() {
                   onKeyDown={(event) => event.key === "Enter" && joinParty()}
                   maxLength={8}
                   placeholder="CODE"
-                  className="mp521-code-input min-w-0 sm:w-44"
+                  className="h-14 min-w-0 rounded-2xl border border-white/10 bg-black/30 px-5 text-center text-sm font-black uppercase tracking-[.2em] outline-none transition focus:border-fuchsia-400/50 sm:w-48"
                   aria-label="Code de la soirée"
                 />
-                <button type="button" onClick={joinParty} className="mp521-primary-button mp521-primary-button--compact group">
-                  <span className="mp521-button-shine" aria-hidden="true" />
-                  <span className="relative z-10 flex items-center justify-center gap-2">Rejoindre <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></span>
+                <button
+                  type="button"
+                  onClick={joinParty}
+                  className="group h-14 rounded-2xl border border-fuchsia-300/20 bg-gradient-to-r from-fuchsia-600 via-pink-500 to-orange-400 px-6 text-sm font-black shadow-[0_14px_35px_rgba(236,72,153,.18)] transition hover:-translate-y-0.5"
+                >
+                  <span className="flex items-center justify-center gap-2">
+                    Rejoindre
+                    <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+                  </span>
                 </button>
               </div>
             </div>
           </section>
 
-          <section className="py-14 sm:py-20 lg:py-16">
-            <div className="mx-auto max-w-4xl text-center">
-              <span className="mp521-section-kicker">Pourquoi MixParty</span>
-              <h2 className="mt-4 font-[family:var(--font-exo-2)] text-3xl font-black tracking-tight sm:text-5xl">Une soirée qui <span className="mp521-inline-gradient">réagit en direct.</span></h2>
-              <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-white/42 sm:text-base">Chaque téléphone devient une télécommande musicale collective, sans compte et sans installation compliquée.</p>
+          <section className="py-10 sm:py-16 lg:py-20">
+            <div className="mx-auto max-w-3xl text-center">
+              <span className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-300">Pourquoi MixParty</span>
+              <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-5xl">Tout comprendre en quelques secondes.</h2>
+              <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-white/42 sm:text-base">
+                Pas de menus compliqués : chacun sait immédiatement quoi faire pendant la soirée.
+              </p>
             </div>
-            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:mt-12 lg:grid-cols-4 lg:gap-5">
-              {STATS.map(({ label, value, description, icon: Icon, accent }, index) => (
-                <article key={label} className={`mp521-stat-card mp521-accent-${accent} border border-white/[0.08] bg-white/[0.035] shadow-[0_18px_55px_rgba(0,0,0,.22),inset_0_1px_0_rgba(255,255,255,.045)] backdrop-blur-xl lg:min-h-[220px] lg:p-7`} style={{ animationDelay: `${index * 100}ms` }}>
-                  <div className="mp521-stat-icon"><Icon className="h-5 w-5" /></div>
-                  <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-white/27">{label}</p>
-                  <p className="mt-2 font-[family:var(--font-exo-2)] text-xl font-black text-white">{value}</p>
-                  <p className="mt-2 text-sm leading-6 text-white/38">{description}</p>
+
+            <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:mt-10 lg:grid-cols-4">
+              {[
+                { icon: Headphones, title: "Tous les sons", text: "Cherche et ajoute facilement les morceaux que tu veux.", accent: "text-fuchsia-300 bg-fuchsia-400/10" },
+                { icon: UsersRound, title: "Tous ensemble", text: "Chaque invité participe et influence la playlist.", accent: "text-violet-300 bg-violet-400/10" },
+                { icon: Bot, title: "PartyBrain", text: "Des suggestions adaptées à l’ambiance de la soirée.", accent: "text-cyan-300 bg-cyan-400/10" },
+                { icon: LayoutGrid, title: "Badges & stats", text: "Garde ta progression avec un compte MixParty.", accent: "text-orange-300 bg-orange-400/10" },
+              ].map(({ icon: Icon, title, text: description, accent }) => (
+                <article key={title} className="rounded-[28px] border border-white/[0.08] bg-white/[0.035] p-5 shadow-[0_18px_60px_rgba(0,0,0,.20)] backdrop-blur-xl sm:p-6">
+                  <div className={`grid h-12 w-12 place-items-center rounded-2xl ${accent}`}>
+                    <Icon className="h-6 w-6" />
+                  </div>
+                  <h3 className="mt-5 text-lg font-black">{title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-white/40">{description}</p>
                 </article>
               ))}
             </div>
           </section>
 
-          <section className="py-14 sm:py-20 lg:py-16">
+          <section className="py-10 sm:py-16 lg:py-20">
             <div className="mx-auto max-w-3xl text-center">
-              <span className="mp521-section-kicker mp521-section-kicker--pink">Comment ça marche</span>
-              <h2 className="mt-4 font-[family:var(--font-exo-2)] text-3xl font-black tracking-tight sm:text-5xl">Quatre étapes. <span className="mp521-inline-gradient">Une seule ambiance.</span></h2>
+              <span className="text-[10px] font-black uppercase tracking-[0.18em] text-pink-300">Comment ça marche</span>
+              <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-5xl">Quatre étapes. Une seule ambiance.</h2>
             </div>
-            <div className="mp521-timeline relative mt-12 grid gap-5 lg:mt-14 lg:grid-cols-4 lg:gap-6">
-              <div className="mp521-timeline-line hidden lg:block" />
-              {STEPS.map(({ number, title, text, icon: Icon, accent }, index) => (
-                <article key={number} className={`mp521-step-card mp521-accent-${accent} border border-white/[0.08] bg-black/15 shadow-[0_18px_55px_rgba(0,0,0,.20),inset_0_1px_0_rgba(255,255,255,.04)] backdrop-blur-xl lg:min-h-[240px] lg:p-7`}>
-                  <div className="mp521-step-node"><span>{number}</span></div>
-                  <div className="mp521-stat-icon"><Icon className="h-5 w-5" /></div>
-                  <p className="mt-5 font-[family:var(--font-exo-2)] text-xl font-black">{title}</p>
-                  <p className="mt-2 text-sm leading-6 text-white/40">{text}</p>
-                  <span className="mp521-step-index">0{index + 1}</span>
+
+            <div className="relative mt-8 grid gap-4 md:grid-cols-2 lg:mt-12 lg:grid-cols-4">
+              <div className="pointer-events-none absolute left-[8%] right-[8%] top-8 hidden h-px bg-gradient-to-r from-violet-500/0 via-fuchsia-400/30 to-orange-400/0 lg:block" />
+              {STEPS.map(({ number, title, text: description, icon: Icon }, index) => (
+                <article key={number} className="relative rounded-[28px] border border-white/[0.08] bg-black/15 p-5 backdrop-blur-xl sm:p-6">
+                  <div className="flex items-center justify-between">
+                    <span className="grid h-10 w-10 place-items-center rounded-full border border-fuchsia-300/20 bg-fuchsia-400/[0.08] text-xs font-black text-fuchsia-200">
+                      {number}
+                    </span>
+                    <Icon className={`h-5 w-5 ${index === 0 ? "text-violet-300" : index === 1 ? "text-cyan-300" : index === 2 ? "text-pink-300" : "text-orange-300"}`} />
+                  </div>
+                  <h3 className="mt-5 text-xl font-black">{title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-white/40">{description}</p>
                 </article>
               ))}
+            </div>
+          </section>
+
+          <section className="py-10 sm:py-16">
+            <div className="mx-auto max-w-6xl overflow-hidden rounded-[32px] border border-fuchsia-300/15 bg-gradient-to-r from-violet-500/[0.10] via-fuchsia-500/[0.08] to-orange-400/[0.08] p-6 shadow-[0_22px_80px_rgba(236,72,153,.10)] sm:p-8 lg:flex lg:items-center lg:justify-between lg:gap-8">
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-[0.18em] text-fuchsia-300">Ton MixParty, partout</span>
+                <h2 className="mt-2 text-2xl font-black sm:text-3xl">Prêt à lancer la prochaine soirée ?</h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-white/44">
+                  Crée un compte pour conserver tes badges, statistiques et historiques, ou continue simplement avec un profil éphémère.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={createParty}
+                className="mt-5 inline-flex h-13 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white px-6 text-sm font-black text-[#17131d] transition hover:-translate-y-0.5 lg:mt-0 lg:w-auto"
+              >
+                <Sparkles className="h-4 w-4" />
+                Créer ma soirée
+              </button>
             </div>
           </section>
 
