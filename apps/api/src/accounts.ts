@@ -1068,9 +1068,21 @@ export function createAccountsStore(filePath: string) {
     }
 
     if (partyCode && rawSongKey && votes >= 5) {
-      const songEvent = account.progress.songAddedEvents.find(
-        (event) => event.partyCode === partyCode && event.songKey === rawSongKey,
-      );
+      const rawVideoId = rawSongKey.includes(":")
+        ? rawSongKey.slice(0, rawSongKey.lastIndexOf(":"))
+        : rawSongKey;
+
+      const songEvent =
+        account.progress.songAddedEvents.find(
+          (event) => event.partyCode === partyCode && event.songKey === rawSongKey,
+        ) ||
+        account.progress.songAddedEvents
+          .filter(
+            (event) =>
+              event.partyCode === partyCode &&
+              event.songKey.startsWith(`${rawVideoId}:`),
+          )
+          .sort((a, b) => b.addedAt - a.addedAt)[0];
 
       if (songEvent?.firstEver) {
         unlockBadge(account, "secret-pepite-cachee", partyCode);
@@ -1244,9 +1256,21 @@ export function createAccountsStore(filePath: string) {
     const partyCode = String(partyCodeValue || "").trim().toUpperCase();
     const songKey = String(songKeyValue || "").trim();
 
-    const event = account.progress.songAddedEvents.find(
-      (item) => item.partyCode === partyCode && item.songKey === songKey,
-    );
+    const rawVideoId = songKey.includes(":")
+      ? songKey.slice(0, songKey.lastIndexOf(":"))
+      : songKey;
+
+    const event =
+      account.progress.songAddedEvents.find(
+        (item) => item.partyCode === partyCode && item.songKey === songKey,
+      ) ||
+      account.progress.songAddedEvents
+        .filter(
+          (item) =>
+            item.partyCode === partyCode &&
+            item.songKey.startsWith(`${rawVideoId}:`),
+        )
+        .sort((a, b) => b.addedAt - a.addedAt)[0];
 
     if (event) {
       event.firstEver = true;
