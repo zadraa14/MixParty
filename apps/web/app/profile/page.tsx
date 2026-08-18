@@ -1647,149 +1647,220 @@ export default function ProfilePage() {
 
         <section
           ref={historySectionRef}
-          className="mt-6 scroll-mt-6 rounded-[32px] border border-white/[0.08] bg-white/[0.035] p-5 shadow-[0_24px_70px_rgba(0,0,0,.22)] backdrop-blur-2xl sm:p-6"
+          className="mt-6 scroll-mt-6 overflow-hidden rounded-[32px] border border-white/[0.08] bg-[linear-gradient(145deg,rgba(255,255,255,.045),rgba(139,92,246,.025),rgba(0,0,0,.08))] p-5 shadow-[0_24px_70px_rgba(0,0,0,.22)] backdrop-blur-2xl sm:p-6"
         >
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300">
-                Historique
-              </p>
-              <h2 className="mt-1 font-[family:var(--font-exo-2)] text-2xl font-black">
-                Mes dernières soirées
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-white/40">
-                Participations, soirées organisées et résultats finaux.
-              </p>
+          <div className="relative">
+            <div className="pointer-events-none absolute -right-16 -top-20 h-48 w-48 rounded-full bg-cyan-400/10 blur-[80px]" />
+            <div className="pointer-events-none absolute -left-16 bottom-0 h-40 w-40 rounded-full bg-fuchsia-500/10 blur-[80px]" />
+
+            <div className="relative flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="grid h-9 w-9 place-items-center rounded-2xl border border-cyan-300/15 bg-cyan-500/[0.08] text-cyan-200">
+                    <History className="h-4 w-4" />
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300">
+                      Historique
+                    </p>
+                    <h2 className="mt-0.5 font-[family:var(--font-exo-2)] text-2xl font-black">
+                      Mes dernières soirées
+                    </h2>
+                  </div>
+                </div>
+
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-white/40">
+                  Tes participations récentes, tes rôles et tes résultats finaux.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[.14em] text-white/40">
+                  {allProfileHistory.length} soirée{allProfileHistory.length > 1 ? "s" : ""}
+                </span>
+                <span className="rounded-full border border-emerald-300/15 bg-emerald-500/[0.07] px-3 py-1.5 text-[9px] font-black uppercase tracking-[.14em] text-emerald-200/80">
+                  À jour
+                </span>
+              </div>
             </div>
 
-            <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[.14em] text-white/40">
-              {allProfileHistory.length} entrée{allProfileHistory.length > 1 ? "s" : ""}
-            </div>
-          </div>
+            {profileHistory.length > 0 ? (
+              <div className="relative mt-5 space-y-3">
+                {profileHistory.map((entry, index) => {
+                  const dateValue =
+                    entry.endedAt || entry.lastSeenAt || entry.joinedAt;
+                  const rank = Number(entry.finalRank || 0);
+                  const isWinner = rank === 1;
+                  const isPodium = rank > 1 && rank <= 3;
 
-          {profileHistory.length > 0 ? (
-            <div className="mt-5 space-y-3">
-              {profileHistory.map((entry, index) => {
-                const dateValue =
-                  entry.endedAt || entry.lastSeenAt || entry.joinedAt;
-                const rank = Number(entry.finalRank || 0);
-
-                return (
-                  <article
-                    key={`${entry.partyCode}-${entry.joinedAt}-${index}`}
-                    className="grid gap-3 rounded-[22px] border border-white/[0.07] bg-black/15 p-4 sm:grid-cols-[1fr_auto] sm:items-center"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
+                  return (
+                    <article
+                      key={`${entry.partyCode}-${entry.joinedAt}-${index}`}
+                      className={`group relative overflow-hidden rounded-[22px] border p-4 transition duration-300 hover:-translate-y-0.5 ${
+                        isWinner
+                          ? "border-amber-300/20 bg-gradient-to-r from-amber-500/[0.10] via-orange-500/[0.04] to-black/10"
+                          : isPodium
+                            ? "border-cyan-300/15 bg-gradient-to-r from-cyan-500/[0.08] via-blue-500/[0.03] to-black/10"
+                            : "border-white/[0.07] bg-black/15 hover:border-white/15"
+                      }`}
+                    >
                       <div
-                        className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl border ${
-                          rank === 1
-                            ? "border-amber-300/20 bg-amber-500/10 text-amber-300"
-                            : rank > 1 && rank <= 3
-                              ? "border-cyan-300/20 bg-cyan-500/10 text-cyan-300"
-                              : "border-white/10 bg-white/[0.04] text-white/40"
+                        className={`pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full blur-[40px] ${
+                          isWinner
+                            ? "bg-amber-400/15"
+                            : isPodium
+                              ? "bg-cyan-400/12"
+                              : "bg-violet-500/8"
                         }`}
-                      >
-                        {rank === 1 ? (
-                          <Crown className="h-5 w-5" />
-                        ) : rank > 1 && rank <= 3 ? (
-                          <Trophy className="h-5 w-5" />
-                        ) : (
-                          <History className="h-5 w-5" />
-                        )}
-                      </div>
+                      />
 
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <p className="font-[family:var(--font-exo-2)] text-sm font-black text-white/85">
-                            Soirée {entry.partyCode}
-                          </p>
+                      <div className="relative grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
+                        <div className="flex min-w-0 items-center gap-3">
                           <span
-                            className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-[.12em] ${
-                              entry.role === "host"
-                                ? "border-fuchsia-300/15 bg-fuchsia-500/[0.08] text-fuchsia-200"
-                                : "border-white/10 bg-white/[0.04] text-white/35"
+                            className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl border ${
+                              isWinner
+                                ? "border-amber-300/20 bg-amber-500/10 text-amber-200"
+                                : isPodium
+                                  ? "border-cyan-300/20 bg-cyan-500/10 text-cyan-200"
+                                  : "border-violet-300/10 bg-violet-500/[0.06] text-violet-200/70"
                             }`}
                           >
-                            {entry.role === "host" ? "Host" : "Participant"}
+                            {isWinner ? (
+                              <Crown className="h-5 w-5" />
+                            ) : isPodium ? (
+                              <Trophy className="h-5 w-5" />
+                            ) : (
+                              <Music2 className="h-5 w-5" />
+                            )}
                           </span>
+
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-[family:var(--font-exo-2)] text-sm font-black text-white/90">
+                                Soirée {entry.partyCode}
+                              </p>
+
+                              <span
+                                className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-[.12em] ${
+                                  entry.role === "host"
+                                    ? "border-fuchsia-300/15 bg-fuchsia-500/[0.08] text-fuchsia-200"
+                                    : "border-white/10 bg-white/[0.04] text-white/40"
+                                }`}
+                              >
+                                {entry.role === "host" ? "Host" : "Participant"}
+                              </span>
+
+                              {isWinner ? (
+                                <span className="rounded-full border border-amber-300/20 bg-amber-500/10 px-2 py-1 text-[8px] font-black uppercase tracking-[.12em] text-amber-200">
+                                  Victoire
+                                </span>
+                              ) : isPodium ? (
+                                <span className="rounded-full border border-cyan-300/20 bg-cyan-500/10 px-2 py-1 text-[8px] font-black uppercase tracking-[.12em] text-cyan-200">
+                                  Podium
+                                </span>
+                              ) : null}
+                            </div>
+
+                            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-bold text-white/30">
+                              <span>
+                                {new Date(dateValue).toLocaleDateString("fr-FR", {
+                                  day: "2-digit",
+                                  month: "2-digit",
+                                  year: "numeric",
+                                })}
+                              </span>
+                              <span className="text-white/15">•</span>
+                              <span>
+                                {new Date(dateValue).toLocaleTimeString("fr-FR", {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                          </div>
                         </div>
 
-                        <p className="mt-1 text-[10px] font-bold text-white/30">
-                          {new Date(dateValue).toLocaleDateString("fr-FR", {
-                            day: "2-digit",
-                            month: "2-digit",
-                            year: "numeric",
-                          })}
-                          {" · "}
-                          {new Date(dateValue).toLocaleTimeString("fr-FR", {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                          {rank > 0 ? (
+                            <div
+                              className={`min-w-[68px] rounded-2xl border px-3 py-2 text-center ${
+                                isWinner
+                                  ? "border-amber-300/20 bg-amber-500/[0.08]"
+                                  : isPodium
+                                    ? "border-cyan-300/20 bg-cyan-500/[0.08]"
+                                    : "border-white/10 bg-white/[0.035]"
+                              }`}
+                            >
+                              <p className="text-[8px] font-black uppercase tracking-[.12em] text-white/30">
+                                Rang
+                              </p>
+                              <p
+                                className={`mt-1 font-[family:var(--font-exo-2)] text-lg font-black ${
+                                  isWinner
+                                    ? "text-amber-200"
+                                    : isPodium
+                                      ? "text-cyan-200"
+                                      : "text-white/70"
+                                }`}
+                              >
+                                #{rank}
+                              </p>
+                            </div>
+                          ) : null}
+
+                          {typeof entry.partyScore === "number" ? (
+                            <div className="min-w-[86px] rounded-2xl border border-fuchsia-300/10 bg-fuchsia-500/[0.05] px-3 py-2 text-center">
+                              <p className="text-[8px] font-black uppercase tracking-[.12em] text-fuchsia-200/50">
+                                PartyScore
+                              </p>
+                              <p className="mt-1 font-[family:var(--font-exo-2)] text-lg font-black text-fuchsia-100">
+                                {entry.partyScore}
+                              </p>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
+                    </article>
+                  );
+                })}
 
-                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                      {rank > 0 ? (
-                        <span
-                          className={`rounded-full border px-3 py-1.5 text-[10px] font-black ${
-                            rank === 1
-                              ? "border-amber-300/20 bg-amber-500/10 text-amber-200"
-                              : rank <= 3
-                                ? "border-cyan-300/20 bg-cyan-500/10 text-cyan-200"
-                                : "border-white/10 bg-white/[0.04] text-white/40"
-                          }`}
-                        >
-                          #{rank}
-                        </span>
-                      ) : null}
+                {allProfileHistory.length > 5 ? (
+                  <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:justify-center">
+                    {hasMoreHistory ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setHistoryVisibleCount((current) =>
+                            Math.min(current + 5, allProfileHistory.length),
+                          )
+                        }
+                        className="min-h-11 rounded-2xl border border-cyan-300/15 bg-cyan-500/[0.07] px-5 text-sm font-black text-cyan-100 transition hover:border-cyan-300/25 hover:bg-cyan-500/[0.12]"
+                      >
+                        Voir 5 soirées de plus
+                      </button>
+                    ) : null}
 
-                      {typeof entry.partyScore === "number" ? (
-                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] font-black text-white/40">
-                          {entry.partyScore} pts
-                        </span>
-                      ) : null}
-                    </div>
-                  </article>
-                );
-              })}
-
-              {allProfileHistory.length > 5 ? (
-                <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:justify-center">
-                  {hasMoreHistory ? (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setHistoryVisibleCount((current) =>
-                          Math.min(current + 5, allProfileHistory.length),
-                        )
-                      }
-                      className="min-h-11 rounded-2xl border border-cyan-300/15 bg-cyan-500/[0.07] px-5 text-sm font-black text-cyan-100 transition hover:bg-cyan-500/[0.12]"
-                    >
-                      Voir 5 soirées de plus
-                    </button>
-                  ) : null}
-
-                  {historyVisibleCount > 5 ? (
-                    <button
-                      type="button"
-                      onClick={() => setHistoryVisibleCount(5)}
-                      className="min-h-11 rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm font-black text-white/50 transition hover:bg-white/[0.08]"
-                    >
-                      Réduire l’historique
-                    </button>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-          ) : (
-            <div className="mt-5 rounded-[24px] border border-white/[0.07] bg-black/15 p-7 text-center">
-              <History className="mx-auto h-7 w-7 text-white/20" />
-              <p className="mt-3 text-sm font-black text-white/45">
-                Ton historique apparaîtra ici après tes soirées.
-              </p>
-            </div>
-          )}
+                    {historyVisibleCount > 5 ? (
+                      <button
+                        type="button"
+                        onClick={() => setHistoryVisibleCount(5)}
+                        className="min-h-11 rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm font-black text-white/50 transition hover:bg-white/[0.08]"
+                      >
+                        Réduire l’historique
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="relative mt-5 rounded-[24px] border border-white/[0.07] bg-black/15 p-7 text-center">
+                <History className="mx-auto h-7 w-7 text-white/20" />
+                <p className="mt-3 text-sm font-black text-white/45">
+                  Ton historique apparaîtra ici après tes soirées.
+                </p>
+              </div>
+            )}
+          </div>
         </section>
 
         <section className="mt-6 grid gap-4 sm:grid-cols-4">
