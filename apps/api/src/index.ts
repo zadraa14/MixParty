@@ -805,7 +805,13 @@ if(fs.existsSync(dataFilePath)){
     );
     party.seenParticipantIds = Array.isArray(party.seenParticipantIds)
       ? [...new Set(party.seenParticipantIds.map(String).filter(Boolean))]
-      : [...new Set(party.participants.map((participant) => participant.id))];
+      : [
+          ...new Set(
+            party.participants.map(
+              (participant: Participant) => participant.id,
+            ),
+          ),
+        ];
     party.lastActivityAt = Number(party.lastActivityAt || party.createdAt || Date.now());
     party.creatorToken = typeof party.creatorToken === "string" && party.creatorToken ? party.creatorToken : randomUUID();
     party.partyBrainAutoRelayEnabled = Boolean(party.partyBrainAutoRelayEnabled);
