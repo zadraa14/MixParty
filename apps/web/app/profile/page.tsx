@@ -69,7 +69,18 @@ type MixPartyAccount = {
     unlockedAt: number;
     partyCode?: string;
   }>;
-  history?: Array<{ partyCode: string; joinedAt: number; lastSeenAt: number; role: "participant" | "host" }>;
+  history?: Array<{
+    partyCode: string;
+    joinedAt: number;
+    lastSeenAt: number;
+    role: "participant" | "host";
+    endedAt?: number;
+    finalRank?: number;
+    partyScore?: number;
+    participationCounted?: boolean;
+    resultCounted?: boolean;
+    durationCreditedMs?: number;
+  }>;
   customization: {
     avatarFrame?: string;
     profileTheme?: string;
@@ -473,6 +484,13 @@ export default function ProfilePage() {
   const [featuredDraft, setFeaturedDraft] = useState<string[]>([]);
   const [savingFeaturedBadges, setSavingFeaturedBadges] = useState(false);
   const [featuredBadgesMessage, setFeaturedBadgesMessage] = useState("");
+  const [activeProfileTab, setActiveProfileTab] = useState<
+    "profile" | "badges" | "stats" | "history"
+  >("profile");
+  const profileTopRef = useRef<HTMLDivElement | null>(null);
+  const badgesSectionRef = useRef<HTMLElement | null>(null);
+  const statsSectionRef = useRef<HTMLElement | null>(null);
+  const historySectionRef = useRef<HTMLElement | null>(null);
 
 
   useEffect(() => {
@@ -859,12 +877,38 @@ export default function ProfilePage() {
   }
 
 
+  function navigateProfileTab(
+    tab: "profile" | "badges" | "stats" | "history",
+  ) {
+    setActiveProfileTab(tab);
+
+    const target =
+      tab === "profile"
+        ? profileTopRef.current
+        : tab === "badges"
+          ? badgesSectionRef.current
+          : tab === "stats"
+            ? statsSectionRef.current
+            : historySectionRef.current;
+
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  const profileHistory = [...(account?.history || [])]
+    .sort(
+      (a, b) =>
+        (b.endedAt || b.lastSeenAt || b.joinedAt) -
+        (a.endedAt || a.lastSeenAt || a.joinedAt),
+    )
+    .slice(0, 20);
+
+
   return (
     <main className="relative isolate min-h-screen overflow-hidden bg-[#070711] font-[family:var(--font-geist-sans)] text-white">
       <MixPartyBackground />
       <div className="pointer-events-none fixed inset-0 z-[1] bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,.035),transparent_36%),linear-gradient(to_bottom,rgba(7,7,17,.02),rgba(7,7,17,.28))]" />
 
-      <div className="relative z-10 mx-auto w-full max-w-[1480px] px-4 pb-16 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6 lg:px-8">
+      <div ref={profileTopRef} className="relative z-10 mx-auto w-full max-w-[1480px] scroll-mt-6 px-4 pb-16 pt-[max(1rem,env(safe-area-inset-top))] sm:px-6 lg:px-8">
         <header className="flex items-center justify-between gap-3 py-2 sm:py-4">
           <Link
             href="/"
@@ -966,7 +1010,7 @@ export default function ProfilePage() {
           ))}
         </section>
 
-        <section className="mt-4 rounded-[26px] border border-white/[0.08] bg-white/[0.035] p-4 backdrop-blur-xl sm:p-5">
+        <section ref={statsSectionRef} className="mt-4 scroll-mt-6 rounded-[26px] border border-white/[0.08] bg-white/[0.035] p-4 backdrop-blur-xl sm:p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[.2em] text-fuchsia-300">Stats V2</p>
@@ -989,7 +1033,7 @@ export default function ProfilePage() {
         </section>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[1.7fr_.8fr]">
-          <section className="rounded-[32px] border border-white/10 bg-white/[0.055] p-5 shadow-[0_24px_70px_rgba(0,0,0,.26)] backdrop-blur-2xl sm:p-6">
+          <section ref={badgesSectionRef} className="scroll-mt-6 rounded-[32px] border border-white/10 bg-white/[0.055] p-5 shadow-[0_24px_70px_rgba(0,0,0,.26)] backdrop-blur-2xl sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[.22em] text-fuchsia-300">Collection</p>
@@ -1129,32 +1173,165 @@ export default function ProfilePage() {
           </section>
         </div>
 
+        <section
+          ref={historySectionRef}
+          className="mt-6 scroll-mt-6 rounded-[32px] border border-white/[0.08] bg-white/[0.035] p-5 shadow-[0_24px_70px_rgba(0,0,0,.22)] backdrop-blur-2xl sm:p-6"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[.22em] text-cyan-300">
+                Historique
+              </p>
+              <h2 className="mt-1 font-[family:var(--font-exo-2)] text-2xl font-black">
+                Mes dernières soirées
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-white/40">
+                Participations, soirées organisées et résultats finaux.
+              </p>
+            </div>
+
+            <div className="rounded-full border border-white/10 bg-black/20 px-3 py-1.5 text-[10px] font-black uppercase tracking-[.14em] text-white/40">
+              {account?.history?.length || 0} entrée{(account?.history?.length || 0) > 1 ? "s" : ""}
+            </div>
+          </div>
+
+          {profileHistory.length > 0 ? (
+            <div className="mt-5 space-y-3">
+              {profileHistory.map((entry, index) => {
+                const dateValue =
+                  entry.endedAt || entry.lastSeenAt || entry.joinedAt;
+                const rank = Number(entry.finalRank || 0);
+
+                return (
+                  <article
+                    key={`${entry.partyCode}-${entry.joinedAt}-${index}`}
+                    className="grid gap-3 rounded-[22px] border border-white/[0.07] bg-black/15 p-4 sm:grid-cols-[1fr_auto] sm:items-center"
+                  >
+                    <div className="flex min-w-0 items-center gap-3">
+                      <div
+                        className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl border ${
+                          rank === 1
+                            ? "border-amber-300/20 bg-amber-500/10 text-amber-300"
+                            : rank > 1 && rank <= 3
+                              ? "border-cyan-300/20 bg-cyan-500/10 text-cyan-300"
+                              : "border-white/10 bg-white/[0.04] text-white/40"
+                        }`}
+                      >
+                        {rank === 1 ? (
+                          <Crown className="h-5 w-5" />
+                        ) : rank > 1 && rank <= 3 ? (
+                          <Trophy className="h-5 w-5" />
+                        ) : (
+                          <History className="h-5 w-5" />
+                        )}
+                      </div>
+
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-[family:var(--font-exo-2)] text-sm font-black text-white/85">
+                            Soirée {entry.partyCode}
+                          </p>
+                          <span
+                            className={`rounded-full border px-2 py-1 text-[8px] font-black uppercase tracking-[.12em] ${
+                              entry.role === "host"
+                                ? "border-fuchsia-300/15 bg-fuchsia-500/[0.08] text-fuchsia-200"
+                                : "border-white/10 bg-white/[0.04] text-white/35"
+                            }`}
+                          >
+                            {entry.role === "host" ? "Host" : "Participant"}
+                          </span>
+                        </div>
+
+                        <p className="mt-1 text-[10px] font-bold text-white/30">
+                          {new Date(dateValue).toLocaleDateString("fr-FR", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                          })}
+                          {" · "}
+                          {new Date(dateValue).toLocaleTimeString("fr-FR", {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                      {rank > 0 ? (
+                        <span
+                          className={`rounded-full border px-3 py-1.5 text-[10px] font-black ${
+                            rank === 1
+                              ? "border-amber-300/20 bg-amber-500/10 text-amber-200"
+                              : rank <= 3
+                                ? "border-cyan-300/20 bg-cyan-500/10 text-cyan-200"
+                                : "border-white/10 bg-white/[0.04] text-white/40"
+                          }`}
+                        >
+                          #{rank}
+                        </span>
+                      ) : null}
+
+                      {typeof entry.partyScore === "number" ? (
+                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-[10px] font-black text-white/40">
+                          {entry.partyScore} pts
+                        </span>
+                      ) : null}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mt-5 rounded-[24px] border border-white/[0.07] bg-black/15 p-7 text-center">
+              <History className="mx-auto h-7 w-7 text-white/20" />
+              <p className="mt-3 text-sm font-black text-white/45">
+                Ton historique apparaîtra ici après tes soirées.
+              </p>
+            </div>
+          )}
+        </section>
+
         <section className="mt-6 grid gap-4 sm:grid-cols-4">
           {[
-            { label: "Profil", detail: "Identité & avatar", Icon: UserRound, active: true },
-            { label: "Badges", detail: "Collection", Icon: Medal, active: false },
-            { label: "Statistiques", detail: "Progression", Icon: Trophy, active: false },
-            { label: "Historique", detail: "Tes soirées", Icon: History, active: false },
-          ].map(({ label, detail, Icon, active }) => (
-            <button
-              key={label}
-              type="button"
-              disabled={!active}
-              className={`group flex min-h-20 items-center gap-3 rounded-[24px] border px-4 text-left backdrop-blur-xl transition ${
-                active
-                  ? "border-fuchsia-300/25 bg-gradient-to-br from-fuchsia-500/15 to-violet-500/10 shadow-[0_16px_45px_rgba(168,85,247,.12)]"
-                  : "cursor-not-allowed border-white/[0.08] bg-white/[0.035] opacity-55"
-              }`}
-            >
-              <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl border ${active ? "border-fuchsia-300/20 bg-fuchsia-500/10 text-fuchsia-200" : "border-white/10 bg-white/[0.04] text-white/35"}`}>
-                <Icon className="h-5 w-5" />
-              </span>
-              <span className="min-w-0">
-                <span className="block font-[family:var(--font-exo-2)] text-sm font-black text-white/80">{label}</span>
-                <span className="mt-0.5 block text-[11px] font-bold text-white/30">{active ? detail : `${detail} · bientôt`}</span>
-              </span>
-            </button>
-          ))}
+            { id: "profile" as const, label: "Profil", detail: "Identité & avatar", Icon: UserRound },
+            { id: "badges" as const, label: "Badges", detail: "Mes badges", Icon: Medal },
+            { id: "stats" as const, label: "Statistiques", detail: "Progression", Icon: Trophy },
+            { id: "history" as const, label: "Historique", detail: "Tes soirées", Icon: History },
+          ].map(({ id, label, detail, Icon }) => {
+            const active = activeProfileTab === id;
+
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => navigateProfileTab(id)}
+                className={`group flex min-h-20 items-center gap-3 rounded-[24px] border px-4 text-left backdrop-blur-xl transition hover:-translate-y-0.5 ${
+                  active
+                    ? "border-fuchsia-300/25 bg-gradient-to-br from-fuchsia-500/15 to-violet-500/10 shadow-[0_16px_45px_rgba(168,85,247,.12)]"
+                    : "border-white/[0.08] bg-white/[0.035] hover:border-white/15 hover:bg-white/[0.055]"
+                }`}
+              >
+                <span
+                  className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl border ${
+                    active
+                      ? "border-fuchsia-300/20 bg-fuchsia-500/10 text-fuchsia-200"
+                      : "border-white/10 bg-white/[0.04] text-white/45"
+                  }`}
+                >
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block font-[family:var(--font-exo-2)] text-sm font-black text-white/80">
+                    {label}
+                  </span>
+                  <span className="mt-0.5 block text-[11px] font-bold text-white/35">
+                    {detail}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         </section>
 
         <section className="mt-6 overflow-hidden rounded-[30px] border border-cyan-300/10 bg-white/[0.05] shadow-[0_22px_70px_rgba(0,0,0,.24)] backdrop-blur-2xl">
