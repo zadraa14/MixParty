@@ -91,11 +91,56 @@ type MixPartyAccount = {
 
 
 const PROFILE_STAT_CARDS = [
-  { key: "partiesJoined", label: "Soirées", icon: History, accent: "text-violet-300", live: true },
-  { key: "wins", label: "Victoires", icon: Crown, accent: "text-amber-300", live: true },
-  { key: "podiums", label: "Podiums", icon: Trophy, accent: "text-cyan-300", live: true },
-  { key: "votesGiven", label: "Votes", icon: Vote, accent: "text-pink-300", live: true },
-  { key: "songsAdded", label: "Morceaux", icon: Music2, accent: "text-orange-300", live: true },
+  {
+    key: "partiesJoined",
+    label: "Soirées",
+    icon: History,
+    accent: "text-violet-200",
+    iconBg: "from-violet-500/30 to-indigo-500/10",
+    glow: "bg-violet-500/20",
+    border: "border-violet-300/15",
+    live: true,
+  },
+  {
+    key: "wins",
+    label: "Victoires",
+    icon: Crown,
+    accent: "text-amber-200",
+    iconBg: "from-amber-400/30 to-orange-500/10",
+    glow: "bg-amber-400/20",
+    border: "border-amber-300/15",
+    live: true,
+  },
+  {
+    key: "podiums",
+    label: "Podiums",
+    icon: Trophy,
+    accent: "text-cyan-200",
+    iconBg: "from-cyan-400/30 to-blue-500/10",
+    glow: "bg-cyan-400/20",
+    border: "border-cyan-300/15",
+    live: true,
+  },
+  {
+    key: "votesGiven",
+    label: "Votes",
+    icon: Vote,
+    accent: "text-pink-200",
+    iconBg: "from-pink-400/30 to-fuchsia-500/10",
+    glow: "bg-pink-400/20",
+    border: "border-pink-300/15",
+    live: true,
+  },
+  {
+    key: "songsAdded",
+    label: "Morceaux",
+    icon: Music2,
+    accent: "text-orange-200",
+    iconBg: "from-orange-400/30 to-rose-500/10",
+    glow: "bg-orange-400/20",
+    border: "border-orange-300/15",
+    live: true,
+  },
 ] as const;
 
 
@@ -492,7 +537,7 @@ export default function ProfilePage() {
   const [showDetailedStats, setShowDetailedStats] = useState(false);
   const profileTopRef = useRef<HTMLDivElement | null>(null);
   const badgesSectionRef = useRef<HTMLElement | null>(null);
-  const statsSectionRef = useRef<HTMLElement | null>(null);
+  const statsSectionRef = useRef<HTMLDivElement | null>(null);
   const historySectionRef = useRef<HTMLElement | null>(null);
 
 
@@ -765,11 +810,51 @@ export default function ProfilePage() {
   }));
 
   const detailedStats = [
-    { label: "Soirées organisées", value: account ? String(account.stats.partiesHosted ?? 0) : "—", icon: Crown },
-    { label: "Votes reçus", value: account ? String(account.stats.votesReceived ?? 0) : "—", icon: Heart },
-    { label: "Morceaux joués", value: account ? String(account.stats.songsPlayed ?? 0) : "—", icon: Play },
-    { label: "Morceaux ≥ 5 votes", value: account ? String(account.stats.songsWith5Votes ?? 0) : "—", icon: TrendingUp },
-    { label: "Temps en soirée", value: account ? formatActiveTime(account.stats.activeMinutes ?? 0) : "—", icon: Clock3 },
+    {
+      label: "Soirées organisées",
+      value: account ? String(account.stats.partiesHosted ?? 0) : "—",
+      icon: Crown,
+      accent: "text-amber-200",
+      iconBg: "from-amber-400/25 to-orange-500/10",
+      border: "border-amber-300/10",
+      glow: "bg-amber-400/15",
+    },
+    {
+      label: "Votes reçus",
+      value: account ? String(account.stats.votesReceived ?? 0) : "—",
+      icon: Heart,
+      accent: "text-pink-200",
+      iconBg: "from-pink-400/25 to-fuchsia-500/10",
+      border: "border-pink-300/10",
+      glow: "bg-pink-400/15",
+    },
+    {
+      label: "Morceaux joués",
+      value: account ? String(account.stats.songsPlayed ?? 0) : "—",
+      icon: Play,
+      accent: "text-violet-200",
+      iconBg: "from-violet-400/25 to-indigo-500/10",
+      border: "border-violet-300/10",
+      glow: "bg-violet-400/15",
+    },
+    {
+      label: "Morceaux ≥ 5 votes",
+      value: account ? String(account.stats.songsWith5Votes ?? 0) : "—",
+      icon: TrendingUp,
+      accent: "text-cyan-200",
+      iconBg: "from-cyan-400/25 to-blue-500/10",
+      border: "border-cyan-300/10",
+      glow: "bg-cyan-400/15",
+    },
+    {
+      label: "Temps en soirée",
+      value: account ? formatActiveTime(account.stats.activeMinutes ?? 0) : "—",
+      icon: Clock3,
+      accent: "text-orange-200",
+      iconBg: "from-orange-400/25 to-rose-500/10",
+      border: "border-orange-300/10",
+      glow: "bg-orange-400/15",
+    },
   ];
 
   const qualifiedParties = account?.stats.partiesJoined || 0;
@@ -1086,18 +1171,55 @@ export default function ProfilePage() {
         </section>
 
         <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-5 sm:gap-4">
-          {profileStats.map(({ label, value, icon: Icon, accent, live }) => (
-            <article key={label} className="rounded-[26px] border border-white/10 bg-white/[0.055] p-4 shadow-[0_18px_45px_rgba(0,0,0,.18)] backdrop-blur-xl sm:p-5">
-              <div className="flex items-center justify-between gap-3">
-                <Icon className={`h-5 w-5 ${accent}`} />
-                <span className={`text-[9px] font-black uppercase tracking-[.15em] ${account && live ? "text-emerald-300/70" : "text-white/25"}`}>
-                  {account ? (live ? "À jour" : "Phase 2") : "Compte requis"}
-                </span>
-              </div>
-              <p className="mt-4 font-[family:var(--font-exo-2)] text-2xl font-black sm:text-3xl">{value}</p>
-              <p className="mt-1 text-xs font-bold text-white/40">{label}</p>
-            </article>
-          ))}
+          {profileStats.map(
+            ({
+              label,
+              value,
+              icon: Icon,
+              accent,
+              iconBg,
+              glow,
+              border,
+              live,
+            }) => (
+              <article
+                key={label}
+                className={`group relative overflow-hidden rounded-[26px] border ${border} bg-[linear-gradient(145deg,rgba(255,255,255,.07),rgba(255,255,255,.025))] p-4 shadow-[0_20px_55px_rgba(0,0,0,.20)] backdrop-blur-xl transition duration-300 hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.075] sm:p-5`}
+              >
+                <div
+                  className={`pointer-events-none absolute -right-7 -top-8 h-24 w-24 rounded-full ${glow} blur-[38px] transition duration-500 group-hover:scale-125`}
+                />
+                <div className="pointer-events-none absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+
+                <div className="relative flex items-center justify-between gap-3">
+                  <span
+                    className={`grid h-11 w-11 place-items-center rounded-2xl border border-white/10 bg-gradient-to-br ${iconBg} shadow-[0_10px_25px_rgba(0,0,0,.20)]`}
+                  >
+                    <Icon className={`h-5 w-5 ${accent}`} />
+                  </span>
+
+                  <span
+                    className={`rounded-full border px-2.5 py-1 text-[8px] font-black uppercase tracking-[.14em] ${
+                      account && live
+                        ? "border-emerald-300/15 bg-emerald-500/[0.07] text-emerald-200/80"
+                        : "border-white/10 bg-white/[0.04] text-white/25"
+                    }`}
+                  >
+                    {account ? (live ? "À jour" : "Phase 2") : "Compte requis"}
+                  </span>
+                </div>
+
+                <div className="relative mt-4">
+                  <p className="font-[family:var(--font-exo-2)] text-3xl font-black tracking-tight text-white sm:text-[32px]">
+                    {value}
+                  </p>
+                  <p className="mt-1 text-xs font-black text-white/45">
+                    {label}
+                  </p>
+                </div>
+              </article>
+            ),
+          )}
         </section>
 
         <div ref={statsSectionRef} className="mt-4 scroll-mt-6">
@@ -1153,20 +1275,43 @@ export default function ProfilePage() {
           </div>
 
           <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {detailedStats.map(({ label, value, icon: Icon }) => (
-              <article
-                key={label}
-                className="rounded-[20px] border border-white/[0.07] bg-black/15 p-3.5"
-              >
-                <Icon className="h-4 w-4 text-white/40" />
-                <p className="mt-3 font-[family:var(--font-exo-2)] text-xl font-black">
-                  {value}
-                </p>
-                <p className="mt-1 text-[10px] font-bold leading-4 text-white/35">
-                  {label}
-                </p>
-              </article>
-            ))}
+            {detailedStats.map(
+              ({
+                label,
+                value,
+                icon: Icon,
+                accent,
+                iconBg,
+                border,
+                glow,
+              }) => (
+                <article
+                  key={label}
+                  className={`group relative overflow-hidden rounded-[22px] border ${border} bg-[linear-gradient(145deg,rgba(255,255,255,.045),rgba(0,0,0,.12))] p-3.5 transition duration-300 hover:-translate-y-0.5 hover:border-white/15`}
+                >
+                  <div
+                    className={`pointer-events-none absolute -right-6 -top-7 h-20 w-20 rounded-full ${glow} blur-[34px]`}
+                  />
+
+                  <div className="relative flex items-start justify-between gap-3">
+                    <span
+                      className={`grid h-9 w-9 place-items-center rounded-xl border border-white/[0.08] bg-gradient-to-br ${iconBg}`}
+                    >
+                      <Icon className={`h-4 w-4 ${accent}`} />
+                    </span>
+
+                    <Sparkles className={`h-3 w-3 ${accent} opacity-30`} />
+                  </div>
+
+                  <p className="relative mt-3 font-[family:var(--font-exo-2)] text-xl font-black text-white">
+                    {value}
+                  </p>
+                  <p className="relative mt-1 text-[10px] font-bold leading-4 text-white/40">
+                    {label}
+                  </p>
+                </article>
+              ),
+            )}
           </div>
 
           <div className="mt-5 grid gap-4 lg:grid-cols-[1.15fr_.85fr]">
