@@ -26,6 +26,10 @@ import {
   X,
   Vote,
   Zap,
+  Clock3,
+  Heart,
+  Play,
+  TrendingUp,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import MixPartyBackground from "../../components/MixPartyBackground";
@@ -55,6 +59,8 @@ type MixPartyAccount = {
     votesReceived: number;
     songsAdded: number;
     songsPlayed: number;
+    songsWith5Votes: number;
+    activeMinutes: number;
   };
   badges: string[];
   badgeUnlocks?: Array<{
@@ -150,6 +156,14 @@ const PROFILE_BADGES = [
 ] as const;
 
 type ProfileBadge = (typeof PROFILE_BADGES)[number];
+
+function formatActiveTime(minutes: number) {
+  const safeMinutes = Math.max(0, Math.floor(Number(minutes || 0)));
+  if (safeMinutes < 60) return `${safeMinutes} min`;
+  const hours = Math.floor(safeMinutes / 60);
+  const remainingMinutes = safeMinutes % 60;
+  return remainingMinutes ? `${hours} h ${remainingMinutes}` : `${hours} h`;
+}
 
 
 const BADGE_PREVIEWS = [
@@ -483,6 +497,14 @@ export default function ProfilePage() {
     value: account ? String(account.stats[item.key] ?? 0) : "—",
   }));
 
+  const detailedStats = [
+    { label: "Soirées organisées", value: account ? String(account.stats.partiesHosted ?? 0) : "—", icon: Crown },
+    { label: "Votes reçus", value: account ? String(account.stats.votesReceived ?? 0) : "—", icon: Heart },
+    { label: "Morceaux joués", value: account ? String(account.stats.songsPlayed ?? 0) : "—", icon: Play },
+    { label: "Morceaux ≥ 5 votes", value: account ? String(account.stats.songsWith5Votes ?? 0) : "—", icon: TrendingUp },
+    { label: "Temps actif", value: account ? formatActiveTime(account.stats.activeMinutes ?? 0) : "—", icon: Clock3 },
+  ];
+
   return (
     <main className="relative isolate min-h-screen overflow-hidden bg-[#070711] font-[family:var(--font-geist-sans)] text-white">
       <MixPartyBackground />
@@ -588,6 +610,28 @@ export default function ProfilePage() {
               <p className="mt-1 text-xs font-bold text-white/40">{label}</p>
             </article>
           ))}
+        </section>
+
+        <section className="mt-4 rounded-[26px] border border-white/[0.08] bg-white/[0.035] p-4 backdrop-blur-xl sm:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[.2em] text-fuchsia-300">Stats V2</p>
+              <h2 className="mt-1 font-[family:var(--font-exo-2)] text-lg font-black">Progression détaillée</h2>
+            </div>
+            <span className="rounded-full border border-emerald-300/15 bg-emerald-500/[0.07] px-3 py-1 text-[9px] font-black uppercase tracking-[.14em] text-emerald-200/80">
+              En direct
+            </span>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {detailedStats.map(({ label, value, icon: Icon }) => (
+              <article key={label} className="rounded-[20px] border border-white/[0.07] bg-black/15 p-3.5">
+                <Icon className="h-4 w-4 text-white/40" />
+                <p className="mt-3 font-[family:var(--font-exo-2)] text-xl font-black">{value}</p>
+                <p className="mt-1 text-[10px] font-bold leading-4 text-white/35">{label}</p>
+              </article>
+            ))}
+          </div>
         </section>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[1.7fr_.8fr]">

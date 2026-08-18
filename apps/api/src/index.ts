@@ -2638,6 +2638,21 @@ function updateParty(party:Party) {
 }
 
 
+function accountSongKey(song: Song) {
+  return `${song.videoId}:${Number(song.addedAt || 0)}`;
+}
+
+function recordAccountSongPlay(party: Party, song: Song) {
+  if (!song.addedByAccountId) return;
+  accountsStore.recordSongPlayedByAccountId(
+    song.addedByAccountId,
+    party.code,
+    accountSongKey(song),
+    song.votes,
+  );
+}
+
+
 
 loadMusicBrain();
 
@@ -2916,6 +2931,7 @@ app.post("/party/:code/presence", (req, res) => {
 
   if (accountToken && authenticatedAccount) {
     accountsStore.recordPartyJoined(accountToken, party.code);
+    accountsStore.recordPresence(accountToken, party.code);
   }
 
   if (isNewParticipant) {
@@ -3142,7 +3158,18 @@ console.log("Résultat includes :", song.voters.includes(name));
   song.votes++;
   const accountToken = readBearerToken(req);
   const authenticatedAccount = accountToken ? accountsStore.authenticate(accountToken) : null;
-  if (accountToken && authenticatedAccount) accountsStore.recordVoteGiven(accountToken, song.addedByAccountId);
+  if (accountToken && authenticatedAccount) {
+    accountsStore.recordVoteGiven(accountToken, song.addedByAccountId);
+  }
+
+  if (song.votes >= 5 && song.addedByAccountId) {
+    accountsStore.recordSongReachedFiveVotesByAccountId(
+      song.addedByAccountId,
+      party.code,
+      accountSongKey(song),
+    );
+  }
+
   recordMusicBrainVote(song);
   recordPartyEvent(party, "SONG_VOTED", {
     song: songEventSnapshot(party, song),
@@ -3394,6 +3421,7 @@ app.post("/party/:code/play/:index",(req,res)=>{
   song.played = true;
   party.currentSong = song;
   recordMusicBrainPlay(song, previousSong);
+  recordAccountSongPlay(party, song);
   startPlaybackTelemetry(party, song);
 
   updateParty(party);
@@ -3626,6 +3654,7 @@ app.post("/party/:code/next",(req,res)=>{
 
   party.currentSong = nextSong;
   recordMusicBrainPlay(nextSong, previousSong);
+  recordAccountSongPlay(party, nextSong);
   startPlaybackTelemetry(party, nextSong);
 
   updateParty(party);

@@ -19,6 +19,8 @@ export type MixPartyAccountStats = {
   votesReceived: number;
   songsAdded: number;
   songsPlayed: number;
+  songsWith5Votes: number;
+  activeMinutes: number;
 };
 
 export type MixPartyAccountHistoryEntry = {
@@ -49,6 +51,12 @@ export type MixPartyAccount = {
   badges: string[];
   badgeUnlocks: MixPartyBadgeUnlock[];
   history: MixPartyAccountHistoryEntry[];
+  progress: {
+    playedSongKeys: string[];
+    fiveVoteSongKeys: string[];
+    activePartyLastSeen: Record<string, number>;
+    activeMilliseconds: number;
+  };
   customization: {
     avatarFrame?: string;
     profileTheme?: string;
@@ -131,6 +139,8 @@ function createDefaultStats(): MixPartyAccountStats {
     votesReceived: 0,
     songsAdded: 0,
     songsPlayed: 0,
+    songsWith5Votes: 0,
+    activeMinutes: 0,
   };
 }
 
@@ -233,6 +243,19 @@ export function createAccountsStore(filePath: string) {
                   }];
                 }).slice(-500)
               : [],
+            progress: {
+              playedSongKeys: Array.isArray(raw.progress?.playedSongKeys)
+                ? raw.progress.playedSongKeys.map(String).slice(-2000)
+                : [],
+              fiveVoteSongKeys: Array.isArray(raw.progress?.fiveVoteSongKeys)
+                ? raw.progress.fiveVoteSongKeys.map(String).slice(-2000)
+                : [],
+              activePartyLastSeen:
+                raw.progress?.activePartyLastSeen && typeof raw.progress.activePartyLastSeen === "object"
+                  ? raw.progress.activePartyLastSeen
+                  : {},
+              activeMilliseconds: Math.max(0, Number(raw.progress?.activeMilliseconds || 0)),
+            },
             customization: {
               ...(raw.customization && typeof raw.customization === "object"
                 ? raw.customization
@@ -396,6 +419,12 @@ export function createAccountsStore(filePath: string) {
       badges: [],
       badgeUnlocks: [],
       history: [],
+      progress: {
+        playedSongKeys: [],
+        fiveVoteSongKeys: [],
+        activePartyLastSeen: {},
+        activeMilliseconds: 0,
+      },
       customization: {},
     };
 
@@ -456,6 +485,90 @@ export function createAccountsStore(filePath: string) {
     return accountFromToken(token);
   }
 
+  function touchActiveTime(account: MixPartyAccount, partyCodeValue: unknown) {
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    if (!partyCode) return;
+
+    const now = Date.now();
+    const previous = Number(account.progress.activePartyLastSeen[partyCode] || 0);
+
+    if (previous > 0) {
+      const elapsed = Math.max(0, Math.min(now - previous, 60_000));
+      account.progress.activeMilliseconds += elapsed;
+      account.stats.activeMinutes = Math.floor(account.progress.activeMilliseconds / 60_000);
+    }
+
+    account.progress.activePartyLastSeen[partyCode] = now;
+  }
+
+  function recordPresence(token: string, partyCodeValue: unknown) {
+    const account = accountMutableFromToken(token);
+    if (!account) return null;
+
+    touchActiveTime(account, partyCodeValue);
+    account.updatedAt = Date.now();
+    save();
+    return publicAccount(account);
+  }
+
+  function recordSongPlayedByAccountId(
+    accountId: string | undefined,
+    partyCodeValue: unknown,
+    songKeyValue: unknown,
+    votesValue: unknown,
+  ) {
+    if (!accountId) return null;
+    const account = database.accounts.find((item) => item.id === accountId);
+    if (!account) return null;
+
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    const rawSongKey = String(songKeyValue || "").trim();
+    if (!partyCode || !rawSongKey) return publicAccount(account);
+
+    const songKey = `${partyCode}:${rawSongKey}`;
+
+    if (!account.progress.playedSongKeys.includes(songKey)) {
+      account.progress.playedSongKeys.push(songKey);
+      account.progress.playedSongKeys = account.progress.playedSongKeys.slice(-2000);
+      account.stats.songsPlayed += 1;
+    }
+
+    if (Number(votesValue || 0) >= 5 && !account.progress.fiveVoteSongKeys.includes(songKey)) {
+      account.progress.fiveVoteSongKeys.push(songKey);
+      account.progress.fiveVoteSongKeys = account.progress.fiveVoteSongKeys.slice(-2000);
+      account.stats.songsWith5Votes += 1;
+    }
+
+    account.updatedAt = Date.now();
+    save();
+    return publicAccount(account);
+  }
+
+  function recordSongReachedFiveVotesByAccountId(
+    accountId: string | undefined,
+    partyCodeValue: unknown,
+    songKeyValue: unknown,
+  ) {
+    if (!accountId) return null;
+    const account = database.accounts.find((item) => item.id === accountId);
+    if (!account) return null;
+
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    const rawSongKey = String(songKeyValue || "").trim();
+    if (!partyCode || !rawSongKey) return publicAccount(account);
+
+    const songKey = `${partyCode}:${rawSongKey}`;
+    if (!account.progress.fiveVoteSongKeys.includes(songKey)) {
+      account.progress.fiveVoteSongKeys.push(songKey);
+      account.progress.fiveVoteSongKeys = account.progress.fiveVoteSongKeys.slice(-2000);
+      account.stats.songsWith5Votes += 1;
+      account.updatedAt = Date.now();
+      save();
+    }
+
+    return publicAccount(account);
+  }
+
   function recordPartyJoined(token: string, partyCodeValue: unknown) {
     const account = accountMutableFromToken(token);
     if (!account) return null;
@@ -490,6 +603,7 @@ export function createAccountsStore(filePath: string) {
       account.stats.partiesHosted += 1;
     }
     account.updatedAt = now;
+    touchActiveTime(account, partyCode);
     syncSimpleBadges(account, partyCode);
     save();
     return publicAccount(account);
@@ -549,6 +663,9 @@ export function createAccountsStore(filePath: string) {
     updateProfile,
     recordPartyJoined,
     recordPartyHosted,
+    recordPresence,
+    recordSongPlayedByAccountId,
+    recordSongReachedFiveVotesByAccountId,
     recordSongAdded,
     recordVoteGiven,
     recordVoteRemoved,
