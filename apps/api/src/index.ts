@@ -3875,7 +3875,11 @@ const party:Party = {
   createdAt: Date.now(),
   lastActivityAt: Date.now(),
   creatorToken: randomUUID(),
-  partyBrainAutoRelayEnabled: false
+  partyBrainAutoRelayEnabled: false,
+  rankingSnapshotCount: 0,
+  top3SnapshotCounts: {},
+  voteStreakCount: 0,
+  voteStreakSongKeys: []
 };
 
 
