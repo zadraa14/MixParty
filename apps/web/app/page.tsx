@@ -1,23 +1,64 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, QrCode, Radio, RotateCcw, Sparkles, UsersRound, Vote } from "lucide-react";
+import {
+  ArrowRight,
+  Bot,
+  Check,
+  Headphones,
+  KeyRound,
+  LogIn,
+  Mail,
+  Play,
+  QrCode,
+  Radio,
+  ShieldCheck,
+  Sparkles,
+  UserRound,
+  UsersRound,
+  Vote,
+  WandSparkles,
+  X,
+  Zap,
+} from "lucide-react";
 import MixPartyBackground from "../components/MixPartyBackground";
 import MixPartyFooter from "../components/MixPartyFooter";
 import MixPartyHeader from "../components/MixPartyHeader";
-import MixPartyHero from "../components/MixPartyHero";
 import MixPartyLoader from "../components/MixPartyLoader";
-import PartyCard from "../components/PartyCard";
-import { GlassCard, GradientText, SectionTitle, StatCard } from "../components/ui";
 import { getApiBaseUrl } from "../lib/config";
 
+const ACCOUNT_TOKEN_KEY = "mixparty.account.token.v1";
+const NAME_KEY = "playerName";
+const PHOTO_KEY = "mixparty.profile.photo.v1";
+
+type MixPartyAccount = {
+  id: string;
+  email: string;
+  name: string;
+  avatar?: string;
+  plan?: "free" | "premium";
+};
+
+type OnboardingIntent = "create" | "join" | null;
+type AuthMode = "register" | "login";
+
 const STEPS = [
-  { number: "01", title: "Crée", text: "Lance ta salle MixParty en quelques secondes.", icon: Sparkles, accent: "purple" as const },
-  { number: "02", title: "Partage", text: "Tes invités rejoignent la soirée avec le QR Code.", icon: QrCode, accent: "cyan" as const },
-  { number: "03", title: "Vote", text: "Chaque participant influence la prochaine musique.", icon: Vote, accent: "pink" as const },
-  { number: "04", title: "Profite", text: "Le DJ automatique maintient l’ambiance toute la nuit.", icon: Radio, accent: "orange" as const },
-];
+  { number: "01", title: "Crée", text: "Lance ta salle MixParty en quelques secondes.", icon: Sparkles, accent: "purple" },
+  { number: "02", title: "Partage", text: "Tes invités rejoignent la soirée avec le QR Code.", icon: QrCode, accent: "cyan" },
+  { number: "03", title: "Vote", text: "Chaque participant influence la prochaine musique.", icon: Vote, accent: "pink" },
+  { number: "04", title: "Profite", text: "PartyBrain maintient l’ambiance toute la nuit.", icon: Radio, accent: "orange" },
+] as const;
+
+const STATS = [
+  { label: "Temps réel", value: "Instantané", description: "Votes, file et participants synchronisés.", icon: Zap, accent: "orange" },
+  { label: "Collaboratif", value: "Tout le monde", description: "Chaque invité participe à l’ambiance.", icon: UsersRound, accent: "purple" },
+  { label: "PartyBrain", value: "Plus malin", description: "Des suggestions adaptées à ta soirée.", icon: Bot, accent: "cyan" },
+  { label: "Accès", value: "Toujours libre", description: "Compte permanent ou profil éphémère : tu choisis.", icon: QrCode, accent: "pink" },
+] as const;
+
+const WAVE = [30, 52, 74, 44, 88, 58, 96, 68, 42, 82, 56, 92, 64, 38, 76, 48, 86, 60, 34, 70, 50, 90, 62, 40, 78, 54, 84, 46];
 
 export default function Home() {
   const router = useRouter();
@@ -25,94 +66,82 @@ export default function Home() {
   const [creatingParty, setCreatingParty] = useState(false);
   const [showLoader, setShowLoader] = useState(true);
   const [loaderVisible, setLoaderVisible] = useState(true);
-  const [lastParty, setLastParty] = useState<{
-    code: string;
-    role: "dj" | "guest";
-  } | null>(null);
+  const [account, setAccount] = useState<MixPartyAccount | null>(null);
+  const [accountLoading, setAccountLoading] = useState(true);
+  const [onboardingIntent, setOnboardingIntent] = useState<OnboardingIntent>(null);
+  const [emailFormOpen, setEmailFormOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthMode>("register");
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState("");
+  const [socialNotice, setSocialNotice] = useState("");
 
   useEffect(() => {
     const fadeTimer = window.setTimeout(() => setLoaderVisible(false), 1900);
     const removeTimer = window.setTimeout(() => setShowLoader(false), 2550);
+
+    const token = localStorage.getItem(ACCOUNT_TOKEN_KEY) || "";
+    if (!token) {
+      setAccountLoading(false);
+    } else {
+      void (async () => {
+        try {
+          const response = await fetch(`${getApiBaseUrl()}/account/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store",
+          });
+
+          if (!response.ok) {
+            localStorage.removeItem(ACCOUNT_TOKEN_KEY);
+            return;
+          }
+
+          const data = await response.json().catch(() => ({}));
+          const nextAccount = data?.account as MixPartyAccount | undefined;
+          if (!nextAccount?.id) return;
+
+          setAccount(nextAccount);
+          localStorage.setItem(NAME_KEY, nextAccount.name);
+          if (nextAccount.avatar) localStorage.setItem(PHOTO_KEY, nextAccount.avatar);
+        } catch (error) {
+          console.error("Impossible de charger le compte MixParty", error);
+        } finally {
+          setAccountLoading(false);
+        }
+      })();
+    }
+
     return () => {
       window.clearTimeout(fadeTimer);
       window.clearTimeout(removeTimer);
     };
   }, []);
 
-  useEffect(() => {
-    let cancelled = false;
+  function accountAuthHeaders(): Record<string, string> {
+    const token = localStorage.getItem(ACCOUNT_TOKEN_KEY) || "";
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  }
 
-    async function detectLastParty() {
-      const raw = localStorage.getItem("mixparty.lastParty.v1");
-      if (!raw) return;
-
-      try {
-        const saved = JSON.parse(raw) as {
-          code?: string;
-          role?: "dj" | "guest";
-        };
-
-        const code = String(saved?.code || "").trim().toUpperCase();
-
-        if (!code) {
-          localStorage.removeItem("mixparty.lastParty.v1");
-          return;
-        }
-
-        const response = await fetch(
-          `${getApiBaseUrl()}/party/${encodeURIComponent(code)}`,
-          { cache: "no-store" }
-        );
-
-        if (!response.ok) {
-          localStorage.removeItem("mixparty.lastParty.v1");
-          if (!cancelled) setLastParty(null);
-          return;
-        }
-
-        const creatorToken = localStorage.getItem(`mixparty_creator_${code}`);
-
-        if (!cancelled) {
-          setLastParty({
-            code,
-            role: creatorToken ? "dj" : "guest",
-          });
-        }
-      } catch {
-        localStorage.removeItem("mixparty.lastParty.v1");
-      }
-    }
-
-    void detectLastParty();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  async function createParty() {
+  async function createPartyDirect() {
     if (creatingParty) return;
     setCreatingParty(true);
+
     try {
-      const accountToken = localStorage.getItem("mixparty.account.token.v1") || "";
       const response = await fetch(`${getApiBaseUrl()}/party`, {
         method: "POST",
-        headers: accountToken
-          ? { Authorization: `Bearer ${accountToken}` }
-          : undefined,
+        headers: accountAuthHeaders(),
       });
+
       if (!response.ok) throw new Error(`Erreur API ${response.status}`);
+
       const party = (await response.json()) as { code?: string; creatorToken?: string };
-      if (!party.code || !party.creatorToken) throw new Error("La réponse de création est incomplète.");
+      if (!party.code || !party.creatorToken) {
+        throw new Error("La réponse de création est incomplète.");
+      }
+
       localStorage.setItem(`mixparty_creator_${party.code}`, party.creatorToken);
-      localStorage.setItem(
-        "mixparty.lastParty.v1",
-        JSON.stringify({
-          code: party.code,
-          role: "dj",
-          savedAt: Date.now(),
-        })
-      );
       router.push(`/party/${party.code}`);
     } catch (error) {
       console.error(error);
@@ -121,7 +150,7 @@ export default function Home() {
     }
   }
 
-  function joinParty() {
+  function joinPartyDirect() {
     const normalizedCode = partyCode.trim().toUpperCase();
     if (!normalizedCode) {
       window.alert("Entre un code de soirée");
@@ -130,88 +159,415 @@ export default function Home() {
     router.push(`/party/${normalizedCode}`);
   }
 
-  function resumeLastParty() {
-    if (!lastParty?.code) return;
-    router.push(`/party/${lastParty.code}`);
+  function requestCreateParty() {
+    if (account) {
+      void createPartyDirect();
+      return;
+    }
+
+    setAuthMode("register");
+    setEmailFormOpen(false);
+    setAuthError("");
+    setSocialNotice("");
+    setOnboardingIntent("create");
+  }
+
+  function requestJoinParty() {
+    const normalizedCode = partyCode.trim().toUpperCase();
+    if (!normalizedCode) {
+      window.alert("Entre un code de soirée");
+      return;
+    }
+
+    if (account) {
+      joinPartyDirect();
+      return;
+    }
+
+    setAuthMode("register");
+    setEmailFormOpen(false);
+    setAuthError("");
+    setSocialNotice("");
+    setOnboardingIntent("join");
+  }
+
+  function closeOnboarding() {
+    if (authBusy) return;
+    setOnboardingIntent(null);
+    setEmailFormOpen(false);
+    setAuthError("");
+    setSocialNotice("");
+  }
+
+  function continueEphemeral() {
+    const intent = onboardingIntent;
+    setOnboardingIntent(null);
+    setEmailFormOpen(false);
+    setAuthError("");
+    setSocialNotice("");
+
+    if (intent === "create") {
+      void createPartyDirect();
+    } else if (intent === "join") {
+      joinPartyDirect();
+    }
+  }
+
+  function openEmailAuth(mode: AuthMode) {
+    setAuthMode(mode);
+    setEmailFormOpen(true);
+    setAuthError("");
+    setSocialNotice("");
+
+    if (mode === "register") {
+      setAuthName(localStorage.getItem(NAME_KEY)?.trim() || "");
+    }
+  }
+
+  function socialAuthNotConfigured(provider: "Google" | "Apple") {
+    setSocialNotice(
+      `${provider} est prévu dans ce nouvel accueil. Il reste à connecter le flux OAuth au backend MixParty avant de l’activer en production.`,
+    );
+  }
+
+  async function submitEmailAuth() {
+    setAuthError("");
+
+    const email = authEmail.trim().toLowerCase();
+    const password = authPassword;
+    const name = authName.trim();
+
+    if (!email) {
+      setAuthError("Entre ton adresse e-mail.");
+      return;
+    }
+
+    if (password.length < 8) {
+      setAuthError("Le mot de passe doit contenir au moins 8 caractères.");
+      return;
+    }
+
+    if (authMode === "register" && name.length < 2) {
+      setAuthError("Choisis un pseudo d’au moins 2 caractères.");
+      return;
+    }
+
+    setAuthBusy(true);
+
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/account/${authMode === "register" ? "register" : "login"}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            authMode === "register"
+              ? {
+                  email,
+                  password,
+                  name,
+                  avatar: localStorage.getItem(PHOTO_KEY) || undefined,
+                }
+              : { email, password },
+          ),
+        },
+      );
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || "Connexion MixParty impossible.");
+      }
+
+      const nextAccount = data?.account as MixPartyAccount | undefined;
+      const token = String(data?.token || "");
+      if (!nextAccount?.id || !token) {
+        throw new Error("Réponse du compte MixParty incomplète.");
+      }
+
+      localStorage.setItem(ACCOUNT_TOKEN_KEY, token);
+      localStorage.setItem(NAME_KEY, nextAccount.name);
+      if (nextAccount.avatar) localStorage.setItem(PHOTO_KEY, nextAccount.avatar);
+
+      setAccount(nextAccount);
+      setAuthPassword("");
+      setEmailFormOpen(false);
+
+      const intent = onboardingIntent;
+      setOnboardingIntent(null);
+
+      if (intent === "create") {
+        window.setTimeout(() => void createPartyDirect(), 0);
+      } else if (intent === "join") {
+        window.setTimeout(() => joinPartyDirect(), 0);
+      }
+    } catch (error) {
+      console.error(error);
+      setAuthError(
+        error instanceof Error ? error.message : "Connexion MixParty impossible.",
+      );
+    } finally {
+      setAuthBusy(false);
+    }
   }
 
   return (
     <>
       {showLoader && <MixPartyLoader visible={loaderVisible} />}
 
-      <main className="relative isolate min-h-[100dvh] overflow-hidden bg-[#070711] text-white">
+      <main className="mp521-page relative isolate min-h-[100dvh] overflow-hidden bg-[#070711] text-white">
         <MixPartyBackground />
-        <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(to_bottom,rgba(7,7,17,.03),rgba(7,7,17,.14)_54%,rgba(7,7,17,.32))]" />
+        <div className="mp521-depth pointer-events-none fixed inset-0 z-[1]" />
+        <div className="mp521-particles pointer-events-none fixed inset-0 z-[2]" aria-hidden="true" />
 
-        <div className="relative z-10 mx-auto w-full max-w-7xl px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(.5rem,env(safe-area-inset-top))] sm:px-6 lg:px-8">
+        <div className="relative z-10 mx-auto max-w-7xl px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(.75rem,env(safe-area-inset-top))] sm:px-6 lg:px-8">
           <MixPartyHeader />
 
-          <section className="grid items-center gap-5 py-4 sm:gap-8 sm:py-10 lg:min-h-[calc(100dvh-110px)] lg:grid-cols-[minmax(0,1.02fr)_minmax(470px,.98fr)] lg:gap-14 lg:py-16">
-            <MixPartyHero creatingParty={creatingParty} onCreateParty={createParty} onJoinClick={() => document.getElementById("mixparty-join")?.scrollIntoView({ behavior: "smooth", block: "center" })} />
-            <div className="hidden lg:block">
-              <PartyCard />
-            </div>
-          </section>
-
-         
-          
-
-          <section id="mixparty-join" className="mixparty-join-strip py-5 sm:py-12">
-            <div className="mx-auto flex w-full max-w-3xl flex-col items-stretch gap-3 rounded-[28px] border border-white/10 bg-white/[0.045] p-4 backdrop-blur-xl sm:flex-row">
-            <button
-  type="button"
-  onClick={resumeLastParty}
-  className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.055] px-5 text-sm font-black text-white transition hover:border-fuchsia-400/35 hover:bg-white/[0.085]"
->
-  <span className="relative flex h-3 w-3">
-    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
-    <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.8)]" />
-  </span>
-
-  <RotateCcw className="h-4 w-4 text-fuchsia-300" />
-
-  Reprendre la soirée
-</button>
-              <div className="flex-1 px-2">
-                <p className="text-sm font-black text-white">Tu as déjà un code ?</p>
-                <p className="mt-1 text-xs text-white/40">Entre-le ici pour rejoindre la soirée instantanément.</p>
+          <section className="grid min-h-[calc(100dvh-108px)] items-center gap-10 py-10 sm:py-14 lg:grid-cols-[minmax(0,1.02fr)_minmax(460px,.98fr)] lg:gap-16 lg:py-16">
+            <div className="relative z-10 max-w-2xl">
+              <div className="mp521-reveal mp521-reveal-1 inline-flex items-center gap-2 rounded-full border border-purple-300/20 bg-purple-400/[0.08] px-3.5 py-2 text-[10px] font-black uppercase tracking-[0.2em] text-purple-200 shadow-[inset_0_1px_0_rgba(255,255,255,.08)] backdrop-blur-xl sm:text-xs">
+                <span className="mp521-live-dot h-2 w-2 rounded-full bg-emerald-400" />
+                La soirée devient collaborative
               </div>
-              <input value={partyCode} onChange={(event) => setPartyCode(event.target.value.toUpperCase())} onKeyDown={(event) => event.key === "Enter" && joinParty()} placeholder="CODE" maxLength={8} className="h-14 w-full rounded-2xl border border-white/10 bg-black/30 px-4 text-center text-sm font-black uppercase tracking-[.2em] outline-none focus:border-fuchsia-400/50 sm:w-48" />
-              <button type="button" onClick={joinParty} className="mixparty-secondary-cta h-14 w-full sm:w-auto">Rejoindre</button>
+
+              <h1 className="mp521-reveal mp521-reveal-2 mt-6 font-[family:var(--font-exo-2)] text-[clamp(3.25rem,8vw,6.7rem)] font-black leading-[.88] tracking-[-.065em]">
+                <span className="block text-white drop-shadow-[0_0_22px_rgba(255,255,255,.11)]">Ta soirée.</span>
+                <span className="mp521-hero-gradient block">Leur playlist.</span>
+              </h1>
+
+              <p className="mp521-reveal mp521-reveal-3 mt-7 max-w-xl text-base font-medium leading-7 text-white/52 sm:text-lg sm:leading-8">
+                Crée une salle, partage le QR Code et laisse tes invités proposer puis voter pour les prochains titres. Avec un compte MixParty, ta progression te suit de soirée en soirée.
+              </p>
+
+              <div className="mp521-reveal mp521-reveal-4 mt-8 flex flex-col gap-3 sm:flex-row">
+                <button type="button" onClick={requestCreateParty} disabled={creatingParty} className="mp521-primary-button group">
+                  <span className="mp521-button-shine" aria-hidden="true" />
+                  <span className="relative z-10 flex items-center justify-center gap-2.5">
+                    {creatingParty ? <span className="mp-button-spinner" /> : <Sparkles className="h-5 w-5" />}
+                    {creatingParty ? "Création..." : "Créer ma soirée"}
+                    {!creatingParty && <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />}
+                  </span>
+                </button>
+
+                <a href="#rejoindre" className="mp521-secondary-button group">
+                  <span className="flex items-center justify-center gap-2.5">
+                    <UsersRound className="h-5 w-5" />
+                    Rejoindre une soirée
+                  </span>
+                </a>
+              </div>
+
+              <div className="mp521-reveal mp521-reveal-5 mt-7 flex flex-wrap gap-x-5 gap-y-2 text-xs font-bold text-white/35">
+                <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" />Compte facultatif</span>
+                <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" />Progression sauvegardée</span>
+                <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" />Invités en 2 secondes</span>
+              </div>
+            </div>
+
+            <div className="mp521-reveal mp521-reveal-3 relative mx-auto w-full max-w-[570px] lg:mx-0">
+              <div className="mp521-phone-aura pointer-events-none absolute inset-[10%] rounded-full" />
+              <div className="mp521-orbit mp521-orbit-one" />
+              <div className="mp521-orbit mp521-orbit-two" />
+
+              <div className="mp521-phone-shell relative mx-auto w-[min(100%,390px)] rounded-[48px] p-[7px] sm:w-[390px]">
+                <div className="relative overflow-hidden rounded-[41px] border border-white/[0.09] bg-[#090913] px-5 pb-6 pt-4 shadow-[inset_0_1px_0_rgba(255,255,255,.08)]">
+                  <div className="mx-auto h-1.5 w-20 rounded-full bg-white/10" />
+
+                  <div className="mt-5 flex items-center justify-between">
+                    <div>
+                      <p className="text-[9px] font-black uppercase tracking-[0.23em] text-orange-300/75">En lecture</p>
+                      <p className="mt-1 text-sm font-black text-white">MixParty Live</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 rounded-full border border-emerald-400/15 bg-emerald-400/[0.08] px-2.5 py-1.5 text-[9px] font-black text-emerald-300">
+                      <span className="mp521-live-dot h-1.5 w-1.5 rounded-full bg-emerald-400" /> LIVE
+                    </div>
+                  </div>
+
+                  <div className="mp521-cover relative mx-auto mt-6 aspect-square w-full max-w-[285px] overflow-hidden rounded-[32px]">
+                    <div className="mp521-cover-grid absolute inset-0" />
+                    <div className="mp521-cover-glow absolute -left-10 top-8 h-40 w-40 rounded-full bg-purple-500/60 blur-[45px]" />
+                    <div className="mp521-cover-glow absolute -right-12 bottom-0 h-44 w-44 rounded-full bg-orange-500/55 blur-[50px] [animation-delay:1.2s]" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="mp521-vinyl flex h-[68%] w-[68%] items-center justify-center rounded-full border border-white/15 bg-[radial-gradient(circle_at_center,#0a0a12_0_13%,#f97316_14%_17%,#18111f_18%_26%,#0a0a12_27%_36%,#211228_37%_48%,#07070d_49%_100%)] shadow-[0_24px_70px_rgba(0,0,0,.55),0_0_55px_rgba(236,72,153,.24)]">
+                        <div className="h-3 w-3 rounded-full bg-white/85 shadow-[0_0_16px_rgba(255,255,255,.65)]" />
+                      </div>
+                    </div>
+                    <div className="absolute inset-x-5 bottom-5 rounded-2xl border border-white/10 bg-black/35 px-4 py-3 backdrop-blur-xl">
+                      <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/35">PartyBrain selection</p>
+                      <p className="mt-1 truncate font-[family:var(--font-exo-2)] text-base font-black">Midnight Energy</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-5 text-center">
+                    <p className="font-[family:var(--font-exo-2)] text-xl font-black tracking-tight">Midnight Energy</p>
+                    <p className="mt-1 text-xs font-semibold text-white/35">MixParty Session • 3:42</p>
+                  </div>
+
+                  <div className="mp521-waveform mt-5" aria-label="Visualisation audio">
+                    {WAVE.map((height, index) => (
+                      <span key={index} style={{ height: `${height}%`, animationDelay: `${index * 48}ms` }} />
+                    ))}
+                  </div>
+
+                  <div className="mt-5 flex items-center justify-center gap-5">
+                    <button type="button" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/45 transition hover:bg-white/10 hover:text-white" aria-label="Titre précédent">
+                      <ArrowRight className="h-4 w-4 rotate-180" />
+                    </button>
+                    <button type="button" className="mp521-play-button" aria-label="Lecture">
+                      <span className="mp521-play-ring" />
+                      <Play className="relative z-10 ml-1 h-7 w-7 fill-current" />
+                    </button>
+                    <button type="button" className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-white/45 transition hover:bg-white/10 hover:text-white" aria-label="Titre suivant">
+                      <ArrowRight className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div className="mt-6 grid grid-cols-3 gap-2">
+                    <div className="mp521-mini-stat"><UsersRound className="h-4 w-4 text-purple-300" /><strong>24</strong><span>invités</span></div>
+                    <div className="mp521-mini-stat"><Vote className="h-4 w-4 text-pink-300" /><strong>186</strong><span>votes</span></div>
+                    <div className="mp521-mini-stat"><Headphones className="h-4 w-4 text-orange-300" /><strong>38</strong><span>titres</span></div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mp521-floating-card mp521-floating-card-left hidden sm:flex">
+                <div className="mp521-floating-icon bg-purple-400/10 text-purple-200"><UsersRound className="h-4 w-4" /></div>
+                <div><strong>+8 invités</strong><span>viennent de rejoindre</span></div>
+              </div>
+              <div className="mp521-floating-card mp521-floating-card-right hidden sm:flex">
+                <div className="mp521-floating-icon bg-orange-400/10 text-orange-200"><WandSparkles className="h-4 w-4" /></div>
+                <div><strong>PartyBrain</strong><span>ambiance optimisée</span></div>
+              </div>
             </div>
           </section>
 
-          <section className="py-10 sm:py-16">
-            <SectionTitle
-              eyebrow="Pourquoi MixParty"
-              title={<>Une soirée qui <GradientText animated>réagit en direct.</GradientText></>}
-              description="MixParty transforme chaque téléphone en télécommande musicale collective, sans compte et sans installation compliquée."
-              accent="purple"
-            />
-            <div className="mixparty-stats-grid mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <StatCard label="Temps réel" value="Instantané" description="Votes, file et participants synchronisés." icon={<Radio className="h-5 w-5" />} accent="orange" />
-              <StatCard label="Collaboratif" value="Tout le monde" description="Chaque invité peut participer à l’ambiance." icon={<UsersRound className="h-5 w-5" />} accent="purple" />
-              <StatCard label="PartyBrain" value="Plus malin" description="MixParty apprend et prépare de meilleures suggestions." icon={<Bot className="h-5 w-5" />} accent="cyan" />
-              <StatCard label="Accès" value="1 QR Code" description="Aucun compte nécessaire pour rejoindre." icon={<QrCode className="h-5 w-5" />} accent="pink" />
+          <section className="py-8 sm:py-12">
+            <div className="mx-auto max-w-5xl overflow-hidden rounded-[34px] border border-white/10 bg-[linear-gradient(135deg,rgba(124,58,237,.10),rgba(236,72,153,.055)_45%,rgba(249,115,22,.06))] p-5 shadow-[0_30px_90px_rgba(0,0,0,.30)] backdrop-blur-2xl sm:p-8 lg:p-10">
+              <div className="grid gap-7 lg:grid-cols-[1fr_1.05fr] lg:items-center">
+                <div>
+                  <span className="inline-flex rounded-full border border-fuchsia-300/15 bg-fuchsia-500/[0.07] px-3 py-1.5 text-[9px] font-black uppercase tracking-[0.18em] text-fuchsia-200">
+                    Nouveau sur MixParty ?
+                  </span>
+                  <h2 className="mt-4 font-[family:var(--font-exo-2)] text-3xl font-black tracking-tight sm:text-4xl">
+                    Garde tes badges. Tes stats. Tes victoires.
+                  </h2>
+                  <p className="mt-3 max-w-xl text-sm leading-6 text-white/45 sm:text-base">
+                    Crée un compte permanent pour retrouver ta progression partout. Et si tu veux juste rejoindre la fête, le profil éphémère reste toujours disponible.
+                  </p>
+
+                  <div className="mt-5 grid gap-2 text-xs font-bold text-white/45 sm:grid-cols-2">
+                    <span className="flex items-center gap-2"><ShieldCheck className="h-4 w-4 text-violet-300" />Progression sauvegardée</span>
+                    <span className="flex items-center gap-2"><Vote className="h-4 w-4 text-pink-300" />Stats et PartyScore</span>
+                    <span className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-orange-300" />Badges permanents</span>
+                    <span className="flex items-center gap-2"><UserRound className="h-4 w-4 text-cyan-300" />Profil personnalisé</span>
+                  </div>
+                </div>
+
+                <div className="rounded-[28px] border border-white/[0.08] bg-black/20 p-4 sm:p-5">
+                  {accountLoading ? (
+                    <div className="flex min-h-52 items-center justify-center">
+                      <span className="mp-button-spinner" />
+                    </div>
+                  ) : account ? (
+                    <div className="flex min-h-52 flex-col items-center justify-center text-center">
+                      <div className="grid h-20 w-20 place-items-center overflow-hidden rounded-[24px] border border-white/10 bg-gradient-to-br from-violet-600 to-fuchsia-500 text-2xl font-black">
+                        {account.avatar ? <img src={account.avatar} alt="" className="h-full w-full object-cover" /> : account.name.charAt(0).toUpperCase()}
+                      </div>
+                      <p className="mt-4 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-300">Tu es connecté</p>
+                      <p className="mt-1 font-[family:var(--font-exo-2)] text-xl font-black">{account.name}</p>
+                      <Link href="/profile" className="mt-4 inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/[0.08] px-5 text-sm font-black text-fuchsia-100 transition hover:bg-fuchsia-500/[0.14]">
+                        <UserRound className="h-4 w-4" />Voir mon profil
+                      </Link>
+                    </div>
+                  ) : (
+                    <div>
+                      <button type="button" onClick={() => socialAuthNotConfigured("Google")} className="flex min-h-12 w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white text-sm font-black text-[#17141d] transition hover:-translate-y-0.5">
+                        <span className="text-lg font-black text-[#4285F4]">G</span>
+                        Continuer avec Google
+                        <span className="text-[9px] font-bold text-black/40">Gmail / Android</span>
+                      </button>
+                      <button type="button" onClick={() => socialAuthNotConfigured("Apple")} className="mt-2 flex min-h-12 w-full items-center justify-center gap-3 rounded-2xl border border-white/15 bg-black px-4 text-sm font-black text-white transition hover:-translate-y-0.5">
+                        <span className="text-xl leading-none"></span>Continuer avec Apple
+                      </button>
+
+                      <div className="my-4 flex items-center gap-3">
+                        <span className="h-px flex-1 bg-white/10" />
+                        <span className="text-[9px] font-black uppercase tracking-[0.15em] text-white/25">ou</span>
+                        <span className="h-px flex-1 bg-white/10" />
+                      </div>
+
+                      <button type="button" onClick={() => { setOnboardingIntent(null); openEmailAuth("register"); }} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-fuchsia-300/20 bg-gradient-to-r from-violet-500/15 via-fuchsia-500/12 to-orange-400/10 px-4 text-sm font-black text-fuchsia-100 transition hover:-translate-y-0.5 hover:border-fuchsia-300/35">
+                        <Mail className="h-4 w-4" />Continuer avec une adresse e-mail
+                      </button>
+                      <button type="button" onClick={() => { setOnboardingIntent(null); openEmailAuth("login"); }} className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-xs font-black text-white/55 transition hover:bg-white/[0.08]">
+                        <LogIn className="h-4 w-4" />J’ai déjà un compte
+                      </button>
+
+                      {socialNotice ? <p className="mt-3 rounded-xl border border-amber-300/15 bg-amber-500/[0.06] px-3 py-2 text-[10px] font-bold leading-4 text-amber-100/75">{socialNotice}</p> : null}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </section>
 
-          <section className="mixparty-how-section py-12 sm:py-16">
-            <SectionTitle
-              eyebrow="Comment ça marche"
-              title={<>Quatre étapes. <GradientText>Une seule ambiance.</GradientText></>}
-              description="De la création de la salle au passage automatique des morceaux, tout est pensé pour rester simple."
-              accent="pink"
-            />
-            <div className="mixparty-timeline relative mt-6 sm:mt-10 grid gap-5 lg:grid-cols-4">
-              <div className="mixparty-timeline-line pointer-events-none absolute left-[8%] right-[8%] top-10 hidden h-px lg:block" />
-              {STEPS.map(({ number, title, text, icon: Icon, accent }) => (
-                <GlassCard key={number} accent={accent} hoverable animatedBorder={number === "01"} className="mixparty-timeline-card relative h-full">
-                  <div className={`mixparty-timeline-node mp-stat-icon mp-stat-icon--${accent}`}><Icon className="h-5 w-5" /></div>
-                  <p className="mt-5 text-[10px] font-black uppercase tracking-[0.22em] text-white/24">Étape {number}</p>
-                  <p className="mt-2 font-[family:var(--font-exo-2)] text-xl font-black">{title}</p>
+          <section id="rejoindre" className="py-14 sm:py-20">
+            <div className="mp521-join-card mx-auto grid max-w-5xl gap-7 rounded-[34px] p-5 sm:p-8 lg:grid-cols-[1fr_auto] lg:items-center lg:p-10">
+              <div>
+                <span className="mp521-section-kicker">Déjà invité ?</span>
+                <h2 className="mt-3 font-[family:var(--font-exo-2)] text-3xl font-black tracking-tight sm:text-4xl">Entre dans la soirée.</h2>
+                <p className="mt-3 max-w-xl text-sm leading-6 text-white/42 sm:text-base">Saisis le code affiché par l’organisateur. Si tu n’as pas de compte, MixParty te laissera choisir entre créer ton profil permanent ou entrer immédiatement en profil éphémère.</p>
+              </div>
+              <div className="flex w-full flex-col gap-3 sm:flex-row lg:w-auto">
+                <input
+                  value={partyCode}
+                  onChange={(event) => setPartyCode(event.target.value.toUpperCase())}
+                  onKeyDown={(event) => event.key === "Enter" && requestJoinParty()}
+                  maxLength={8}
+                  placeholder="CODE"
+                  className="mp521-code-input min-w-0 sm:w-44"
+                  aria-label="Code de la soirée"
+                />
+                <button type="button" onClick={requestJoinParty} className="mp521-primary-button mp521-primary-button--compact group">
+                  <span className="mp521-button-shine" aria-hidden="true" />
+                  <span className="relative z-10 flex items-center justify-center gap-2">Rejoindre <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" /></span>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="py-14 sm:py-20">
+            <div className="mx-auto max-w-3xl text-center">
+              <span className="mp521-section-kicker">Pourquoi MixParty</span>
+              <h2 className="mt-4 font-[family:var(--font-exo-2)] text-3xl font-black tracking-tight sm:text-5xl">Une soirée qui <span className="mp521-inline-gradient">réagit en direct.</span></h2>
+              <p className="mx-auto mt-4 max-w-2xl text-sm leading-7 text-white/42 sm:text-base">Chaque téléphone devient une télécommande musicale collective. Le compte améliore l’expérience, mais ne devient jamais une obligation pour participer.</p>
+            </div>
+            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {STATS.map(({ label, value, description, icon: Icon, accent }, index) => (
+                <article key={label} className={`mp521-stat-card mp521-accent-${accent}`} style={{ animationDelay: `${index * 100}ms` }}>
+                  <div className="mp521-stat-icon"><Icon className="h-5 w-5" /></div>
+                  <p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-white/27">{label}</p>
+                  <p className="mt-2 font-[family:var(--font-exo-2)] text-xl font-black text-white">{value}</p>
+                  <p className="mt-2 text-sm leading-6 text-white/38">{description}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="py-14 sm:py-20">
+            <div className="mx-auto max-w-3xl text-center">
+              <span className="mp521-section-kicker mp521-section-kicker--pink">Comment ça marche</span>
+              <h2 className="mt-4 font-[family:var(--font-exo-2)] text-3xl font-black tracking-tight sm:text-5xl">Quatre étapes. <span className="mp521-inline-gradient">Une seule ambiance.</span></h2>
+            </div>
+            <div className="mp521-timeline relative mt-12 grid gap-5 lg:grid-cols-4">
+              <div className="mp521-timeline-line hidden lg:block" />
+              {STEPS.map(({ number, title, text, icon: Icon, accent }, index) => (
+                <article key={number} className={`mp521-step-card mp521-accent-${accent}`}>
+                  <div className="mp521-step-node"><span>{number}</span></div>
+                  <div className="mp521-stat-icon"><Icon className="h-5 w-5" /></div>
+                  <p className="mt-5 font-[family:var(--font-exo-2)] text-xl font-black">{title}</p>
                   <p className="mt-2 text-sm leading-6 text-white/40">{text}</p>
-                </GlassCard>
+                  <span className="mp521-step-index">0{index + 1}</span>
+                </article>
               ))}
             </div>
           </section>
@@ -219,6 +575,121 @@ export default function Home() {
           <MixPartyFooter />
         </div>
       </main>
+
+      {onboardingIntent ? (
+        <div
+          className="fixed inset-0 z-[9999] flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-[#05030c]/90 px-4 py-6 backdrop-blur-2xl"
+          onMouseDown={(event) => { if (event.target === event.currentTarget) closeOnboarding(); }}
+        >
+          <section className="relative w-full max-w-[520px] overflow-hidden rounded-[34px] border border-white/10 bg-[#100b19]/95 p-5 shadow-[0_35px_120px_rgba(0,0,0,.68)] sm:p-7">
+            <div className="absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-fuchsia-400/70 to-transparent" />
+            <button type="button" onClick={closeOnboarding} className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-black/20 text-white/45 transition hover:text-white">
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="text-center">
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-fuchsia-300">
+                {onboardingIntent === "create" ? "Avant de créer ta soirée" : "Avant de rejoindre"}
+              </p>
+              <h2 className="mt-2 font-[family:var(--font-exo-2)] text-2xl font-black sm:text-3xl">Tu veux garder ta progression ?</h2>
+              <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-white/40">
+                Avec un compte MixParty, tes badges, statistiques, podiums et historique restent disponibles après la soirée.
+              </p>
+            </div>
+
+            <div className="mt-6 space-y-2">
+              <button type="button" onClick={() => socialAuthNotConfigured("Google")} className="flex min-h-13 w-full items-center justify-center gap-3 rounded-2xl border border-white/10 bg-white px-4 py-3 text-sm font-black text-[#17141d] transition hover:-translate-y-0.5">
+                <span className="text-xl font-black text-[#4285F4]">G</span>Continuer avec Google
+                <span className="text-[9px] font-bold text-black/40">Gmail / Android</span>
+              </button>
+              <button type="button" onClick={() => socialAuthNotConfigured("Apple")} className="flex min-h-13 w-full items-center justify-center gap-3 rounded-2xl border border-white/15 bg-black px-4 py-3 text-sm font-black text-white transition hover:-translate-y-0.5">
+                <span className="text-xl leading-none"></span>Continuer avec Apple
+              </button>
+              <button type="button" onClick={() => openEmailAuth("register")} className="flex min-h-13 w-full items-center justify-center gap-2 rounded-2xl border border-fuchsia-300/20 bg-gradient-to-r from-violet-500/15 via-fuchsia-500/12 to-orange-400/10 px-4 py-3 text-sm font-black text-fuchsia-100 transition hover:-translate-y-0.5 hover:border-fuchsia-300/35">
+                <Mail className="h-4 w-4" />Continuer avec une adresse e-mail
+              </button>
+              <button type="button" onClick={() => openEmailAuth("login")} className="flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-black text-white/55 transition hover:bg-white/[0.08]">
+                <LogIn className="h-4 w-4" />J’ai déjà un compte MixParty
+              </button>
+            </div>
+
+            {socialNotice ? <p className="mt-3 rounded-2xl border border-amber-300/15 bg-amber-500/[0.06] px-4 py-3 text-xs font-bold leading-5 text-amber-100/75">{socialNotice}</p> : null}
+
+            <div className="my-5 flex items-center gap-3">
+              <span className="h-px flex-1 bg-white/10" />
+              <span className="text-[9px] font-black uppercase tracking-[0.15em] text-white/22">sans obligation</span>
+              <span className="h-px flex-1 bg-white/10" />
+            </div>
+
+            <button type="button" onClick={continueEphemeral} className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-300/15 bg-emerald-500/[0.06] px-4 text-sm font-black text-emerald-100 transition hover:border-emerald-300/25 hover:bg-emerald-500/[0.10]">
+              <UsersRound className="h-4 w-4" />Non merci — continuer en profil éphémère
+            </button>
+            <p className="mt-3 text-center text-[10px] leading-4 text-white/25">
+              Le profil éphémère participe normalement à la soirée et au classement, mais sa progression ne sera pas conservée après la soirée.
+            </p>
+          </section>
+        </div>
+      ) : null}
+
+      {emailFormOpen ? (
+        <div
+          className="fixed inset-0 z-[10000] flex min-h-[100dvh] items-center justify-center overflow-y-auto bg-[#05030c]/94 px-4 py-6 backdrop-blur-2xl"
+          onMouseDown={(event) => { if (event.target === event.currentTarget && !authBusy) setEmailFormOpen(false); }}
+        >
+          <section className="relative w-full max-w-md overflow-hidden rounded-[32px] border border-white/10 bg-[#100b19]/98 p-5 shadow-[0_35px_120px_rgba(0,0,0,.68)] sm:p-7">
+            <button type="button" onClick={() => !authBusy && setEmailFormOpen(false)} className="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full border border-white/10 bg-black/20 text-white/45 hover:text-white">
+              <X className="h-4 w-4" />
+            </button>
+
+            <div className="text-center">
+              <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/10 text-fuchsia-200">
+                {authMode === "register" ? <Sparkles className="h-5 w-5" /> : <KeyRound className="h-5 w-5" />}
+              </div>
+              <p className="mt-4 text-[9px] font-black uppercase tracking-[0.2em] text-fuchsia-300">Compte MixParty</p>
+              <h2 className="mt-1 font-[family:var(--font-exo-2)] text-2xl font-black">{authMode === "register" ? "Créer mon compte" : "Me connecter"}</h2>
+            </div>
+
+            <div className="mt-6 space-y-4">
+              {authMode === "register" ? (
+                <label className="block">
+                  <span className="text-[10px] font-black uppercase tracking-[0.15em] text-white/40">Pseudo</span>
+                  <div className="relative mt-2">
+                    <UserRound className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/25" />
+                    <input value={authName} onChange={(event) => setAuthName(event.target.value)} maxLength={24} autoComplete="nickname" className="h-13 w-full rounded-2xl border border-white/10 bg-black/25 pl-11 pr-4 text-sm font-bold outline-none transition focus:border-fuchsia-300/35" placeholder="Ton pseudo" />
+                  </div>
+                </label>
+              ) : null}
+
+              <label className="block">
+                <span className="text-[10px] font-black uppercase tracking-[0.15em] text-white/40">Adresse e-mail</span>
+                <div className="relative mt-2">
+                  <Mail className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/25" />
+                  <input value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} autoComplete="email" inputMode="email" className="h-13 w-full rounded-2xl border border-white/10 bg-black/25 pl-11 pr-4 text-sm font-bold outline-none transition focus:border-fuchsia-300/35" placeholder="toi@email.fr" />
+                </div>
+              </label>
+
+              <label className="block">
+                <span className="text-[10px] font-black uppercase tracking-[0.15em] text-white/40">Mot de passe</span>
+                <div className="relative mt-2">
+                  <KeyRound className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-white/25" />
+                  <input type="password" value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} autoComplete={authMode === "register" ? "new-password" : "current-password"} onKeyDown={(event) => event.key === "Enter" && void submitEmailAuth()} className="h-13 w-full rounded-2xl border border-white/10 bg-black/25 pl-11 pr-4 text-sm font-bold outline-none transition focus:border-fuchsia-300/35" placeholder="8 caractères minimum" />
+                </div>
+              </label>
+            </div>
+
+            {authError ? <p className="mt-4 rounded-2xl border border-red-300/15 bg-red-500/[0.07] px-4 py-3 text-xs font-bold leading-5 text-red-100">{authError}</p> : null}
+
+            <button type="button" onClick={() => void submitEmailAuth()} disabled={authBusy} className="mt-5 flex min-h-13 w-full items-center justify-center gap-2 rounded-2xl border border-fuchsia-300/20 bg-gradient-to-r from-violet-600 via-fuchsia-500 to-orange-400 px-5 text-sm font-black text-white shadow-[0_16px_40px_rgba(168,85,247,.20)] transition hover:-translate-y-0.5 disabled:opacity-50">
+              {authBusy ? <span className="mp-button-spinner" /> : authMode === "register" ? <Sparkles className="h-4 w-4" /> : <LogIn className="h-4 w-4" />}
+              {authBusy ? "Connexion…" : authMode === "register" ? "Créer mon compte MixParty" : "Me connecter"}
+            </button>
+
+            <button type="button" onClick={() => openEmailAuth(authMode === "register" ? "login" : "register")} disabled={authBusy} className="mt-3 w-full text-center text-xs font-bold text-white/35 transition hover:text-white/60">
+              {authMode === "register" ? "J’ai déjà un compte" : "Je veux créer un compte"}
+            </button>
+          </section>
+        </div>
+      ) : null}
     </>
   );
 }
