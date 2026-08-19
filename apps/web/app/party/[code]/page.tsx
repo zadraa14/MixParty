@@ -1564,7 +1564,9 @@ export default function PartyPage() {
       try {
         const query = search.trim();
         const response = await fetch(
-          `${getApiBaseUrl()}/search/artists?q=${encodeURIComponent(query)}&limit=10`,
+          `${getApiBaseUrl()}/search/artists?q=${encodeURIComponent(query)}&limit=${
+            query.length === 1 ? 16 : 10
+          }`,
           { signal: controller.signal },
         );
 
@@ -4463,7 +4465,9 @@ const canRemove =
                         </div>
                       ) : artistSuggestions.length > 0 ? (
                         <div className="max-h-[250px] overflow-y-auto p-1.5">
-                          {artistSuggestions.slice(0, 8).map((artist) => (
+                          {artistSuggestions
+                            .slice(0, search.trim().length === 1 ? 12 : 8)
+                            .map((artist) => (
                             <button
                               key={`artist-autocomplete-${artist.id}`}
                               type="button"

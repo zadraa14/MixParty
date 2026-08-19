@@ -13023,7 +13023,11 @@ type MixPartyArtistSuggestion = {
 
 const artistSuggestionCache = new Map<
   string,
-  { createdAt: number; results: MixPartyArtistSuggestion[] }
+  {
+    createdAt: number;
+    musicBrainUpdatedAt: number;
+    results: MixPartyArtistSuggestion[];
+  }
 >();
 const ARTIST_SUGGESTION_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 
@@ -13119,7 +13123,10 @@ async function externalMusicBrainzArtistSuggestions(
   }>(
     `https://musicbrainz.org/ws/2/artist/?query=${encodeURIComponent(
       `artist:${escaped}*`,
-    )}&fmt=json&limit=${Math.max(10, Math.min(30, limit * 3))}`,
+    )}&fmt=json&limit=${Math.max(
+      25,
+      Math.min(100, normalized.length === 1 ? 100 : limit * 5),
+    )}`,
     {
       headers: {
         "User-Agent": userAgent,
@@ -13149,7 +13156,11 @@ async function externalMusicBrainzArtistSuggestions(
       seen.add(key);
       return true;
     })
-    .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
+    .sort((a, b) => {
+      const scoreDelta = Number(b.score || 0) - Number(a.score || 0);
+      if (scoreDelta !== 0) return scoreDelta;
+      return a.name.localeCompare(b.name, "fr", { sensitivity: "base" });
+    })
     .slice(0, limit);
 }
 
@@ -13162,9 +13173,11 @@ app.get("/search/artists", async (req, res) => {
   const cached = artistSuggestionCache.get(cacheKey);
   if (
     cached &&
+    cached.musicBrainUpdatedAt === musicBrain.updatedAt &&
     Date.now() - cached.createdAt < ARTIST_SUGGESTION_CACHE_TTL_MS
   ) {
     res.setHeader("X-MixParty-Artist-Source", "CACHE");
+    res.setHeader("X-MixParty-Youtube-Quota", "0");
     return res.json(cached.results.slice(0, limit));
   }
 
@@ -13174,11 +13187,11 @@ app.get("/search/artists", async (req, res) => {
 
   // 2) Si le préfixe n'est pas assez connu localement, MusicBrainz complète.
   // Toujours 0 appel YouTube.
-  if (normalized && results.length < Math.min(8, limit)) {
+  if (normalized && results.length < limit) {
     try {
       const external = await externalMusicBrainzArtistSuggestions(
         query,
-        limit * 2,
+        normalized.length === 1 ? Math.max(limit * 4, 40) : limit * 2,
       );
       const existing = new Set(
         results.map((artist) => normalizeMusicQuery(artist.name)),
@@ -13197,10 +13210,17 @@ app.get("/search/artists", async (req, res) => {
   }
 
   results = results.slice(0, limit);
-  artistSuggestionCache.set(cacheKey, {
-    createdAt: Date.now(),
-    results,
-  });
+  // Ne jamais figer un résultat vide pour un préfixe court :
+  // ex. "J" doit pouvoir découvrir JUL dès que MusicBrain/MusicBrainz le connaît.
+  if (results.length > 0) {
+    artistSuggestionCache.set(cacheKey, {
+      createdAt: Date.now(),
+      musicBrainUpdatedAt: musicBrain.updatedAt,
+      results,
+    });
+  } else {
+    artistSuggestionCache.delete(cacheKey);
+  }
 
   res.setHeader(
     "X-MixParty-Artist-Source",
