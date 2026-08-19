@@ -36,38 +36,6 @@ const SITE_URL = (
 
 const BRAND_ICON = `${SITE_URL}/branding/icon.png`;
 
-async function loadGoogleFont(fontFamily: string, text: string) {
-  try {
-    const query = new URLSearchParams({
-      family: `${fontFamily}:wght@800`,
-      text,
-    });
-
-    const cssResponse = await fetch(
-      `https://fonts.googleapis.com/css2?${query.toString()}`,
-      { cache: "force-cache" },
-    );
-
-    if (!cssResponse.ok) return null;
-
-    const css = await cssResponse.text();
-
-    // next/og supports TTF, OTF and WOFF. WOFF2 is intentionally excluded.
-    const resource = css.match(
-      /src:\s*url\(([^)]+)\)\s*format\('(opentype|truetype|woff)'\)/,
-    );
-
-    if (!resource?.[1]) return null;
-
-    const fontResponse = await fetch(resource[1], { cache: "force-cache" });
-    if (!fontResponse.ok) return null;
-
-    return await fontResponse.arrayBuffer();
-  } catch {
-    return null;
-  }
-}
-
 function normalizeAssetUrl(value?: string) {
   const src = String(value || "").trim();
   if (!src) return "";
@@ -201,7 +169,6 @@ function Brand() {
             fontSize: 31,
             fontWeight: 900,
             letterSpacing: -1,
-            fontFamily: '"Exo 2"',
           }}
         >
           MixParty
@@ -256,7 +223,6 @@ function StatCard({ label, value }: { label: string; value: string }) {
           marginTop: 5,
           fontSize: 27,
           fontWeight: 900,
-          fontFamily: '"Exo 2"',
         }}
       >
         {value}
@@ -265,7 +231,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
   );
 }
 
-function fallbackImage(code: string, fontData?: ArrayBuffer | null) {
+function fallbackImage(code: string) {
   return new ImageResponse(
     (
       <div
@@ -319,7 +285,6 @@ function fallbackImage(code: string, fontData?: ArrayBuffer | null) {
                 fontSize: 64,
                 fontWeight: 900,
                 letterSpacing: -2,
-                fontFamily: '"Exo 2"',
               }}
             >
               Classement final
@@ -360,12 +325,7 @@ function fallbackImage(code: string, fontData?: ArrayBuffer | null) {
         </div>
       </div>
     ),
-    {
-      ...size,
-      fonts: fontData
-        ? [{ name: "Exo 2", data: fontData, style: "normal", weight: 800 }]
-        : [],
-    },
+    size,
   );
 }
 
@@ -377,15 +337,9 @@ export default async function Image({
   const { code: rawCode } = await params;
   const code = String(rawCode || "").trim().toUpperCase();
 
-  const [result, exo2] = await Promise.all([
-    getPublicResult(code),
-    loadGoogleFont(
-      "Exo 2",
-      "MixParty PARTY RESULTS RÉCAP DE SOIRÉE LE GRAND GAGNANT Benjamin remporte la soirée Résultats officiels PARTICIPANTS VOTES TITRES JOUÉS DURÉE MORCEAU DE LA SOIRÉE PARTYSCORE PODIUM DE LA SOIRÉE Classement stats musique souvenirs 0123456789àéèùêâîôûçABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz#·:/-",
-    ).catch(() => null),
-  ]);
+  const result = await getPublicResult(code);
 
-  if (!result) return fallbackImage(code, exo2);
+  if (!result) return fallbackImage(code);
 
   const ranking = Array.isArray(result.ranking) ? result.ranking : [];
   const winner = ranking[0];
@@ -504,7 +458,6 @@ export default async function Image({
                   fontSize: 15,
                   fontWeight: 900,
                   letterSpacing: 1.2,
-                  fontFamily: '"Exo 2"',
                 }}
               >
                 {result.code}
@@ -541,7 +494,6 @@ export default async function Image({
                   lineHeight: 1,
                   fontWeight: 900,
                   letterSpacing: -1.8,
-                  fontFamily: '"Exo 2"',
                 }}
               >
                 {`${winnerName} remporte la soirée`}
@@ -647,7 +599,6 @@ export default async function Image({
                       display: "flex",
                       fontSize: 32,
                       fontWeight: 900,
-                      fontFamily: '"Exo 2"',
                     }}
                   >
                     {winnerName}
@@ -687,7 +638,6 @@ export default async function Image({
                       fontSize: 48,
                       fontWeight: 900,
                       lineHeight: 1,
-                      fontFamily: '"Exo 2"',
                     }}
                   >
                     {String(winnerScore)}
@@ -778,7 +728,6 @@ export default async function Image({
                             color: index === 1 ? "#0f172a" : "#261400",
                             fontSize: 13,
                             fontWeight: 900,
-                            fontFamily: '"Exo 2"',
                           }}
                         >
                           {`#${index + 1}`}
@@ -807,7 +756,6 @@ export default async function Image({
                               display: "flex",
                               fontSize: 19,
                               fontWeight: 800,
-                              fontFamily: '"Exo 2"',
                             }}
                           >
                             {row.name || `Participant ${index + 1}`}
@@ -820,7 +768,6 @@ export default async function Image({
                             color: index === 0 ? "#fde68a" : "#e5e7eb",
                             fontSize: 16,
                             fontWeight: 900,
-                            fontFamily: '"Exo 2"',
                           }}
                         >
                           {`${score} pts`}
@@ -919,7 +866,6 @@ export default async function Image({
                   fontSize: 22,
                   lineHeight: 1.05,
                   fontWeight: 900,
-                  fontFamily: '"Exo 2"',
                 }}
               >
                 {topSong?.title || "Le hit de la soirée"}
@@ -948,7 +894,6 @@ export default async function Image({
                   color: "#fde68a",
                   fontSize: 14,
                   fontWeight: 900,
-                  fontFamily: '"Exo 2"',
                 }}
               >
                 {plural(Math.max(0, Number(topSong?.votes || 0)), "vote")}
@@ -982,11 +927,6 @@ export default async function Image({
         </div>
       </div>
     ),
-    {
-      ...size,
-      fonts: exo2
-        ? [{ name: "Exo 2", data: exo2, style: "normal", weight: 800 }]
-        : [],
-    },
+    size,
   );
 }
