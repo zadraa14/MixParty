@@ -7108,19 +7108,31 @@ const canRemove =
           /* DJ uniquement : le même iframe YouTube reste réellement visible
              lorsqu'on quitte l'onglet Lecture. On ne recrée pas de second player. */
           .v54-mobile-playback-floating {
-            position: relative;
-            z-index: 46;
-            width: 0 !important;
-            height: 0 !important;
-            min-height: 0 !important;
+            position: fixed !important;
+            right: max(10px, env(safe-area-inset-right)) !important;
+            bottom: calc(88px + env(safe-area-inset-bottom)) !important;
+            z-index: 80 !important;
+
+            /* Le conteneur flottant lui-même porte maintenant les dimensions.
+               C'est plus robuste sur iOS/Safari et Android/Chrome qu'un enfant
+               fixed placé dans un parent 0x0. */
+            display: block !important;
+            width: 220px !important;
+            height: 200px !important;
+            min-width: 220px !important;
+            min-height: 200px !important;
+            max-width: 220px !important;
+            max-height: 200px !important;
             margin: 0 !important;
             padding: 0 !important;
             overflow: visible !important;
+            isolation: isolate;
           }
 
           .v54-mobile-playback-floating .v54-mobile-playback-stack {
-            width: 0 !important;
-            height: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            min-width: 0 !important;
             margin: 0 !important;
           }
 
@@ -7131,19 +7143,15 @@ const canRemove =
           }
 
           .v54-mobile-video-shell--floating {
-            position: fixed !important;
-            right: max(10px, env(safe-area-inset-right)) !important;
-            bottom: calc(88px + env(safe-area-inset-bottom)) !important;
-            z-index: 46 !important;
-
-            /* Exigence YouTube : viewport du lecteur >= 200 x 200 px.
-               220 x 200 garde un peu d'air tout en restant utilisable sur 320 px. */
-            width: 220px !important;
-            height: 200px !important;
-            min-width: 220px !important;
+            position: relative !important;
+            inset: auto !important;
+            z-index: 1 !important;
+            width: 100% !important;
+            height: 100% !important;
+            min-width: 200px !important;
             min-height: 200px !important;
-            max-width: 220px !important;
-            max-height: 200px !important;
+            max-width: 100% !important;
+            max-height: 100% !important;
             margin: 0 !important;
             border-radius: 18px !important;
             background: #000 !important;
@@ -7190,7 +7198,7 @@ const canRemove =
         }
 
         @media (max-width: 359px) {
-          .v54-mobile-video-shell--floating {
+          .v54-mobile-playback-floating {
             right: max(8px, env(safe-area-inset-right)) !important;
             width: 200px !important;
             height: 200px !important;
@@ -7275,7 +7283,7 @@ const canRemove =
         }
 
         @media (max-width: 767px) and (orientation: landscape) {
-          .v54-mobile-video-shell--floating {
+          .v54-mobile-playback-floating {
             right: max(10px, env(safe-area-inset-right)) !important;
             bottom: calc(82px + env(safe-area-inset-bottom)) !important;
             width: 220px !important;
