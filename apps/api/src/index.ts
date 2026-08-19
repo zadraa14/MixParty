@@ -1672,6 +1672,13 @@ function isCompilationLikeMusicContent(value: {
     .trim();
   const duration = Number(value.durationSeconds || 0);
 
+  // MixParty doit proposer des morceaux individuels, pas des contenus longs.
+  // Tout résultat de plus de 10 minutes est exclu : compilations, DJ sets,
+  // concerts entiers, albums complets, playlists vidéo, etc.
+  if (duration > 10 * 60) {
+    return true;
+  }
+
   // Classements / compilations éditoriales : "Top 100 musique France",
   // "Top 50 années 80", "100 meilleurs hits", etc.
   if (
@@ -5324,7 +5331,7 @@ type SearchCacheEntry = {
   engineVersion?: number;
 };
 
-const YOUTUBE_SEARCH_ENGINE_VERSION = 4;
+const YOUTUBE_SEARCH_ENGINE_VERSION = 5;
 const YOUTUBE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const YOUTUBE_CACHE_MAX_ENTRIES = 2000;
 const youtubeCacheFilePath = path.resolve(persistentDataDir, "youtube-search-cache.json");
