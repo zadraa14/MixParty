@@ -39,6 +39,7 @@ import {
   SkipBack,
   SkipForward,
   TrendingUp,
+  Trophy,
   UserPlus,
   UserRound,
   Zap,
@@ -323,7 +324,7 @@ export default function PartyPage() {
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [voteBurst, setVoteBurst] = useState<string | null>(null);
   const [activeMobileTab, setActiveMobileTab] = useState<
-    "playback" | "add" | "karaoke" | "queue" | "guests" | "profile"
+    "playback" | "add" | "karaoke" | "queue" | "ranking" | "guests" | "profile"
   >("playback");
   const [queueMobileView, setQueueMobileView] = useState<"all" | "votes" | "recent">("all");
   const [isPlaybackController, setIsPlaybackController] = useState(false);
@@ -2573,7 +2574,89 @@ async function removeSong(index: number, song: Song) {
     : 0;
   const totalSessionVotes = [...(party.history || []), ...queue].reduce((total, song) => total + Number(song.votes || 0), 0);
 
-  const mobileTabs = ["playback", "add", "queue", "guests", "profile"] as const;
+  const liveRankingSongs = Array.from(
+    new Map(
+      [
+        ...(party.history || []),
+        ...(party.currentSong ? [party.currentSong] : []),
+        ...(party.songs || []),
+      ].map((song) => [`${song.videoId}-${song.addedAt}`, song] as const),
+    ).values(),
+  );
+
+  const liveRanking = party.participants
+    .map((participant) => {
+      const participantName = participant.name.trim().toLowerCase();
+
+      const participantSongs = liveRankingSongs.filter((song) => {
+        if (song.addedById && song.addedById === participant.id) return true;
+        return String(song.addedBy || "").trim().toLowerCase() === participantName;
+      });
+
+      const votesReceived = participantSongs.reduce(
+        (total, song) => total + Math.max(0, Number(song.votes || 0)),
+        0,
+      );
+
+      const votesGiven = liveRankingSongs.reduce((total, song) => {
+        const voted = Array.isArray(song.voters)
+          ? song.voters.some(
+              (voter) =>
+                String(voter || "").trim().toLowerCase() === participantName,
+            )
+          : false;
+        return total + (voted ? 1 : 0);
+      }, 0);
+
+      const songsAdded = participantSongs.length;
+      const partyScore = Math.max(
+        0,
+        Math.round(votesReceived * 5 + votesGiven * 2 + songsAdded),
+      );
+
+      return {
+        ...participant,
+        votesReceived,
+        votesGiven,
+        songsAdded,
+        partyScore,
+      };
+    })
+    .sort(
+      (a, b) =>
+        b.partyScore - a.partyScore ||
+        b.votesReceived - a.votesReceived ||
+        b.votesGiven - a.votesGiven ||
+        a.name.localeCompare(b.name, "fr"),
+    );
+
+  const liveRankingWithRank = liveRanking.map((entry, index) => ({
+    ...entry,
+    rank: index + 1,
+  }));
+
+  const myLiveRanking =
+    liveRankingWithRank.find((entry) => entry.id === participantId) ||
+    liveRankingWithRank.find(
+      (entry) =>
+        entry.name.trim().toLowerCase() === playerName.trim().toLowerCase(),
+    ) ||
+    null;
+
+  const liveRankingMaxVotesGiven = Math.max(
+    0,
+    ...liveRankingWithRank.map((entry) => entry.votesGiven),
+  );
+  const liveRankingMaxVotesReceived = Math.max(
+    0,
+    ...liveRankingWithRank.map((entry) => entry.votesReceived),
+  );
+  const liveRankingMaxSongs = Math.max(
+    0,
+    ...liveRankingWithRank.map((entry) => entry.songsAdded),
+  );
+
+  const mobileTabs = ["playback", "add", "queue", "ranking", "profile"] as const;
 
   function normalizeKaraokeText(value: unknown) {
     return String(value || "")
@@ -2743,9 +2826,23 @@ async function removeSong(index: number, song: Song) {
   );
 
 
-  function switchMobileTab(nextTab: typeof mobileTabs[number] | "karaoke") {
+  function switchMobileTab(
+    nextTab:
+      | typeof mobileTabs[number]
+      | "karaoke"
+      | "guests"
+  ) {
     if (!KARAOKE_ENABLED && nextTab === "karaoke") return;
-    setActiveMobileTab(nextTab as typeof mobileTabs[number]);
+    setActiveMobileTab(
+      nextTab as
+        | "playback"
+        | "add"
+        | "karaoke"
+        | "queue"
+        | "ranking"
+        | "guests"
+        | "profile",
+    );
 
     if (nextTab === "karaoke" && !karaokeCatalog && !karaokeCatalogLoading) {
       setKaraokeDebouncedSearch("");
@@ -2805,6 +2902,7 @@ async function removeSong(index: number, song: Song) {
     if (Math.abs(deltaX) < 58 || Math.abs(deltaX) < Math.abs(deltaY) * 1.35) return;
 
     const currentIndex = mobileTabs.indexOf(activeMobileTab as typeof mobileTabs[number]);
+    if (currentIndex < 0) return;
     const nextIndex = deltaX < 0
       ? Math.min(mobileTabs.length - 1, currentIndex + 1)
       : Math.max(0, currentIndex - 1);
@@ -6104,6 +6202,198 @@ const canRemove =
         )}
 
         <section
+          className={`${activeMobileTab === "ranking" ? "block" : "hidden"} md:hidden`}
+          aria-label="Classement MixParty en direct"
+        >
+          <div className="relative overflow-hidden rounded-[28px] border border-fuchsia-300/15 bg-[#090711]/96 shadow-[0_24px_80px_rgba(0,0,0,.42)]">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_4%,rgba(236,72,153,.16),transparent_32%),radial-gradient(circle_at_8%_32%,rgba(124,58,237,.13),transparent_30%),radial-gradient(circle_at_92%_72%,rgba(249,115,22,.10),transparent_28%)]" />
+            <div className="pointer-events-none absolute inset-0 opacity-[0.035] [background-image:linear-gradient(rgba(255,255,255,.8)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.8)_1px,transparent_1px)] [background-size:46px_46px]" />
+
+            <div className="relative px-4 pb-5 pt-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="grid h-11 w-11 place-items-center rounded-2xl border border-pink-300/20 bg-gradient-to-br from-fuchsia-500/15 to-orange-400/10 text-pink-300 shadow-[0_0_24px_rgba(236,72,153,.12)]">
+                    <Trophy className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <p className="text-[9px] font-black uppercase tracking-[.18em] text-pink-300">
+                      Classement en direct
+                    </p>
+                    <h2 className="font-[family:var(--font-exo-2)] text-xl font-black tracking-[-.03em] text-white">
+                      La compétition est lancée
+                    </h2>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => switchMobileTab("guests")}
+                  className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-[9px] font-black text-white/50 transition active:bg-white/[0.08]"
+                >
+                  Invités
+                </button>
+              </div>
+
+              <p className="mt-2 text-xs font-semibold text-white/38">
+                PartyScore live provisoire · évolue avec les votes et les morceaux ajoutés.
+              </p>
+
+              {liveRankingWithRank.length > 0 ? (
+                <>
+                  <div className="mt-5 grid grid-cols-3 items-end gap-2">
+                    {[1, 0, 2].map((podiumIndex) => {
+                      const entry = liveRankingWithRank[podiumIndex];
+                      if (!entry) {
+                        return <div key={podiumIndex} className="h-[150px]" />;
+                      }
+
+                      const isWinner = podiumIndex === 0;
+                      const podiumRank = entry.rank;
+                      const badge =
+                        entry.votesGiven > 0 && entry.votesGiven === liveRankingMaxVotesGiven
+                          ? "Top voteur"
+                          : entry.votesReceived > 0 && entry.votesReceived === liveRankingMaxVotesReceived
+                            ? "Hitmaker"
+                            : entry.songsAdded > 0 && entry.songsAdded === liveRankingMaxSongs
+                              ? "Machine à sons"
+                              : "En feu";
+
+                      return (
+                        <div
+                          key={entry.id}
+                          className={`relative flex flex-col items-center rounded-[22px] border px-2 pb-3 pt-4 text-center ${
+                            isWinner
+                              ? "min-h-[188px] border-amber-300/35 bg-[linear-gradient(180deg,rgba(245,158,11,.13),rgba(236,72,153,.08),rgba(255,255,255,.025))] shadow-[0_0_38px_rgba(245,158,11,.12)]"
+                              : "min-h-[165px] border-white/10 bg-white/[0.035]"
+                          }`}
+                        >
+                          {isWinner ? (
+                            <Crown className="absolute -top-5 h-9 w-9 fill-amber-300 text-amber-300 drop-shadow-[0_0_12px_rgba(251,191,36,.55)]" />
+                          ) : null}
+
+                          <div
+                            className={`relative grid overflow-hidden rounded-full border-2 ${
+                              podiumRank === 1
+                                ? "h-[76px] w-[76px] border-amber-300 shadow-[0_0_24px_rgba(251,191,36,.26)]"
+                                : podiumRank === 2
+                                  ? "h-[62px] w-[62px] border-violet-300/70"
+                                  : "h-[62px] w-[62px] border-orange-300/70"
+                            }`}
+                          >
+                            <img
+                              src={entry.avatar || defaultAvatarForParticipant(entry.id)}
+                              alt={`Avatar de ${entry.name}`}
+                              className="h-full w-full object-cover"
+                            />
+                            <span
+                              className={`absolute bottom-[-1px] left-1/2 grid h-6 min-w-6 -translate-x-1/2 place-items-center rounded-full border px-1 text-[10px] font-black ${
+                                podiumRank === 1
+                                  ? "border-amber-200 bg-amber-500 text-white"
+                                  : podiumRank === 2
+                                    ? "border-violet-200 bg-violet-600 text-white"
+                                    : "border-orange-200 bg-orange-600 text-white"
+                              }`}
+                            >
+                              {podiumRank}
+                            </span>
+                          </div>
+
+                          <strong className="mt-3 max-w-full truncate text-[12px] font-black text-white">
+                            {entry.name}
+                          </strong>
+                          <span className="mt-1 max-w-full truncate rounded-full border border-fuchsia-300/15 bg-fuchsia-500/[0.07] px-2 py-1 text-[7px] font-black text-fuchsia-200/80">
+                            {badge}
+                          </span>
+
+                          <span className="mt-auto pt-3 text-[8px] font-bold text-white/35">
+                            PartyScore
+                          </span>
+                          <strong className={`text-xl font-black ${isWinner ? "text-amber-300" : "text-white"}`}>
+                            {entry.partyScore} 🔥
+                          </strong>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    <div className="rounded-[18px] border border-violet-300/15 bg-violet-500/[0.06] p-3">
+                      <Heart className="h-5 w-5 text-violet-300" />
+                      <span className="mt-2 block text-[8px] font-bold text-white/45">Votes donnés</span>
+                      <strong className="mt-0.5 block text-xl font-black text-white">
+                        {myLiveRanking?.votesGiven ?? 0}
+                      </strong>
+                    </div>
+
+                    <div className="rounded-[18px] border border-pink-300/15 bg-pink-500/[0.06] p-3">
+                      <TrendingUp className="h-5 w-5 text-pink-300" />
+                      <span className="mt-2 block text-[8px] font-bold text-white/45">Votes reçus</span>
+                      <strong className="mt-0.5 block text-xl font-black text-white">
+                        {myLiveRanking?.votesReceived ?? 0}
+                      </strong>
+                    </div>
+
+                    <div className="rounded-[18px] border border-orange-300/15 bg-orange-500/[0.06] p-3">
+                      <Trophy className="h-5 w-5 text-orange-300" />
+                      <span className="mt-2 block text-[8px] font-bold text-white/45">Mon classement</span>
+                      <strong className="mt-0.5 block text-xl font-black text-white">
+                        {myLiveRanking ? `#${myLiveRanking.rank}` : "—"}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 overflow-hidden rounded-[22px] border border-white/10 bg-black/15">
+                    {liveRankingWithRank.slice(3).map((entry) => (
+                      <div
+                        key={entry.id}
+                        className="grid grid-cols-[34px_44px_minmax(0,1fr)_auto] items-center gap-2 border-b border-white/[0.06] px-3 py-3 last:border-b-0"
+                      >
+                        <span className="grid h-8 w-8 place-items-center rounded-full bg-white/[0.045] text-sm font-black text-white/70">
+                          {entry.rank}
+                        </span>
+                        <img
+                          src={entry.avatar || defaultAvatarForParticipant(entry.id)}
+                          alt=""
+                          className="h-10 w-10 rounded-full border border-white/10 object-cover"
+                        />
+                        <div className="min-w-0">
+                          <strong className="block truncate text-sm font-black text-white/90">
+                            {entry.name}
+                          </strong>
+                          <span className="mt-0.5 block text-[8px] font-bold text-white/30">
+                            {entry.votesGiven} vote{entry.votesGiven > 1 ? "s" : ""} donné{entry.votesGiven > 1 ? "s" : ""} · {entry.songsAdded} son{entry.songsAdded > 1 ? "s" : ""}
+                          </span>
+                        </div>
+                        <div className="text-right">
+                          <span className="block text-[8px] font-bold text-white/35">PartyScore</span>
+                          <strong className="text-lg font-black text-white">{entry.partyScore} 🔥</strong>
+                        </div>
+                      </div>
+                    ))}
+
+                    {liveRankingWithRank.length <= 3 ? (
+                      <div className="px-4 py-4 text-center text-[10px] font-semibold text-white/28">
+                        Les prochains participants apparaîtront ici en direct.
+                      </div>
+                    ) : null}
+                  </div>
+                </>
+              ) : (
+                <div className="mt-5 rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-8 text-center">
+                  <Trophy className="mx-auto h-7 w-7 text-white/20" />
+                  <p className="mt-3 text-sm font-black text-white/60">
+                    Le classement se prépare
+                  </p>
+                  <p className="mt-1 text-[10px] font-semibold text-white/30">
+                    Il apparaîtra dès que les participants rejoignent la soirée.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section
           className={`${activeMobileTab === "profile" ? "block" : "hidden"} md:hidden`}
           aria-label="Mon profil MixParty"
         >
@@ -6164,7 +6454,7 @@ const canRemove =
               ? [{ id: "karaoke", label: "Karaoké", Icon: Mic2 }]
               : []),
             { id: "queue", label: "File", Icon: ListMusic },
-            { id: "guests", label: "Invités", Icon: UserPlus },
+            { id: "ranking", label: "Classement", Icon: Trophy },
             { id: "profile", label: "Profil", Icon: UserRound },
           ].map(({ id, label, Icon }) => {
             const active = activeMobileTab === id;
@@ -6174,7 +6464,7 @@ const canRemove =
                 type="button"
                 onClick={() =>
                   switchMobileTab(
-                    id as "playback" | "add" | "karaoke" | "queue" | "guests" | "profile",
+                    id as "playback" | "add" | "karaoke" | "queue" | "ranking" | "guests" | "profile",
                   )
                 }
                 className={`v54-mobile-nav__item flex min-w-0 flex-col items-center justify-center gap-1 rounded-[17px] px-0.5 py-2.5 text-[9px] font-black transition ${active ? "v54-mobile-nav__item--active bg-gradient-to-br from-purple-600 via-pink-500 to-orange-400 text-white shadow-[0_8px_24px_rgba(168,85,247,0.28)]" : "text-white/45 active:bg-white/[0.06]"}`}
