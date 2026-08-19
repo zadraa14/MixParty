@@ -3903,13 +3903,25 @@ async function removeSong(index: number, song: Song) {
                 Tout le moteur de lecture existant est conservé.
                ===================================================== */}
             <section
-              className={`${activeMobileTab === "playback" ? "!block" : "!hidden"} md:!hidden`}
+              className={`${
+                activeMobileTab === "playback"
+                  ? "!block"
+                  : isPlaybackController && party.currentSong
+                    ? "!block v54-mobile-playback-floating"
+                    : "!hidden"
+              } v54-mobile-playback-section md:!hidden`}
               aria-label="Lecture en cours"
             >
               {party.currentSong ? (
-                <div className="space-y-2.5">
+                <div className="v54-mobile-playback-stack space-y-2.5">
                   {/* PLAYER YOUTUBE — volontairement nu : aucun overlay au-dessus */}
-                  <div className="mx-auto w-[88%] max-w-[390px] overflow-hidden rounded-[20px] border border-white/[0.09] bg-black shadow-[0_16px_44px_rgba(0,0,0,.34)]">
+                  <div
+                    className={`v54-mobile-video-shell ${
+                      activeMobileTab !== "playback" && isPlaybackController
+                        ? "v54-mobile-video-shell--floating"
+                        : ""
+                    } mx-auto w-full max-w-[430px] overflow-hidden rounded-[20px] border border-white/[0.09] bg-black shadow-[0_16px_44px_rgba(0,0,0,.34)]`}
+                  >
                     <div className="relative aspect-video w-full overflow-hidden bg-black">
                       {isPlaybackController ? (
                         <div
@@ -3937,14 +3949,14 @@ async function removeSong(index: number, song: Song) {
                   </div>
 
                   {/* TITRE + VOTES + COMMANDES DJ — PREMIUM MOBILE */}
-                  <div className="relative overflow-hidden rounded-[28px] border border-fuchsia-300/[0.12] bg-[radial-gradient(circle_at_100%_100%,rgba(249,115,22,.11),transparent_34%),radial-gradient(circle_at_0%_0%,rgba(168,85,247,.14),transparent_38%),linear-gradient(145deg,rgba(24,15,38,.96),rgba(9,8,17,.97)_56%,rgba(33,13,24,.94))] p-4 shadow-[0_20px_55px_rgba(0,0,0,.34),0_0_28px_rgba(217,70,239,.055)]">
+                  <div className="v54-mobile-now-card relative overflow-hidden rounded-[28px] border border-fuchsia-300/[0.12] bg-[radial-gradient(circle_at_100%_100%,rgba(249,115,22,.11),transparent_34%),radial-gradient(circle_at_0%_0%,rgba(168,85,247,.14),transparent_38%),linear-gradient(145deg,rgba(24,15,38,.96),rgba(9,8,17,.97)_56%,rgba(33,13,24,.94))] p-4 shadow-[0_20px_55px_rgba(0,0,0,.34),0_0_28px_rgba(217,70,239,.055)]">
                     <div className="pointer-events-none absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-fuchsia-300/35 to-transparent" />
 
-                    <div className="flex items-center gap-3.5">
+                    <div className="v54-mobile-now-head flex min-w-0 items-center gap-3.5">
                       <img
                         src={getSongArtwork(party.currentSong)}
                         alt=""
-                        className="h-[66px] w-[66px] shrink-0 rounded-[19px] border border-white/[0.10] object-cover shadow-[0_12px_30px_rgba(0,0,0,.32)]"
+                        className="v54-mobile-now-cover h-[66px] w-[66px] shrink-0 rounded-[19px] border border-white/[0.10] object-cover shadow-[0_12px_30px_rgba(0,0,0,.32)]"
                       />
 
                       <div className="min-w-0 flex-1">
@@ -3952,16 +3964,16 @@ async function removeSong(index: number, song: Song) {
                           <span className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_8px_rgba(244,114,182,.75)]" />
                           En cours
                         </div>
-                        <h1 className="truncate font-[family:var(--font-exo-2)] text-[17px] font-black leading-tight text-white">
+                        <h1 className="v54-mobile-song-title line-clamp-2 break-words font-[family:var(--font-exo-2)] text-[17px] font-black leading-[1.12] text-white">
                           {party.currentSong.title}
                         </h1>
-                        <p className="mt-1 truncate text-[11px] font-semibold text-white/42">
+                        <p className="v54-mobile-song-artist mt-1 truncate text-[11px] font-semibold text-white/42">
                           {party.currentSong.artistName || party.currentSong.addedBy}
                         </p>
                       </div>
 
                       {/* Vote = coeur, plus évident */}
-                      <div className="flex h-[54px] min-w-[58px] shrink-0 items-center justify-center gap-1.5 rounded-full border border-pink-300/30 bg-[linear-gradient(135deg,rgba(236,72,153,.24),rgba(249,115,22,.13))] px-3 shadow-[0_0_20px_rgba(236,72,153,.10)]">
+                      <div className="v54-mobile-vote-pill flex h-[54px] min-w-[58px] shrink-0 items-center justify-center gap-1.5 rounded-full border border-pink-300/30 bg-[linear-gradient(135deg,rgba(236,72,153,.24),rgba(249,115,22,.13))] px-3 shadow-[0_0_20px_rgba(236,72,153,.10)]">
                         <Heart className="h-[19px] w-[19px] text-pink-300" />
                         <strong className="font-[family:var(--font-exo-2)] text-[18px] font-black leading-none text-white">
                           {party.currentSong.votes || 0}
@@ -3970,18 +3982,18 @@ async function removeSong(index: number, song: Song) {
                     </div>
 
                     {/* Durée / progression */}
-                    <div className="mt-3 rounded-[18px] border border-white/[0.06] bg-black/15 px-3 py-2.5">
+                    <div className="v54-mobile-progress mt-3 rounded-[18px] border border-white/[0.06] bg-black/15 px-3 py-2.5">
                       <div className="h-[4px] overflow-hidden rounded-full bg-white/[0.07]">
                         <div
                           className="h-full rounded-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-orange-400"
                           style={{
                             width: `${
-                              tvPlayback.duration > 0
+                              playbackDurationSeconds > 0
                                 ? Math.min(
                                     100,
                                     Math.max(
                                       0,
-                                      (tvPlayback.time / tvPlayback.duration) * 100,
+                                      (playbackTimeSeconds / playbackDurationSeconds) * 100,
                                     ),
                                   )
                                 : 0
@@ -3991,8 +4003,8 @@ async function removeSong(index: number, song: Song) {
                       </div>
 
                       <div className="mt-1.5 flex items-center justify-between text-[7px] font-black tabular-nums text-white/28">
-                        <span>{formatPlaybackTime(tvPlayback.time || 0)}</span>
-                        <span>{formatPlaybackTime(tvPlayback.duration || 0)}</span>
+                        <span>{formatPlaybackTime(playbackTimeSeconds)}</span>
+                        <span>{formatPlaybackTime(playbackDurationSeconds)}</span>
                       </div>
                     </div>
 
@@ -4000,16 +4012,16 @@ async function removeSong(index: number, song: Song) {
                     <div className="my-3 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
 
                     {/* Commandes DJ plus douces / moins carrées */}
-                    <div className="grid grid-cols-[1fr_1.05fr_1fr] items-center gap-3">
+                    <div className="v54-mobile-dj-controls grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3">
                       <button
                         type="button"
                         onClick={() => void previousSong()}
                         disabled={!isPlaybackController}
-                        className="flex h-[48px] items-center justify-center gap-2 rounded-full border border-violet-300/[0.14] bg-[linear-gradient(145deg,rgba(124,58,237,.10),rgba(255,255,255,.025))] text-white/78 shadow-[inset_0_1px_0_rgba(255,255,255,.04)] transition active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-25"
+                        className="v54-mobile-dj-control flex h-[48px] min-w-0 items-center justify-center gap-2 rounded-full border border-violet-300/[0.14] bg-[linear-gradient(145deg,rgba(124,58,237,.10),rgba(255,255,255,.025))] text-white/78 shadow-[inset_0_1px_0_rgba(255,255,255,.04)] transition active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-25"
                         aria-label="Musique précédente"
                       >
                         <SkipBack className="h-[17px] w-[17px] fill-current" />
-                        <span className="text-[8px] font-black">Préc.</span>
+                        <span className="v54-mobile-dj-control-label text-[8px] font-black">Préc.</span>
                       </button>
 
                       <button
@@ -4037,10 +4049,10 @@ async function removeSong(index: number, song: Song) {
                         type="button"
                         onClick={() => void nextSong()}
                         disabled={!isPlaybackController}
-                        className="flex h-[48px] items-center justify-center gap-2 rounded-full border border-pink-300/[0.14] bg-[linear-gradient(145deg,rgba(236,72,153,.08),rgba(249,115,22,.045))] text-white/78 shadow-[inset_0_1px_0_rgba(255,255,255,.04)] transition active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-25"
+                        className="v54-mobile-dj-control flex h-[48px] min-w-0 items-center justify-center gap-2 rounded-full border border-pink-300/[0.14] bg-[linear-gradient(145deg,rgba(236,72,153,.08),rgba(249,115,22,.045))] text-white/78 shadow-[inset_0_1px_0_rgba(255,255,255,.04)] transition active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-25"
                         aria-label="Musique suivante"
                       >
-                        <span className="text-[8px] font-black">Suiv.</span>
+                        <span className="v54-mobile-dj-control-label text-[8px] font-black">Suiv.</span>
                         <SkipForward className="h-[17px] w-[17px] fill-current" />
                       </button>
                     </div>
@@ -5039,7 +5051,7 @@ const canRemove =
                 <button
                   type="button"
                   onClick={() => switchMobileTab("playback")}
-                  className="flex w-full items-center gap-3 rounded-[20px] border border-white/[0.08] bg-[linear-gradient(135deg,rgba(26,15,39,.92),rgba(10,9,18,.96))] p-2.5 text-left shadow-[0_12px_34px_rgba(0,0,0,.22)]"
+                  className="v54-mobile-mini-player relative flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-[20px] border border-white/[0.08] bg-[linear-gradient(135deg,rgba(26,15,39,.92),rgba(10,9,18,.96))] p-2.5 pb-3 text-left shadow-[0_12px_34px_rgba(0,0,0,.22)]"
                 >
                   <img
                     src={getSongArtwork(party.currentSong)}
@@ -5047,7 +5059,7 @@ const canRemove =
                     className="h-12 w-12 shrink-0 rounded-[13px] border border-white/[0.08] object-cover"
                   />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[12px] font-black text-white">
+                    <span className="v54-mobile-mini-title block line-clamp-2 break-words text-[12px] font-black leading-tight text-white">
                       {party.currentSong.title}
                     </span>
                     <span className="mt-0.5 block truncate text-[9px] font-semibold text-white/38">
@@ -5060,6 +5072,19 @@ const canRemove =
                     ) : (
                       <Play className="ml-0.5 h-4 w-4 fill-current" />
                     )}
+                  </span>
+
+                  <span className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] bg-white/[0.05]">
+                    <span
+                      className="block h-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-orange-400"
+                      style={{
+                        width: `${
+                          playbackDurationSeconds > 0
+                            ? Math.min(100, Math.max(0, (playbackTimeSeconds / playbackDurationSeconds) * 100))
+                            : 0
+                        }%`,
+                      }}
+                    />
                   </span>
                 </button>
               ) : null}
@@ -7087,6 +7112,238 @@ const canRemove =
 
         .v53-queue-actions {
           flex-shrink: 0;
+        }
+
+        /* =========================================================
+           MOBILE — POLISH LECTURE EN COURS
+           320 px -> grands Android/iPhone + paysage
+           ========================================================= */
+        @media (max-width: 767px) {
+          .v54-mobile-playback-section,
+          .v54-mobile-playback-stack,
+          .v54-mobile-now-card,
+          .v54-mobile-now-head,
+          .v54-mobile-progress,
+          .v54-mobile-mini-player {
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
+          }
+
+          .v54-mobile-video-shell {
+            width: 100%;
+            max-width: min(430px, 100%);
+          }
+
+          /* DJ uniquement : le même iframe YouTube reste réellement visible
+             lorsqu'on quitte l'onglet Lecture. On ne recrée pas de second player. */
+          .v54-mobile-playback-floating {
+            position: relative;
+            z-index: 46;
+            width: 0 !important;
+            height: 0 !important;
+            min-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+          }
+
+          .v54-mobile-playback-floating .v54-mobile-playback-stack {
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+          }
+
+          .v54-mobile-playback-floating
+            .v54-mobile-playback-stack
+            > :not(.v54-mobile-video-shell) {
+            display: none !important;
+          }
+
+          .v54-mobile-video-shell--floating {
+            position: fixed !important;
+            right: max(10px, env(safe-area-inset-right)) !important;
+            bottom: calc(88px + env(safe-area-inset-bottom)) !important;
+            z-index: 46 !important;
+
+            /* Exigence YouTube : viewport du lecteur >= 200 x 200 px.
+               220 x 200 garde un peu d'air tout en restant utilisable sur 320 px. */
+            width: 220px !important;
+            height: 200px !important;
+            min-width: 220px !important;
+            min-height: 200px !important;
+            max-width: 220px !important;
+            max-height: 200px !important;
+            margin: 0 !important;
+            border-radius: 18px !important;
+            background: #000 !important;
+            overflow: hidden !important;
+            box-shadow:
+              0 18px 54px rgba(0,0,0,.58),
+              0 0 0 1px rgba(255,255,255,.08) !important;
+          }
+
+          .v54-mobile-video-shell--floating > div {
+            width: 100% !important;
+            height: 100% !important;
+            aspect-ratio: auto !important;
+          }
+
+          .v54-mobile-video-shell--floating .mixparty-youtube-host,
+          .v54-mobile-video-shell--floating .mixparty-youtube-host iframe {
+            width: 100% !important;
+            height: 100% !important;
+            min-width: 200px !important;
+            min-height: 200px !important;
+            max-width: none !important;
+            max-height: none !important;
+          }
+
+          .v54-mobile-song-title,
+          .v54-mobile-song-artist,
+          .v54-mobile-mini-title {
+            min-width: 0;
+            max-width: 100%;
+            overflow-wrap: anywhere;
+          }
+
+          .v54-mobile-dj-controls {
+            width: 100%;
+            min-width: 0;
+          }
+
+          .v54-mobile-dj-control {
+            min-width: 0;
+            max-width: 100%;
+            white-space: nowrap;
+          }
+        }
+
+        @media (max-width: 359px) {
+          .v54-mobile-video-shell--floating {
+            right: max(8px, env(safe-area-inset-right)) !important;
+            width: 200px !important;
+            height: 200px !important;
+            min-width: 200px !important;
+            min-height: 200px !important;
+            max-width: 200px !important;
+            max-height: 200px !important;
+          }
+
+          .v54-mobile-now-card {
+            padding: .78rem !important;
+            border-radius: 1.35rem !important;
+          }
+
+          .v54-mobile-now-head {
+            gap: .62rem !important;
+          }
+
+          .v54-mobile-now-cover {
+            width: 54px !important;
+            height: 54px !important;
+            border-radius: 15px !important;
+          }
+
+          .v54-mobile-song-title {
+            font-size: 14px !important;
+          }
+
+          .v54-mobile-song-artist {
+            font-size: 9px !important;
+          }
+
+          .v54-mobile-vote-pill {
+            height: 46px !important;
+            min-width: 48px !important;
+            padding-left: .55rem !important;
+            padding-right: .55rem !important;
+          }
+
+          .v54-mobile-vote-pill strong {
+            font-size: 15px !important;
+          }
+
+          .v54-mobile-dj-controls {
+            gap: .48rem !important;
+          }
+
+          .v54-mobile-dj-control {
+            height: 44px !important;
+            padding-left: .5rem !important;
+            padding-right: .5rem !important;
+          }
+
+          .v54-mobile-dj-control-label {
+            display: none;
+          }
+
+          .v54-mobile-mini-player {
+            gap: .55rem !important;
+            padding-left: .55rem !important;
+            padding-right: .55rem !important;
+          }
+        }
+
+        @media (min-width: 430px) and (max-width: 767px) {
+          .v54-mobile-video-shell {
+            max-width: 440px;
+          }
+
+          .v54-mobile-now-card {
+            padding: 1.1rem !important;
+          }
+
+          .v54-mobile-now-cover {
+            width: 72px !important;
+            height: 72px !important;
+          }
+
+          .v54-mobile-song-title {
+            font-size: 18px !important;
+          }
+        }
+
+        @media (max-width: 767px) and (orientation: landscape) {
+          .v54-mobile-video-shell--floating {
+            right: max(10px, env(safe-area-inset-right)) !important;
+            bottom: calc(82px + env(safe-area-inset-bottom)) !important;
+            width: 220px !important;
+            height: 200px !important;
+            min-width: 220px !important;
+            min-height: 200px !important;
+          }
+
+          .v54-mobile-playback-section {
+            padding-left: max(.25rem, env(safe-area-inset-left));
+            padding-right: max(.25rem, env(safe-area-inset-right));
+          }
+
+          .v54-mobile-video-shell {
+            max-width: min(430px, 74vw);
+          }
+
+          .v54-mobile-now-card {
+            max-width: 680px;
+            margin-left: auto;
+            margin-right: auto;
+          }
+
+          .v54-mobile-now-cover {
+            width: 58px !important;
+            height: 58px !important;
+          }
+
+          .v54-mobile-progress {
+            padding-top: .55rem !important;
+            padding-bottom: .55rem !important;
+          }
+
+          .v54-mobile-dj-controls {
+            max-width: 430px;
+            margin-left: auto;
+            margin-right: auto;
+          }
         }
 
         @media (max-width: 767px) {
