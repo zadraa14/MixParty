@@ -4681,7 +4681,26 @@ app.post("/party/:code/end", (req, res) => {
       );
     }
   }
-
+  const partyResult = accountsStore.recordPartyResultSnapshot({
+    code: party.code,
+    startedAt: party.createdAt,
+    endedAt,
+    uniqueParticipants: party.seenParticipantIds.length,
+    totalVotes,
+    songsPlayed: party.songs.filter((song) => song.played).length,
+    totalSongs: party.songs.length,
+    ranking: finalRanking,
+    topSongs: party.songs.map((song) => ({
+      videoId: song.videoId,
+      title: song.title,
+      artistName: song.artistName,
+      thumbnail: song.thumbnail,
+      votes: song.votes,
+      addedBy: song.addedBy,
+      addedByAccountId: song.addedByAccountId,
+      played: song.played,
+    })),
+  });
   playbackTelemetry.delete(party.code);
   parties = parties.filter((item) => item.code !== party.code);
   saveParties();
