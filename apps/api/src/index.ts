@@ -1676,9 +1676,10 @@ function isCompilationLikeMusicContent(value: {
   // "Top 50 années 80", "100 meilleurs hits", etc.
   if (
     /\btop\s*\d{1,3}\b/i.test(titleText) ||
+    /\btop\s+(?:hits?|musiques?|chansons?|titres?|songs?|tracks?|france|annees?|années?|80s|90s|2000s?|2010s?)\b/i.test(titleText) ||
     /\b(?:top|best)\s+(?:des?|du|de la|meilleurs?|meilleures?)\b/i.test(titleText) ||
     /\b\d{2,3}\s+(?:hits?|chansons?|musiques?|titres?|songs?|tracks?)\b/i.test(titleText) ||
-    /\b(?:playlist|compilation)\b/i.test(titleText)
+    /\b(?:playlist|compilation|megamix|non[- ]?stop|dj set)\b/i.test(titleText)
   ) {
     return true;
   }
@@ -5856,10 +5857,11 @@ async function requestYoutubeMusic(
         };
       })
       .filter((result: any) => result.embeddable && result.privacyStatus !== "private")
+      .filter((result: YoutubeSearchResult) => !isCompilationLikeMusicContent(result))
       .filter((result: YoutubeSearchResult) => {
         const text = `${result.rawTitle || ""} ${result.title} ${result.channelTitle || ""}`.toLowerCase();
         // On écarte seulement les contenus clairement non musicaux ou trop courts.
-        // Les remix, lives, paroles, instrumentaux, reprises et versions alternatives restent disponibles.
+        // Les remix, lives, paroles, instrumentaux et versions alternatives restent disponibles.
         return !/(podcast|interview|reaction|reacts?|documentary|documentaire|#shorts|\bshorts?\b|audition|the voice|incroyable talent|concours|talent show|making of|behind the scenes)/i.test(text);
       })
       .sort((a: YoutubeSearchResult, b: YoutubeSearchResult) =>
@@ -5903,6 +5905,7 @@ function musicBrainResultsForQuery(query: string) {
   if (!normalized) return [] as YoutubeSearchResult[];
 
   return Object.values(musicBrain.songs)
+    .filter((song) => !isCompilationLikeMusicContent(song))
     .filter((song) => {
       const artist = normalizeMusicQuery(song.artistName || "");
       const title = normalizeMusicQuery(song.title || "");

@@ -1559,7 +1559,9 @@ export default function PartyPage() {
         setSearchInsight(null);
       }
 
-      const pool = Array.isArray(data) ? data : [];
+      const pool = Array.isArray(data)
+        ? data.filter((video) => !isCompilationLikeDisplayedResult(video))
+        : [];
 
       setResults(
         pool.map((video) => ({
@@ -2727,14 +2729,33 @@ async function removeSong(index: number, song: Song) {
       .normalize("NFD")
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
 
     if (!normalized) return false;
-    if (normalized.length <= 2) return false;
-    if (/^(da|art|unknown|inconnu|artiste inconnu|unknown artist)$/i.test(normalized)) return false;
-    if (/^(music|musique|official|officiel|topic|audio|video|lyrics?|records?|recordings?|channel|youtube)$/i.test(normalized)) return false;
+    const compact = normalized.replace(/\s+/g, "");
+    if (compact.length <= 2) return false;
+    if (/^(da|art|unknown|inconnu|artisteinconnu|unknownartist)$/i.test(compact)) return false;
+    if (/^(music|musique|official|officiel|topic|audio|video|lyrics?|records?|recordings?|channel|youtube)$/i.test(compact)) return false;
     return true;
+  }
+
+  function isCompilationLikeDisplayedResult(video: any) {
+    const text = `${video?.rawTitle || ""} ${video?.title || ""}`
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+    const duration = Number(video?.durationSeconds || 0);
+
+    if (/\btop\s*\d{1,3}\b/i.test(text)) return true;
+    if (/\btop\s+(?:hits?|musiques?|chansons?|songs?|tracks?|france|annees?|80s|90s|2000s?)\b/i.test(text)) return true;
+    if (/\b(?:playlist|compilation|megamix|non stop|non-stop|dj set)\b/i.test(text)) return true;
+    if (/\b\d{2,3}\s+(?:hits?|chansons?|musiques?|titres?|songs?|tracks?)\b/i.test(text)) return true;
+    if (duration >= 12 * 60 && /\b(?:mix|hits?|musiques?|chansons?)\b/i.test(text)) return true;
+    return false;
   }
 
   const mobileTabs = ["playback", "add", "queue", "ranking", "profile"] as const;
@@ -5221,8 +5242,10 @@ const canRemove =
                       ? Array.from(
                           new Map(
                             results
-                              .filter((video) =>
-                                isUsableDisplayedArtistName(video?.artistName),
+                              .filter(
+                                (video) =>
+                                  isUsableDisplayedArtistName(video?.artistName) &&
+                                  !isCompilationLikeDisplayedResult(video),
                               )
                               .map((video) => [
                                 String(video.artistName).trim().toLowerCase(),
@@ -5237,10 +5260,9 @@ const canRemove =
                         ).slice(0, 10)
                       : [];
 
-                    const displayedArtists =
-                      activeSearchCategory && categoryArtists.length > 0
-                        ? categoryArtists
-                        : artistSuggestions;
+                    const displayedArtists = activeSearchCategory
+                      ? categoryArtists
+                      : artistSuggestions;
 
                     return (
                       <>
