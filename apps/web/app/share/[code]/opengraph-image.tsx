@@ -36,13 +36,6 @@ const SITE_URL = (
 
 const BRAND_ICON = `${SITE_URL}/branding/icon.png`;
 
-function normalizeAssetUrl(value?: string) {
-  const src = String(value || "").trim();
-  if (!src) return "";
-  if (/^https?:\/\//i.test(src) || /^data:/i.test(src)) return src;
-  return `${SITE_URL}${src.startsWith("/") ? "" : "/"}${src}`;
-}
-
 function formatDuration(ms: number) {
   const totalMinutes = Math.max(1, Math.round(Number(ms || 0) / 60000));
   if (totalMinutes < 60) return `${totalMinutes} min`;
@@ -74,7 +67,9 @@ function initials(name?: string) {
     .filter(Boolean)
     .slice(0, 2);
 
-  return parts.map((part) => part.charAt(0).toUpperCase()).join("") || "MP";
+  return (
+    parts.map((part) => part.charAt(0).toUpperCase()).join("") || "MP"
+  );
 }
 
 async function getPublicResult(code: string): Promise<PartyResult | null> {
@@ -95,7 +90,7 @@ async function getPublicResult(code: string): Promise<PartyResult | null> {
 function Avatar({
   name,
   src,
-  sizeValue = 84,
+  sizeValue = 88,
   fontSize = 30,
 }: {
   name?: string;
@@ -103,12 +98,10 @@ function Avatar({
   sizeValue?: number;
   fontSize?: number;
 }) {
-  const safeSrc = normalizeAssetUrl(src);
-
-  if (safeSrc) {
+  if (src && /^https?:\/\//i.test(src)) {
     return (
       <img
-        src={safeSrc}
+        src={src}
         width={sizeValue}
         height={sizeValue}
         alt=""
@@ -118,7 +111,6 @@ function Avatar({
           objectFit: "cover",
           borderRadius: 999,
           border: "2px solid rgba(255,255,255,.18)",
-          boxShadow: "0 10px 28px rgba(0,0,0,.28)",
         }}
       />
     );
@@ -139,7 +131,6 @@ function Avatar({
         background:
           "linear-gradient(135deg,#d946ef 0%,#8b5cf6 52%,#fb923c 100%)",
         border: "2px solid rgba(255,255,255,.18)",
-        boxShadow: "0 10px 28px rgba(0,0,0,.28)",
       }}
     >
       {initials(name)}
@@ -149,17 +140,17 @@ function Avatar({
 
 function Brand() {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+    <div style={{ display: "flex", alignItems: "center", gap: 13 }}>
       <img
         src={BRAND_ICON}
-        width="54"
-        height="54"
+        width="46"
+        height="46"
         alt=""
         style={{
-          width: 54,
-          height: 54,
+          width: 46,
+          height: 46,
           objectFit: "contain",
-          borderRadius: 14,
+          borderRadius: 12,
         }}
       />
       <div style={{ display: "flex", flexDirection: "column" }}>
@@ -176,56 +167,15 @@ function Brand() {
         <div
           style={{
             display: "flex",
-            marginTop: 3,
+            marginTop: 2,
             color: "#f0abfc",
             fontSize: 11,
             fontWeight: 900,
-            letterSpacing: 3.8,
+            letterSpacing: 3.2,
           }}
         >
           PARTY RESULTS
         </div>
-      </div>
-    </div>
-  );
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "center",
-        minHeight: 68,
-        padding: "12px 16px",
-        borderRadius: 18,
-        border: "1px solid rgba(255,255,255,.09)",
-        background: "rgba(255,255,255,.035)",
-        boxShadow: "inset 0 1px 0 rgba(255,255,255,.04)",
-      }}
-    >
-      <div
-        style={{
-          display: "flex",
-          color: "#c4b5fd",
-          fontSize: 10,
-          fontWeight: 900,
-          letterSpacing: 2.1,
-          textTransform: "uppercase",
-        }}
-      >
-        {label}
-      </div>
-      <div
-        style={{
-          display: "flex",
-          marginTop: 5,
-          fontSize: 27,
-          fontWeight: 900,
-        }}
-      >
-        {value}
       </div>
     </div>
   );
@@ -241,6 +191,7 @@ function fallbackImage(code: string) {
           display: "flex",
           padding: 28,
           color: "white",
+          fontFamily: "Arial",
           background:
             "radial-gradient(circle at 10% 8%,rgba(124,58,237,.60),transparent 34%),radial-gradient(circle at 90% 10%,rgba(236,72,153,.42),transparent 30%),radial-gradient(circle at 88% 95%,rgba(249,115,22,.24),transparent 30%),#07020d",
         }}
@@ -312,13 +263,7 @@ function fallbackImage(code: string) {
             }}
           >
             <div style={{ display: "flex" }}>La soirée continue en souvenir.</div>
-            <div
-              style={{
-                display: "flex",
-                color: "white",
-                fontWeight: 800,
-              }}
-            >
+            <div style={{ display: "flex", color: "white", fontWeight: 800 }}>
               {`mixpartyapp.fr/share/${code}`}
             </div>
           </div>
@@ -336,7 +281,6 @@ export default async function Image({
 }) {
   const { code: rawCode } = await params;
   const code = String(rawCode || "").trim().toUpperCase();
-
   const result = await getPublicResult(code);
 
   if (!result) return fallbackImage(code);
@@ -354,8 +298,6 @@ export default async function Image({
   );
   const winnerSongs = Math.max(0, Number(winner?.songsAdded || 0));
   const hostName = result.host?.name || "MixParty";
-  const hostAvatar = result.host?.avatar;
-  const topSongThumb = normalizeAssetUrl(topSong?.thumbnail);
 
   return new ImageResponse(
     (
@@ -366,62 +308,25 @@ export default async function Image({
           display: "flex",
           padding: 24,
           color: "white",
+          fontFamily: "Arial",
           background:
             "radial-gradient(circle at 8% 8%,rgba(124,58,237,.62),transparent 33%),radial-gradient(circle at 92% 6%,rgba(236,72,153,.40),transparent 28%),radial-gradient(circle at 92% 95%,rgba(249,115,22,.25),transparent 29%),linear-gradient(135deg,#0d041d 0%,#07020d 48%,#24091e 100%)",
         }}
       >
         <div
           style={{
-            position: "relative",
             width: "100%",
             height: "100%",
             display: "flex",
             flexDirection: "column",
-            padding: "30px 32px",
+            padding: "28px 32px",
             borderRadius: 34,
-            border: "1px solid rgba(255,255,255,.11)",
-            background:
-              "linear-gradient(180deg,rgba(8,4,21,.92),rgba(6,2,15,.86))",
-            boxShadow: "0 26px 100px rgba(0,0,0,.42)",
-            overflow: "hidden",
+            border: "1px solid rgba(255,255,255,.12)",
+            background: "rgba(5,2,13,.80)",
+            boxShadow: "0 30px 100px rgba(0,0,0,.35)",
           }}
         >
-          <div
-            style={{
-              position: "absolute",
-              top: -80,
-              right: -40,
-              width: 260,
-              height: 260,
-              display: "flex",
-              borderRadius: 999,
-              background: "rgba(217,70,239,.10)",
-            }}
-          />
-          <div
-            style={{
-              position: "absolute",
-              left: -50,
-              bottom: -80,
-              width: 340,
-              height: 220,
-              display: "flex",
-              borderRadius: 999,
-              background: "rgba(124,58,237,.10)",
-            }}
-          />
-
-          <div
-            style={{
-              position: "absolute",
-              inset: 0,
-              display: "flex",
-              borderRadius: 34,
-              border: "1px solid rgba(255,255,255,.04)",
-              pointerEvents: "none",
-            }}
-          />
-
+          {/* TOP BAR */}
           <div
             style={{
               display: "flex",
@@ -431,7 +336,7 @@ export default async function Image({
           >
             <Brand />
 
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div
                 style={{
                   display: "flex",
@@ -465,9 +370,10 @@ export default async function Image({
             </div>
           </div>
 
+          {/* HEADLINE */}
           <div
             style={{
-              marginTop: 18,
+              marginTop: 20,
               display: "flex",
               justifyContent: "space-between",
               alignItems: "flex-end",
@@ -481,7 +387,7 @@ export default async function Image({
                   color: "#fbbf24",
                   fontSize: 13,
                   fontWeight: 900,
-                  letterSpacing: 3.4,
+                  letterSpacing: 3,
                 }}
               >
                 LE GRAND GAGNANT
@@ -489,8 +395,8 @@ export default async function Image({
               <div
                 style={{
                   display: "flex",
-                  marginTop: 8,
-                  fontSize: 53,
+                  marginTop: 7,
+                  fontSize: 49,
                   lineHeight: 1,
                   fontWeight: 900,
                   letterSpacing: -1.8,
@@ -513,7 +419,7 @@ export default async function Image({
             <div
               style={{
                 display: "flex",
-                padding: "11px 17px",
+                padding: "10px 15px",
                 borderRadius: 999,
                 background:
                   "linear-gradient(90deg,rgba(217,70,239,.18),rgba(139,92,246,.18),rgba(249,115,22,.18))",
@@ -521,69 +427,48 @@ export default async function Image({
                 color: "#ffffff",
                 fontSize: 14,
                 fontWeight: 800,
-                boxShadow: "0 12px 30px rgba(217,70,239,.14)",
               }}
             >
               Résultats officiels
             </div>
           </div>
 
+          {/* CONTENT */}
           <div
             style={{
-              marginTop: 17,
+              marginTop: 19,
               display: "flex",
-              gap: 16,
+              gap: 18,
               flex: 1,
               minHeight: 0,
             }}
           >
+            {/* WINNER / PODIUM */}
             <div
               style={{
-                flex: 1.28,
+                flex: 1.25,
                 display: "flex",
                 flexDirection: "column",
-                gap: 12,
+                gap: 14,
               }}
             >
               <div
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  padding: "18px 18px",
+                  padding: "18px 20px",
                   borderRadius: 24,
                   border: "1px solid rgba(251,191,36,.24)",
                   background:
-                    "linear-gradient(105deg,rgba(251,191,36,.11),rgba(217,70,239,.08) 55%,rgba(139,92,246,.06))",
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,.04)",
+                    "linear-gradient(105deg,rgba(251,191,36,.12),rgba(217,70,239,.08) 55%,rgba(139,92,246,.07))",
                 }}
               >
-                <div style={{ display: "flex", position: "relative" }}>
-                  <Avatar
-                    name={winnerName}
-                    src={winner?.avatar || hostAvatar}
-                    sizeValue={84}
-                    fontSize={30}
-                  />
-                  <div
-                    style={{
-                      position: "absolute",
-                      right: -6,
-                      top: -6,
-                      width: 28,
-                      height: 28,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderRadius: 999,
-                      background:
-                        "linear-gradient(135deg,#facc15 0%,#fb923c 100%)",
-                      border: "2px solid rgba(12,5,24,.9)",
-                      fontSize: 15,
-                    }}
-                  >
-                    👑
-                  </div>
-                </div>
+                <Avatar
+                  name={winnerName}
+                  src={winner?.avatar}
+                  sizeValue={82}
+                  fontSize={28}
+                />
 
                 <div
                   style={{
@@ -597,7 +482,7 @@ export default async function Image({
                   <div
                     style={{
                       display: "flex",
-                      fontSize: 32,
+                      fontSize: 31,
                       fontWeight: 900,
                     }}
                   >
@@ -627,20 +512,18 @@ export default async function Image({
                     display: "flex",
                     flexDirection: "column",
                     alignItems: "flex-end",
-                    justifyContent: "center",
-                    minWidth: 90,
                   }}
                 >
                   <div
                     style={{
                       display: "flex",
                       color: "#fbbf24",
-                      fontSize: 48,
+                      fontSize: 44,
                       fontWeight: 900,
                       lineHeight: 1,
                     }}
                   >
-                    {String(winnerScore)}
+                    {winnerScore}
                   </div>
                   <div
                     style={{
@@ -649,7 +532,7 @@ export default async function Image({
                       color: "#fde68a",
                       fontSize: 11,
                       fontWeight: 900,
-                      letterSpacing: 2.2,
+                      letterSpacing: 2,
                     }}
                   >
                     PARTYSCORE
@@ -662,11 +545,10 @@ export default async function Image({
                   display: "flex",
                   flexDirection: "column",
                   flex: 1,
-                  padding: "15px 16px",
+                  padding: "15px 18px",
                   borderRadius: 24,
                   border: "1px solid rgba(255,255,255,.09)",
                   background: "rgba(255,255,255,.028)",
-                  boxShadow: "inset 0 1px 0 rgba(255,255,255,.03)",
                 }}
               >
                 <div
@@ -675,7 +557,7 @@ export default async function Image({
                     color: "#c4b5fd",
                     fontSize: 11,
                     fontWeight: 900,
-                    letterSpacing: 2.8,
+                    letterSpacing: 2.6,
                   }}
                 >
                   PODIUM DE LA SOIRÉE
@@ -694,12 +576,12 @@ export default async function Image({
                       0,
                       Number(row.partyScore || row.votesReceived || 0),
                     );
-                    const medalBg =
+                    const medal =
                       index === 0
-                        ? "linear-gradient(135deg,#fbbf24,#f59e0b)"
+                        ? ["#fbbf24", "#261400"]
                         : index === 1
-                          ? "linear-gradient(135deg,#e5e7eb,#94a3b8)"
-                          : "linear-gradient(135deg,#fb7185,#f97316)";
+                          ? ["#cbd5e1", "#111827"]
+                          : ["#fb7185", "#27070f"];
 
                     return (
                       <div
@@ -707,7 +589,7 @@ export default async function Image({
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          padding: "9px 10px",
+                          padding: "9px 11px",
                           borderRadius: 16,
                           background:
                             index === 0
@@ -724,8 +606,8 @@ export default async function Image({
                             alignItems: "center",
                             justifyContent: "center",
                             borderRadius: 11,
-                            background: medalBg,
-                            color: index === 1 ? "#0f172a" : "#261400",
+                            background: medal[0],
+                            color: medal[1],
                             fontSize: 13,
                             fontWeight: 900,
                           }}
@@ -737,7 +619,7 @@ export default async function Image({
                           <Avatar
                             name={row.name}
                             src={row.avatar}
-                            sizeValue={36}
+                            sizeValue={34}
                             fontSize={12}
                           />
                         </div>
@@ -747,19 +629,11 @@ export default async function Image({
                             display: "flex",
                             marginLeft: 10,
                             flex: 1,
-                            flexDirection: "column",
-                            minWidth: 0,
+                            fontSize: 18,
+                            fontWeight: 800,
                           }}
                         >
-                          <div
-                            style={{
-                              display: "flex",
-                              fontSize: 19,
-                              fontWeight: 800,
-                            }}
-                          >
-                            {row.name || `Participant ${index + 1}`}
-                          </div>
+                          {row.name || `Participant ${index + 1}`}
                         </div>
 
                         <div
@@ -779,29 +653,63 @@ export default async function Image({
               </div>
             </div>
 
+            {/* STATS */}
             <div
               style={{
-                width: 248,
+                width: 250,
                 display: "flex",
                 flexDirection: "column",
                 gap: 10,
               }}
             >
-              <StatCard
-                label="Participants"
-                value={String(result.uniqueParticipants || 0)}
-              />
-              <StatCard label="Votes" value={String(result.totalVotes || 0)} />
-              <StatCard
-                label="Titres joués"
-                value={String(result.songsPlayed || 0)}
-              />
-              <StatCard label="Durée" value={formatDuration(result.durationMs || 0)} />
+              {[
+                ["PARTICIPANTS", String(result.uniqueParticipants || 0)],
+                ["VOTES", String(result.totalVotes || 0)],
+                ["TITRES JOUÉS", String(result.songsPlayed || 0)],
+                ["DURÉE", formatDuration(result.durationMs || 0)],
+              ].map(([label, value]) => (
+                <div
+                  key={label}
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                    padding: "10px 15px",
+                    borderRadius: 19,
+                    border: "1px solid rgba(255,255,255,.09)",
+                    background: "rgba(255,255,255,.035)",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      color: "#c4b5fd",
+                      fontSize: 10,
+                      fontWeight: 900,
+                      letterSpacing: 2.1,
+                    }}
+                  >
+                    {label}
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      marginTop: 4,
+                      fontSize: 27,
+                      fontWeight: 900,
+                    }}
+                  >
+                    {value}
+                  </div>
+                </div>
+              ))}
             </div>
 
+            {/* TOP SONG */}
             <div
               style={{
-                width: 272,
+                width: 270,
                 display: "flex",
                 flexDirection: "column",
                 padding: 17,
@@ -809,7 +717,6 @@ export default async function Image({
                 border: "1px solid rgba(255,255,255,.09)",
                 background:
                   "linear-gradient(180deg,rgba(249,115,22,.07),rgba(255,255,255,.025))",
-                boxShadow: "inset 0 1px 0 rgba(255,255,255,.03)",
               }}
             >
               <div
@@ -818,38 +725,38 @@ export default async function Image({
                   color: "#fbbf24",
                   fontSize: 10,
                   fontWeight: 900,
-                  letterSpacing: 2.4,
+                  letterSpacing: 2.3,
                 }}
               >
                 MORCEAU DE LA SOIRÉE
               </div>
 
-              {topSongThumb ? (
+              {topSong?.thumbnail &&
+              /^https?:\/\//i.test(topSong.thumbnail) ? (
                 <img
-                  src={topSongThumb}
-                  width="238"
-                  height="114"
+                  src={topSong.thumbnail}
+                  width="236"
+                  height="116"
                   alt=""
                   style={{
-                    width: 238,
-                    height: 114,
+                    width: 236,
+                    height: 116,
                     marginTop: 12,
-                    borderRadius: 18,
+                    borderRadius: 17,
                     objectFit: "cover",
                     border: "1px solid rgba(255,255,255,.10)",
-                    boxShadow: "0 12px 30px rgba(0,0,0,.25)",
                   }}
                 />
               ) : (
                 <div
                   style={{
-                    width: 238,
-                    height: 114,
+                    width: 236,
+                    height: 116,
                     marginTop: 12,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    borderRadius: 18,
+                    borderRadius: 17,
                     background:
                       "linear-gradient(135deg,rgba(217,70,239,.20),rgba(139,92,246,.16),rgba(249,115,22,.18))",
                     border: "1px solid rgba(255,255,255,.10)",
@@ -862,8 +769,8 @@ export default async function Image({
               <div
                 style={{
                   display: "flex",
-                  marginTop: 13,
-                  fontSize: 22,
+                  marginTop: 12,
+                  fontSize: 21,
                   lineHeight: 1.05,
                   fontWeight: 900,
                 }}
@@ -885,7 +792,7 @@ export default async function Image({
               <div
                 style={{
                   display: "flex",
-                  marginTop: 12,
+                  marginTop: 11,
                   alignSelf: "flex-start",
                   padding: "7px 11px",
                   borderRadius: 999,
@@ -901,9 +808,10 @@ export default async function Image({
             </div>
           </div>
 
+          {/* FOOTER */}
           <div
             style={{
-              marginTop: 14,
+              marginTop: 15,
               display: "flex",
               alignItems: "center",
               justifyContent: "space-between",
