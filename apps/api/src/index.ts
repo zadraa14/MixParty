@@ -1608,7 +1608,7 @@ function musicBrainLearningDecision(params: {
     /^(unknown|inconnu|artiste inconnu|unknown artist|various artists?|divers)$/i.test(artistName);
 
   const genericArtist =
-    /^(art|music|musique|official|officiel|topic|audio|video|records?|recordings?|channel|youtube)$/i.test(artistName);
+    /^(da|art|music|musique|official|officiel|topic|audio|video|records?|recordings?|channel|youtube)$/i.test(artistName);
 
   const junkContent =
     /(reaction|reacts?|podcast|interview|documentary|documentaire|making of|behind the scenes|#shorts|\bshorts?\b|audition|the voice|incroyable talent|concours|talent show)/i.test(
@@ -1679,6 +1679,8 @@ function isCompilationLikeMusicContent(value: {
     /\btop\s+(?:hits?|musiques?|chansons?|titres?|songs?|tracks?|france|annees?|années?|80s|90s|2000s?|2010s?)\b/i.test(titleText) ||
     /\b(?:top|best)\s+(?:des?|du|de la|meilleurs?|meilleures?)\b/i.test(titleText) ||
     /\b\d{2,3}\s+(?:hits?|chansons?|musiques?|titres?|songs?|tracks?)\b/i.test(titleText) ||
+    /\b\d{2,3}\s+(?:des?\s+)?(?:meilleurs?|meilleures?)\s+(?:hits?|chansons?|musiques?|titres?|songs?|tracks?)\b/i.test(titleText) ||
+    /\b(?:les?\s+)?\d{2,3}\s+(?:plus\s+grands?|incontournables?|classiques?)\s+(?:hits?|chansons?|musiques?|titres?)\b/i.test(titleText) ||
     /\b(?:playlist|compilation|megamix|non[- ]?stop|dj set)\b/i.test(titleText)
   ) {
     return true;
@@ -5305,7 +5307,7 @@ type SearchCacheEntry = {
   engineVersion?: number;
 };
 
-const YOUTUBE_SEARCH_ENGINE_VERSION = 2;
+const YOUTUBE_SEARCH_ENGINE_VERSION = 3;
 const YOUTUBE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const YOUTUBE_CACHE_MAX_ENTRIES = 2000;
 const youtubeCacheFilePath = path.resolve(persistentDataDir, "youtube-search-cache.json");
@@ -5899,6 +5901,55 @@ function deduplicateMusicResults(results: YoutubeSearchResult[]) {
   return [...byVideoId.values()];
 }
 
+function isSearchJunkArtistName(value: unknown) {
+  const normalized = normalizeMusicQuery(String(value || ""));
+  const compact = normalized.replace(/\s+/g, "");
+
+  if (!compact) return true;
+
+  // Valeurs de parsing déjà observées dans MusicBrain.
+  // On ne rejette PAS tous les artistes courts : U2 ou M restent possibles.
+  return /^(da|art|unknown|inconnu|artisteinconnu|unknownartist|variousartists?|divers|music|musique|official|officiel|topic|audio|video|records?|recordings?|channel|youtube)$/i.test(
+    compact,
+  );
+}
+
+function containsWholePhraseTokens(haystack: string, needle: string) {
+  const haystackTokens = normalizeMusicQuery(haystack).split(/\s+/).filter(Boolean);
+  const needleTokens = normalizeMusicQuery(needle).split(/\s+/).filter(Boolean);
+
+  if (!haystackTokens.length || !needleTokens.length || needleTokens.length > haystackTokens.length) {
+    return false;
+  }
+
+  for (let start = 0; start <= haystackTokens.length - needleTokens.length; start += 1) {
+    let matches = true;
+    for (let index = 0; index < needleTokens.length; index += 1) {
+      if (haystackTokens[start + index] !== needleTokens[index]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) return true;
+  }
+
+  return false;
+}
+
+function isDiscoveryCategoryQuery(query: string) {
+  const normalized = normalizeMusicQuery(query);
+
+  return new Set([
+    "hits france",
+    "rap francais",
+    "hits annees 2000",
+    "afro hits",
+    "pop hits",
+    "dance party hits",
+    "chansons francaises populaires",
+  ]).has(normalized);
+}
+
 function musicBrainResultsForQuery(query: string) {
   const normalized = normalizeMusicQuery(query);
   const compact = compactMusicQuery(query);
@@ -5906,11 +5957,24 @@ function musicBrainResultsForQuery(query: string) {
 
   return Object.values(musicBrain.songs)
     .filter((song) => !isCompilationLikeMusicContent(song))
+    .filter((song) => !isSearchJunkArtistName(song.artistName))
     .filter((song) => {
       const artist = normalizeMusicQuery(song.artistName || "");
       const title = normalizeMusicQuery(song.title || "");
       const artistCompact = artist.replace(/\s+/g, "");
-      return artist.includes(normalized) || normalized.includes(artist) || artistCompact === compact || title.includes(normalized);
+
+      // IMPORTANT : correspondance par mots/phrases entiers.
+      // L'ancien normalized.includes(artist) faisait correspondre :
+      // "dance party hits" -> "DA" via "dance"
+      // "dance party hits" -> "ART" via "party".
+      const exactArtist = artist === normalized || artistCompact === compact;
+      const queryContainsArtist = containsWholePhraseTokens(query, artist);
+      const artistStartsWithQuery =
+        normalized.length >= 3 && artist.startsWith(normalized);
+      const titleContainsQuery =
+        normalized.length >= 3 && containsWholePhraseTokens(title, normalized);
+
+      return exactArtist || queryContainsArtist || artistStartsWithQuery || titleContainsQuery;
     })
     .map((song): YoutubeSearchResult => ({
       id: song.videoId,
@@ -6124,7 +6188,12 @@ function rankMusicBrainDirectResults(
 }
 
 async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResult[]> {
-  const known = musicBrainResultsForQuery(query);
+  // Les catégories ("Dance", "Hits", etc.) sont des recherches de découverte,
+  // pas des noms d'artistes. Elles repartent d'une recherche propre afin d'éviter
+  // qu'une ancienne donnée MusicBrain mal classée monopolise les résultats.
+  const known = isDiscoveryCategoryQuery(query)
+    ? []
+    : musicBrainResultsForQuery(query);
   const directDecision = musicBrainDirectSearchDecision(query, known);
 
   // Deux cas seulement permettent d'éviter complètement YouTube :
@@ -6185,7 +6254,11 @@ async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResu
   }
 
   return deduplicateMusicResults(combined)
-    .filter((result) => !isCompilationLikeMusicContent(result))
+    .filter(
+      (result) =>
+        !isCompilationLikeMusicContent(result) &&
+        !isSearchJunkArtistName(result.artistName),
+    )
     .sort((a, b) => scoreMusicResult(b, query) - scoreMusicResult(a, query))
     .slice(0, 40);
 }
@@ -13526,7 +13599,9 @@ app.get("/search/youtube", async (req, res) => {
   const exactCache = youtubeSearchCache.get(normalizedQuery);
   if (exactCache) {
     const safeCachedResults = exactCache.results.filter(
-      (result) => !isCompilationLikeMusicContent(result),
+      (result) =>
+        !isCompilationLikeMusicContent(result) &&
+        !isSearchJunkArtistName(result.artistName),
     );
 
     youtubeSearchStats.exactCacheHits += 1;
@@ -13552,7 +13627,9 @@ app.get("/search/youtube", async (req, res) => {
   );
   if (alias) {
     const safeAliasResults = alias[1].results.filter(
-      (result) => !isCompilationLikeMusicContent(result),
+      (result) =>
+        !isCompilationLikeMusicContent(result) &&
+        !isSearchJunkArtistName(result.artistName),
     );
 
     youtubeSearchStats.aliasCacheHits += 1;
