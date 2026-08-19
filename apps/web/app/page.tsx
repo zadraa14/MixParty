@@ -625,9 +625,9 @@ export default function Home() {
             2 CTA / reprendre / 4 avantages / navigation
             Statique, premium, lisible.
            ========================================================= */}
-        <div className="relative z-10 mx-auto min-h-[100dvh] w-full max-w-[520px] overflow-x-hidden px-3 pb-[max(.55rem,env(safe-area-inset-bottom))] pt-[max(.5rem,env(safe-area-inset-top))] lg:hidden">
+        <div className="relative z-10 mx-auto flex h-[100dvh] w-full max-w-[520px] flex-col overflow-hidden px-3 pb-[max(.55rem,env(safe-area-inset-bottom))] pt-[max(.5rem,env(safe-area-inset-top))] lg:hidden">
           {/* HEADER */}
-          <header className="flex h-[52px] items-center justify-between rounded-[19px] border border-white/[0.08] bg-[#080710]/95 px-3 shadow-[0_12px_30px_rgba(0,0,0,.26)] backdrop-blur-xl">
+          <header className="flex h-[52px] shrink-0 items-center justify-between rounded-[19px] border border-white/[0.08] bg-[#080710]/95 px-3 shadow-[0_12px_30px_rgba(0,0,0,.26)] backdrop-blur-xl">
             <div className="flex items-center gap-2">
               <img
                 src="/branding/icon.png"
@@ -672,8 +672,8 @@ export default function Home() {
           </header>
 
           {/* HERO — texte gauche / faux téléphone droite */}
-          <section className="mt-3 grid grid-cols-[.92fr_1.08fr] items-start gap-2">
-            <div className="min-w-0 pt-4">
+          <section className="mt-3 grid min-h-0 flex-1 grid-cols-[.92fr_1.08fr] items-center gap-2">
+            <div className="min-w-0">
               <span className="inline-flex rounded-[11px] border border-white/10 bg-gradient-to-r from-violet-600 via-fuchsia-500 to-orange-400 px-2.5 py-1.5 text-[6px] font-black uppercase tracking-[.04em] text-white shadow-[0_8px_20px_rgba(236,72,153,.16)]">
                 La musique, tous ensemble
               </span>
@@ -769,7 +769,7 @@ export default function Home() {
           </section>
 
           {/* 2 CTA */}
-          <section className="mt-4 grid grid-cols-2 gap-2">
+          <section className="mt-3 grid shrink-0 grid-cols-2 gap-2">
             <button
               type="button"
               onClick={createParty}
@@ -812,7 +812,7 @@ export default function Home() {
             <button
               type="button"
               onClick={resumeLastParty}
-              className="mt-3 flex h-[58px] w-full items-center gap-3 rounded-[18px] border border-cyan-300/15 bg-[linear-gradient(120deg,rgba(13,20,31,.92),rgba(15,17,32,.92),rgba(5,45,55,.62))] px-3 text-left shadow-[0_12px_26px_rgba(0,0,0,.18)]"
+              className="mt-2 flex h-[56px] w-full shrink-0 items-center gap-3 rounded-[18px] border border-cyan-300/15 bg-[linear-gradient(120deg,rgba(13,20,31,.92),rgba(15,17,32,.92),rgba(5,45,55,.62))] px-3 text-left shadow-[0_12px_26px_rgba(0,0,0,.18)]"
             >
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-emerald-300/20 bg-emerald-500/10 text-emerald-300">
                 <RotateCcw className="h-4 w-4" />
@@ -826,7 +826,7 @@ export default function Home() {
               <ArrowRight className="h-4 w-4 text-cyan-200/60" />
             </button>
           ) : (
-            <div className="mt-3 flex h-[58px] items-center gap-3 rounded-[18px] border border-cyan-300/10 bg-[linear-gradient(120deg,rgba(13,20,31,.86),rgba(15,17,32,.88),rgba(5,45,55,.52))] px-3">
+            <div className="mt-2 flex h-[56px] shrink-0 items-center gap-3 rounded-[18px] border border-cyan-300/10 bg-[linear-gradient(120deg,rgba(13,20,31,.86),rgba(15,17,32,.88),rgba(5,45,55,.52))] px-3">
               <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-emerald-300/18 bg-emerald-500/10 text-emerald-300">
                 <RotateCcw className="h-4 w-4" />
               </span>
@@ -838,7 +838,7 @@ export default function Home() {
           )}
 
           {/* 4 avantages */}
-          <section className="mt-3 grid grid-cols-4 gap-1.5">
+          <section className="mt-2 grid shrink-0 grid-cols-4 gap-1.5">
             {[
               {
                 Icon: Music2,
@@ -885,7 +885,7 @@ export default function Home() {
           </section>
 
           {/* NAV */}
-          <nav className="mt-3 grid h-[48px] grid-cols-4 rounded-[17px] border border-white/[0.08] bg-[#080710]/95 p-1">
+          <nav className="mt-2 grid h-[48px] shrink-0 grid-cols-4 rounded-[17px] border border-white/[0.08] bg-[#080710]/95 p-1">
             {[
               { label: "Accueil", Icon: HomeIcon, action: () => {} },
               { label: "Créer", Icon: Sparkles, action: () => void createParty() },
@@ -1887,6 +1887,13 @@ export default function Home() {
 
 
         
+        @media (max-width: 1023px) and (display-mode: standalone) {
+          html,
+          body {
+            overscroll-behavior: none;
+          }
+        }
+
         @media (max-width: 1023px) {
           .mixparty-demo-progress,
           .mixparty-wave-bar,
