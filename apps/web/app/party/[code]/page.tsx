@@ -3286,87 +3286,126 @@ async function removeSong(index: number, song: Song) {
                     </div>
                   </div>
 
-                  {/* TITRE + VOTES */}
-                  <div className="overflow-hidden rounded-[22px] border border-white/[0.08] bg-[linear-gradient(135deg,rgba(31,15,47,.86),rgba(12,10,22,.94)_58%,rgba(51,19,30,.78))] p-4 shadow-[0_14px_45px_rgba(0,0,0,.28)]">
+                  {/* TITRE + VOTES + COMMANDES DJ */}
+                  <div className="overflow-hidden rounded-[22px] border border-white/[0.08] bg-[linear-gradient(135deg,rgba(31,15,47,.88),rgba(12,10,22,.96)_58%,rgba(51,19,30,.80))] p-3.5 shadow-[0_14px_45px_rgba(0,0,0,.28)]">
                     <div className="flex items-center gap-3">
                       <img
                         src={getSongArtwork(party.currentSong)}
                         alt=""
-                        className="h-16 w-16 shrink-0 rounded-[16px] border border-white/10 object-cover shadow-[0_10px_26px_rgba(0,0,0,.28)]"
+                        className="h-[58px] w-[58px] shrink-0 rounded-[15px] border border-white/10 object-cover shadow-[0_10px_26px_rgba(0,0,0,.28)]"
                       />
 
                       <div className="min-w-0 flex-1">
-                        <div className="mb-1 inline-flex items-center gap-1.5 rounded-full border border-fuchsia-300/15 bg-fuchsia-500/10 px-2 py-1 text-[8px] font-black uppercase tracking-[.11em] text-fuchsia-200">
+                        <div className="mb-1 inline-flex items-center gap-1.5 rounded-full border border-fuchsia-300/15 bg-fuchsia-500/10 px-2 py-0.5 text-[7px] font-black uppercase tracking-[.11em] text-fuchsia-200">
                           <span className="h-1.5 w-1.5 rounded-full bg-fuchsia-400" />
                           En cours
                         </div>
-                        <h1 className="truncate font-[family:var(--font-exo-2)] text-lg font-black text-white">
+                        <h1 className="truncate font-[family:var(--font-exo-2)] text-[17px] font-black leading-tight text-white">
                           {party.currentSong.title}
                         </h1>
-                        <p className="truncate text-xs font-semibold text-white/40">
+                        <p className="mt-0.5 truncate text-[11px] font-semibold text-white/40">
                           {party.currentSong.artistName || party.currentSong.addedBy}
                         </p>
                       </div>
 
-                      <div className="shrink-0 rounded-[18px] border border-orange-300/15 bg-orange-500/[0.08] px-3 py-2 text-center">
-                        <ArrowBigUp className="mx-auto h-4 w-4 text-orange-300" />
-                        <strong className="mt-0.5 block font-[family:var(--font-exo-2)] text-xl font-black text-white">
+                      <div className="shrink-0 rounded-[16px] border border-orange-300/15 bg-orange-500/[0.08] px-2.5 py-2 text-center">
+                        <ArrowBigUp className="mx-auto h-3.5 w-3.5 text-orange-300" />
+                        <strong className="mt-0.5 block font-[family:var(--font-exo-2)] text-lg font-black leading-none text-white">
                           {party.currentSong.votes || 0}
                         </strong>
-                        <span className="block text-[7px] font-black uppercase tracking-[.1em] text-white/30">
+                        <span className="mt-1 block text-[6px] font-black uppercase tracking-[.1em] text-white/30">
                           votes
                         </span>
                       </div>
                     </div>
 
-                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/[0.06] pt-3">
-                      <div className="min-w-0">
-                        <p className="text-[8px] font-black uppercase tracking-[.13em] text-white/25">
-                          Ajouté par
-                        </p>
-                        <div className="mt-1 flex items-center gap-2">
-                          {(() => {
-                            const owner =
-                              party.participants.find(
-                                (participant) =>
-                                  participant.id === party.currentSong?.addedById,
-                              ) ||
-                              party.participants.find(
-                                (participant) =>
-                                  participant.name === party.currentSong?.addedBy,
-                              );
+                    {/* Commandes : uniquement le DJ contrôle la lecture */}
+                    <div className="mt-3 grid grid-cols-[1fr_1.15fr_1fr] gap-2 border-t border-white/[0.06] pt-3">
+                      <button
+                        type="button"
+                        onClick={() => void previousSong()}
+                        disabled={!isPlaybackController}
+                        className="flex h-11 items-center justify-center gap-1.5 rounded-[14px] border border-white/[0.08] bg-white/[0.035] text-white/72 disabled:cursor-not-allowed disabled:opacity-25"
+                        aria-label="Musique précédente"
+                      >
+                        <SkipBack className="h-4 w-4 fill-current" />
+                        <span className="text-[8px] font-black">Préc.</span>
+                      </button>
 
-                            return (
-                              <img
-                                src={
-                                  owner?.avatar ||
-                                  defaultAvatarForParticipant(
-                                    party.currentSong?.addedById ||
-                                      party.currentSong?.addedBy ||
-                                      party.currentSong?.videoId ||
-                                      "mixparty",
-                                  )
-                                }
-                                alt=""
-                                className="h-7 w-7 rounded-full border border-white/10 object-cover"
-                              />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!isPlaybackController) return;
+                          if (tvPlayback.state === 1) {
+                            playerRef.current?.pauseVideo?.();
+                          } else {
+                            resumePlayback();
+                          }
+                        }}
+                        disabled={!isPlaybackController}
+                        className="flex h-11 items-center justify-center gap-2 rounded-[14px] border border-fuchsia-300/20 bg-gradient-to-r from-violet-600/85 via-fuchsia-600/85 to-orange-500/80 text-white shadow-[0_0_22px_rgba(236,72,153,.12)] disabled:cursor-not-allowed disabled:opacity-25"
+                        aria-label={tvPlayback.state === 1 ? "Mettre en pause" : "Lire"}
+                      >
+                        {tvPlayback.state === 1 ? (
+                          <Pause className="h-4 w-4 fill-current" />
+                        ) : (
+                          <Play className="ml-0.5 h-4 w-4 fill-current" />
+                        )}
+                        <span className="text-[9px] font-black">
+                          {tvPlayback.state === 1 ? "Pause" : "Lecture"}
+                        </span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => void nextSong()}
+                        disabled={!isPlaybackController}
+                        className="flex h-11 items-center justify-center gap-1.5 rounded-[14px] border border-white/[0.08] bg-white/[0.035] text-white/72 disabled:cursor-not-allowed disabled:opacity-25"
+                        aria-label="Musique suivante"
+                      >
+                        <span className="text-[8px] font-black">Suiv.</span>
+                        <SkipForward className="h-4 w-4 fill-current" />
+                      </button>
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        {(() => {
+                          const owner =
+                            party.participants.find(
+                              (participant) =>
+                                participant.id === party.currentSong?.addedById,
+                            ) ||
+                            party.participants.find(
+                              (participant) =>
+                                participant.name === party.currentSong?.addedBy,
                             );
-                          })()}
-                          <span className="truncate text-xs font-black text-white/65">
-                            {party.currentSong.addedBy || "Invité"}
-                          </span>
-                        </div>
+
+                          return (
+                            <img
+                              src={
+                                owner?.avatar ||
+                                defaultAvatarForParticipant(
+                                  party.currentSong?.addedById ||
+                                    party.currentSong?.addedBy ||
+                                    party.currentSong?.videoId ||
+                                    "mixparty",
+                                )
+                              }
+                              alt=""
+                              className="h-6 w-6 rounded-full border border-white/10 object-cover"
+                            />
+                          );
+                        })()}
+                        <span className="truncate text-[8px] font-bold text-white/35">
+                          Ajouté par {party.currentSong.addedBy || "Invité"}
+                        </span>
                       </div>
 
-                      {isPlaybackController ? (
-                        <button
-                          type="button"
-                          onClick={nextSong}
-                          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-fuchsia-300/15 bg-fuchsia-500/10 px-3 py-2 text-[9px] font-black text-fuchsia-100"
-                        >
-                          <SkipForward className="h-3.5 w-3.5" />
-                          Suivant
-                        </button>
+                      {!isPlaybackController ? (
+                        <span className="shrink-0 text-[7px] font-black uppercase tracking-[.08em] text-white/22">
+                          contrôlé par le DJ
+                        </span>
                       ) : null}
                     </div>
                   </div>
@@ -3394,7 +3433,7 @@ async function removeSong(index: number, song: Song) {
 
                     {queue.length ? (
                       <div className="space-y-2">
-                        {queue.slice(0, 4).map((song, index) => {
+                        {queue.slice(0, 3).map((song, index) => {
                           const owner =
                             party.participants.find(
                               (participant) => participant.id === song.addedById,
