@@ -575,7 +575,14 @@ function partyBrainSearchInsight(query: string): PartyBrainSearchInsight {
     for (const next of samePartyAdds) {
       const artistName = String(next.song?.artistName || "").trim();
       const key = normalizeMusicQuery(artistName);
-      if (!key || key === normalizedQuery || seen.has(key)) continue;
+      if (
+        !key ||
+        key === normalizedQuery ||
+        seen.has(key) ||
+        isSuspiciousArtistName(artistName)
+      ) {
+        continue;
+      }
       seen.add(key);
       const current = nextArtistCounts.get(key) || { artistName, count: 0 };
       current.count += 1;
@@ -13255,7 +13262,13 @@ function localMusicBrainArtistSuggestions(
 
   return Object.values(musicBrain.artists || {})
     .filter((artist) => {
-      if (!artist?.name || artist.key === "unknown") return false;
+      if (
+        !artist?.name ||
+        artist.key === "unknown" ||
+        isSuspiciousArtistName(artist.name)
+      ) {
+        return false;
+      }
       if (!normalized) return true;
 
       const candidates = [
@@ -13334,7 +13347,14 @@ async function externalMusicBrainzArtistSuggestions(
     })
     .filter((artist) => {
       const key = normalizeMusicQuery(artist.name);
-      if (!key || !key.startsWith(normalized) || seen.has(key)) return false;
+      if (
+        !key ||
+        !key.startsWith(normalized) ||
+        seen.has(key) ||
+        isSuspiciousArtistName(artist.name)
+      ) {
+        return false;
+      }
       seen.add(key);
       return true;
     })
@@ -13358,9 +13378,13 @@ app.get("/search/artists", async (req, res) => {
     cached.musicBrainUpdatedAt === musicBrain.updatedAt &&
     Date.now() - cached.createdAt < ARTIST_SUGGESTION_CACHE_TTL_MS
   ) {
+    const safeCachedResults = cached.results.filter(
+      (artist) => !isSuspiciousArtistName(artist.name),
+    );
+
     res.setHeader("X-MixParty-Artist-Source", "CACHE");
     res.setHeader("X-MixParty-Youtube-Quota", "0");
-    return res.json(cached.results.slice(0, limit));
+    return res.json(safeCachedResults.slice(0, limit));
   }
 
   // 1) MusicBrain local d'abord : instantané, appris par MixParty, 0 quota YouTube.
@@ -13391,7 +13415,10 @@ app.get("/search/artists", async (req, res) => {
     }
   }
 
-  results = results.slice(0, limit);
+  results = results
+    .filter((artist) => !isSuspiciousArtistName(artist.name))
+    .slice(0, limit);
+
   // Ne jamais figer un résultat vide pour un préfixe court :
   // ex. "J" doit pouvoir découvrir JUL dès que MusicBrain/MusicBrainz le connaît.
   if (results.length > 0) {

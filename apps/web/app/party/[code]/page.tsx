@@ -1614,13 +1614,17 @@ export default function PartyPage() {
           .toLowerCase();
 
         setArtistSuggestions(
-          data.filter((artist: any) =>
-            String(artist?.name || "")
-              .normalize("NFD")
-              .replace(/[\u0300-\u036f]/g, "")
-              .toLowerCase()
-              .startsWith(normalizedPrefix),
-          ),
+          data.filter((artist: any) => {
+            const artistName = String(artist?.name || "");
+            return (
+              isUsableDisplayedArtistName(artistName) &&
+              artistName
+                .normalize("NFD")
+                .replace(/[\u0300-\u036f]/g, "")
+                .toLowerCase()
+                .startsWith(normalizedPrefix)
+            );
+          }),
         );
       } catch (error: any) {
         if (error?.name !== "AbortError") {
@@ -2716,6 +2720,22 @@ async function removeSong(index: number, song: Song) {
     0,
     ...liveRankingWithRank.map((entry) => entry.songsAdded),
   );
+
+  function isUsableDisplayedArtistName(value: unknown) {
+    const artist = String(value || "").trim();
+    const normalized = artist
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!normalized) return false;
+    if (normalized.length <= 2) return false;
+    if (/^(da|art|unknown|inconnu|artiste inconnu|unknown artist)$/i.test(normalized)) return false;
+    if (/^(music|musique|official|officiel|topic|audio|video|lyrics?|records?|recordings?|channel|youtube)$/i.test(normalized)) return false;
+    return true;
+  }
 
   const mobileTabs = ["playback", "add", "queue", "ranking", "profile"] as const;
 
@@ -5149,7 +5169,7 @@ const canRemove =
               </div>
 
               {/* Catégories rapides */}
-              <div className="no-scrollbar flex gap-2 overflow-x-auto pb-0.5">
+              <div data-mixparty-horizontal-scroll="true" className="no-scrollbar flex gap-2 overflow-x-auto pb-0.5">
                 {[
                   { label: "🔥 Hits", query: "hits france" },
                   { label: "🎤 Rap FR", query: "rap français" },
@@ -5201,7 +5221,9 @@ const canRemove =
                       ? Array.from(
                           new Map(
                             results
-                              .filter((video) => String(video?.artistName || "").trim())
+                              .filter((video) =>
+                                isUsableDisplayedArtistName(video?.artistName),
+                              )
                               .map((video) => [
                                 String(video.artistName).trim().toLowerCase(),
                                 {
@@ -5243,7 +5265,7 @@ const canRemove =
                         </div>
 
                         {displayedArtists.length > 0 ? (
-                          <div className="no-scrollbar mt-3 flex gap-3 overflow-x-auto pb-1">
+                          <div data-mixparty-horizontal-scroll="true" className="no-scrollbar mt-3 flex gap-3 overflow-x-auto pb-1">
                             {displayedArtists.map((artist, index) => (
                               <button
                                 key={artist.id}
