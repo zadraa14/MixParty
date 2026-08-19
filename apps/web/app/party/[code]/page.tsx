@@ -377,7 +377,6 @@ export default function PartyPage() {
   const isPlaybackControllerRef = useRef(false);
   const applyingRemotePlaybackRef = useRef(false);
   const changingSongRef = useRef(false);
-  const mobileSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
   const karaokeBackgroundLoadTimerRef = useRef<number | null>(null);
   const castContextRef = useRef<any>(null);
   const castDisplayModeRef = useRef<"tv" | "karaoke">("tv");
@@ -2964,51 +2963,22 @@ async function removeSong(index: number, song: Song) {
     setProfileOverlayOpen(true);
   }
 
-  function handleMobileTouchStart(event: React.TouchEvent<HTMLElement>) {
-    const target = event.target as HTMLElement | null;
-
+  function handleMobileTouchStart(_event: React.TouchEvent<HTMLElement>) {
     if (activeMobileTab === "karaoke") {
       setKaraokeUserInteracting(true);
     }
 
-    // Les zones de défilement horizontal (ex. alphabet Karaoké A-Z)
-    // doivent garder le geste pour elles-mêmes et ne jamais changer d'onglet.
-    if (target?.closest?.('[data-mixparty-horizontal-scroll="true"]')) {
-      mobileSwipeStartRef.current = null;
-      return;
-    }
-
-    const touch = event.touches[0];
-    mobileSwipeStartRef.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
+    // V5.4 : aucun changement d'onglet au swipe.
+    // Tous les gestes horizontaux restent réservés aux carrousels,
+    // menus déroulants et autres zones interactives.
   }
 
-  function handleMobileTouchEnd(event: React.TouchEvent<HTMLElement>) {
-    const target = event.target as HTMLElement | null;
-
+  function handleMobileTouchEnd(_event: React.TouchEvent<HTMLElement>) {
     if (activeMobileTab === "karaoke") {
       window.setTimeout(() => setKaraokeUserInteracting(false), 220);
     }
 
-    if (target?.closest?.('[data-mixparty-horizontal-scroll="true"]')) {
-      mobileSwipeStartRef.current = null;
-      return;
-    }
-
-    const start = mobileSwipeStartRef.current;
-    const touch = event.changedTouches[0];
-    mobileSwipeStartRef.current = null;
-    if (!start || !touch || window.innerWidth >= 768) return;
-
-    const deltaX = touch.clientX - start.x;
-    const deltaY = touch.clientY - start.y;
-    if (Math.abs(deltaX) < 58 || Math.abs(deltaX) < Math.abs(deltaY) * 1.35) return;
-
-    const currentIndex = mobileTabs.indexOf(activeMobileTab as typeof mobileTabs[number]);
-    if (currentIndex < 0) return;
-    const nextIndex = deltaX < 0
-      ? Math.min(mobileTabs.length - 1, currentIndex + 1)
-      : Math.max(0, currentIndex - 1);
-    if (nextIndex !== currentIndex) switchMobileTab(mobileTabs[nextIndex]);
+    // Les onglets mobiles se changent uniquement via la barre de navigation du bas.
   }
 
   function toggleKaraokeArtistFolder(artistKey: string) {
