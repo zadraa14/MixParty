@@ -435,11 +435,11 @@ export default async function Image({
           {/* HEADLINE */}
           <div
             style={{
-              marginTop: 20,
+              marginTop: 14,
               display: "flex",
               justifyContent: "space-between",
               alignItems: "flex-end",
-              gap: 24,
+              gap: 20,
             }}
           >
             <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
@@ -458,10 +458,10 @@ export default async function Image({
                 style={{
                   display: "flex",
                   marginTop: 7,
-                  fontSize: 51,
-                  lineHeight: 0.98,
+                  fontSize: 54,
+                  lineHeight: 0.96,
                   fontWeight: 900,
-                  letterSpacing: -2.1,
+                  letterSpacing: -2.4,
                 }}
               >
                 {`${winnerName} remporte la soirée`}
@@ -469,9 +469,9 @@ export default async function Image({
               <div
                 style={{
                   display: "flex",
-                  marginTop: 10,
-                  color: "#cbd5e1",
-                  fontSize: 17,
+                  marginTop: 8,
+                  color: "#e2e8f0",
+                  fontSize: 16,
                 }}
               >
                 {`organisée par ${hostName} · ${plural(result.uniqueParticipants || 0, "participant")} · ${plural(result.totalVotes || 0, "vote")}`}
@@ -481,7 +481,7 @@ export default async function Image({
             <div
               style={{
                 display: "flex",
-                padding: "10px 15px",
+                padding: "11px 17px",
                 borderRadius: 999,
                 background:
                   "linear-gradient(90deg,rgba(217,70,239,.18),rgba(139,92,246,.18),rgba(249,115,22,.18))",
@@ -498,9 +498,9 @@ export default async function Image({
           {/* CONTENT */}
           <div
             style={{
-              marginTop: 19,
+              marginTop: 15,
               display: "flex",
-              gap: 18,
+              gap: 16,
               flex: 1,
               minHeight: 0,
             }}
@@ -518,8 +518,8 @@ export default async function Image({
                 style={{
                   display: "flex",
                   alignItems: "center",
-                  padding: "18px 20px",
-                  borderRadius: 24,
+                  padding: "22px 24px",
+                  borderRadius: 26,
                   border: "1px solid rgba(251,191,36,.24)",
                   background:
                     "linear-gradient(105deg,rgba(251,191,36,.12),rgba(217,70,239,.08) 55%,rgba(139,92,246,.07))",
@@ -544,9 +544,9 @@ export default async function Image({
                   <div
                     style={{
                       display: "flex",
-                      fontSize: 32,
+                      fontSize: 34,
                       fontWeight: 900,
-                      letterSpacing: -0.7,
+                      letterSpacing: -0.9,
                     }}
                   >
                     {winnerName}
@@ -608,8 +608,8 @@ export default async function Image({
                   display: "flex",
                   flexDirection: "column",
                   flex: 1,
-                  padding: "15px 18px",
-                  borderRadius: 24,
+                  padding: "17px 19px",
+                  borderRadius: 25,
                   border: "1px solid rgba(255,255,255,.09)",
                   background: "rgba(255,255,255,.028)",
                 }}
@@ -630,8 +630,8 @@ export default async function Image({
                   style={{
                     display: "flex",
                     flexDirection: "column",
-                    marginTop: 10,
-                    gap: 8,
+                    marginTop: 12,
+                    gap: 9,
                   }}
                 >
                   {podium.map((row, index) => {
@@ -652,8 +652,8 @@ export default async function Image({
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          padding: "9px 11px",
-                          borderRadius: 16,
+                          padding: "10px 12px",
+                          borderRadius: 17,
                           background:
                             index === 0
                               ? "rgba(251,191,36,.08)"
@@ -693,7 +693,7 @@ export default async function Image({
                             marginLeft: 10,
                             flex: 1,
                             fontSize: 18,
-                            fontWeight: 800,
+                            fontWeight: 900,
                           }}
                         >
                           {row.name || `Participant ${index + 1}`}
