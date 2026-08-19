@@ -3533,6 +3533,33 @@ async function removeSong(index: number, song: Song) {
                       </div>
                     </div>
 
+                    {/* Durée / progression */}
+                    <div className="mt-3 rounded-[18px] border border-white/[0.06] bg-black/15 px-3 py-2.5">
+                      <div className="h-[4px] overflow-hidden rounded-full bg-white/[0.07]">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-violet-500 via-fuchsia-500 to-orange-400"
+                          style={{
+                            width: `${
+                              tvPlayback.duration > 0
+                                ? Math.min(
+                                    100,
+                                    Math.max(
+                                      0,
+                                      (tvPlayback.time / tvPlayback.duration) * 100,
+                                    ),
+                                  )
+                                : 0
+                            }%`,
+                          }}
+                        />
+                      </div>
+
+                      <div className="mt-1.5 flex items-center justify-between text-[7px] font-black tabular-nums text-white/28">
+                        <span>{formatPlaybackTime(tvPlayback.time || 0)}</span>
+                        <span>{formatPlaybackTime(tvPlayback.duration || 0)}</span>
+                      </div>
+                    </div>
+
                     {/* Fine ligne lumineuse de séparation */}
                     <div className="my-3 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
 
