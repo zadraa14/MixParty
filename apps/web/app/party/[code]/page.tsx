@@ -4333,15 +4333,20 @@ async function removeSong(index: number, song: Song) {
                             <button
                               type="button"
                               onClick={() => vote(originalIndex)}
-                              className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""} grid h-9 w-9 place-items-center rounded-full border transition active:scale-[.95] ${
+                              className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""} inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-transparent p-0 transition-all active:scale-[.94] ${
                                 hasVoted
-                                  ? "border-pink-300/55 bg-[linear-gradient(145deg,rgba(236,72,153,.34),rgba(249,115,22,.20))] text-pink-100 shadow-[0_0_20px_rgba(236,72,153,.24)]"
-                                  : "border-pink-300/35 bg-[linear-gradient(145deg,rgba(236,72,153,.10),rgba(249,115,22,.07))] text-white shadow-[0_0_16px_rgba(236,72,153,.10)]"
+                                  ? "border-pink-300/55 text-pink-300 shadow-[0_0_18px_rgba(236,72,153,.16)]"
+                                  : "border-white/14 text-white/78 hover:border-pink-300/45 hover:text-pink-200"
                               }`}
                               aria-label={hasVoted ? `Retirer mon vote pour ${song.title}` : `J'aime ${song.title}`}
                               aria-pressed={hasVoted}
                             >
-                              <Heart className={`h-4 w-4 ${hasVoted ? "fill-current" : ""}`} />
+                              <Heart
+                                className={`h-[18px] w-[18px] shrink-0 ${
+                                  hasVoted ? "fill-current" : ""
+                                }`}
+                                strokeWidth={2.2}
+                              />
                             </button>
                             {canRemove ? (
                               <button
