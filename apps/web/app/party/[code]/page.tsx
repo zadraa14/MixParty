@@ -4786,7 +4786,7 @@ const canRemove =
                     </div>
 
                     <button
-                      onClick={searchYoutube}
+                      onClick={() => void searchYoutube()}
                       className="party-action party-action--purple group rounded-2xl px-7 py-4"
                     >
                       <span className="party-action__shine" aria-hidden="true" />
