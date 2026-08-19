@@ -190,7 +190,7 @@ export default function PartyResultPage() {
             onClick={() => router.push("/")}
             className="mt-6 min-h-12 rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/10 px-5 text-sm font-black text-fuchsia-100"
           >
-            Retour �  l’accueil
+            Retour à l’accueil
           </button>
         </div>
       </main>
@@ -525,7 +525,7 @@ export default function PartyResultPage() {
             onClick={() => router.push("/")}
             className="min-h-12 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm font-black text-white/55 transition hover:bg-white/[0.08] sm:w-auto"
           >
-            Retour �  l’accueil
+            Retour à l’accueil
           </button>
         </section>
       </div>

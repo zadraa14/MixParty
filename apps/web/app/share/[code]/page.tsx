@@ -495,7 +495,7 @@ export default function PartySharePage() {
               href="/"
               className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.06] px-6 py-3 text-sm font-bold text-white transition hover:bg-white/[0.1]"
             >
-              Retour �  l’accueil
+              Retour à l’accueil
             </a>
           </div>
         </div>
@@ -616,7 +616,7 @@ export default function PartySharePage() {
           <div className="space-y-6">
             <section className="rounded-[34px] border border-white/10 bg-[#090614]/88 p-5 shadow-[0_30px_90px_rgba(0,0,0,0.35)] sm:p-6">
               <div className="mb-4 text-[11px] font-black uppercase tracking-[0.3em] text-fuchsia-200">Partage réseaux sociaux</div>
-              <h2 className="text-2xl font-black">Exports prêts �  poster</h2>
+              <h2 className="text-2xl font-black">Exports prêts à poster</h2>
               <p className="mt-2 text-sm text-white/60">
                 Insta / Snap : télécharge la Story. Instagram / Facebook / X : utilise le format Post.
               </p>
@@ -762,10 +762,10 @@ export default function PartySharePage() {
             <h2 className="text-2xl font-black">Un récap fait pour partager</h2>
             <div className="mt-4 grid gap-3">
               {[
-                "Lien public propre �  envoyer aux invités.",
+                "Lien public propre à envoyer aux invités.",
                 "Story verticale 1080×1920 prête pour Insta / Snap.",
                 "Post 1080×1350 parfait pour Instagram / Facebook / X.",
-                "Classement, stats et top morceaux déj�  mis en page.",
+                "Classement, stats et top morceaux déjà mis en page.",
               ].map((item) => (
                 <div key={item} className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/75">
                   {item}
