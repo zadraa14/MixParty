@@ -30,11 +30,13 @@ import {
   Pause,
   Play,
   Plus,
+  QrCode,
   Radio,
   RefreshCw,
   Route,
   Sparkles,
   Search,
+  Share2,
   Shuffle,
   SkipBack,
   SkipForward,
@@ -47,6 +49,7 @@ import {
   WandSparkles,
   Wifi,
   WifiOff,
+  X,
 } from "lucide-react";
 import { getApiBaseUrl, getSocketPath, getSocketUrl } from "../../../lib/config";
 import MixPartyBackground from "../../../components/MixPartyBackground";
@@ -298,6 +301,7 @@ export default function PartyPage() {
   const [activeSearchCategory, setActiveSearchCategory] = useState<string | null>(null);
   const [shareUrl, setShareUrl] = useState("");
   const [copied, setCopied] = useState(false);
+  const [mobileQrOpen, setMobileQrOpen] = useState(false);
   const [searching, setSearching] = useState(false);
   const [karaokeMode, setKaraokeMode] = useState(false);
   const [karaokeScreenOpen, setKaraokeScreenOpen] = useState(false);
@@ -1971,6 +1975,31 @@ async function removeSong(index: number, song: Song) {
     }
   }
 
+  async function shareInvitation() {
+    const url = shareUrl || `${window.location.origin}/party/${party?.code || code}`;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Rejoins ma soirée MixParty ${party?.code || code}`,
+          text: `Rejoins la soirée MixParty avec le code ${party?.code || code}.`,
+          url,
+        });
+        return;
+      } catch (error) {
+        if ((error as DOMException)?.name === "AbortError") return;
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      window.prompt("Copie ce lien", url);
+    }
+  }
+
   useEffect(() => {
     if (!isPlaybackController || !playerHostElement) return;
 
@@ -3574,15 +3603,135 @@ async function removeSong(index: number, song: Song) {
               <p className="truncate text-[11px] font-semibold text-white/35">Soirée {party.code}</p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() => switchMobileTab("guests")}
-            className="flex items-center gap-2 rounded-full border border-emerald-400/15 bg-emerald-400/10 px-3 py-2 text-xs font-black text-emerald-300"
-          >
-            <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.75)]" />
-            {party.participants.length} en ligne
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setMobileQrOpen(true)}
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] border border-fuchsia-300/20 bg-[linear-gradient(145deg,rgba(124,58,237,.18),rgba(236,72,153,.12),rgba(249,115,22,.10))] text-fuchsia-100 shadow-[0_0_20px_rgba(236,72,153,.10)] transition active:scale-[.94]"
+              aria-label="Afficher le QR code de la soirée"
+            >
+              <QrCode className="h-[18px] w-[18px]" />
+            </button>
+
+            <button
+              type="button"
+              onClick={() => switchMobileTab("guests")}
+              className="flex items-center gap-2 rounded-full border border-emerald-400/15 bg-emerald-400/10 px-3 py-2 text-xs font-black text-emerald-300"
+            >
+              <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.75)]" />
+              {party.participants.length} en ligne
+            </button>
+          </div>
         </header>
+
+        {mobileQrOpen ? (
+          <div className="fixed inset-0 z-[12000] flex items-end justify-center bg-[#05030b]/88 px-3 pb-[max(.75rem,env(safe-area-inset-bottom))] pt-[max(.75rem,env(safe-area-inset-top))] backdrop-blur-md md:hidden">
+            <button
+              type="button"
+              aria-label="Fermer le QR code"
+              onClick={() => setMobileQrOpen(false)}
+              className="absolute inset-0"
+            />
+
+            <div className="relative z-10 w-full max-w-[390px] overflow-hidden rounded-[30px] border border-white/10 bg-[#0a0812]/98 p-4 shadow-[0_30px_100px_rgba(0,0,0,.65)]">
+              <div className="pointer-events-none absolute -left-20 -top-20 h-48 w-48 rounded-full bg-violet-500/18 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-24 -right-16 h-52 w-52 rounded-full bg-orange-400/12 blur-3xl" />
+              <div className="pointer-events-none absolute inset-x-10 top-0 h-px bg-gradient-to-r from-transparent via-fuchsia-300/70 to-transparent" />
+
+              <div className="relative">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-fuchsia-300/20 bg-fuchsia-500/10 text-fuchsia-200">
+                      <QrCode className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-black uppercase tracking-[.18em] text-fuchsia-300">
+                        Invitation MixParty
+                      </p>
+                      <h2 className="mt-0.5 font-[family:var(--font-exo-2)] text-xl font-black text-white">
+                        Invite tes amis
+                      </h2>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setMobileQrOpen(false)}
+                    className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-white/10 bg-white/[0.04] text-white/45"
+                    aria-label="Fermer"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                <p className="mt-3 text-[11px] font-semibold leading-5 text-white/38">
+                  Fais scanner ce QR code ou partage directement le lien de la soirée.
+                </p>
+
+                <div className="mx-auto mt-4 max-w-[260px] rounded-[26px] border border-fuchsia-300/20 bg-[linear-gradient(145deg,rgba(124,58,237,.14),rgba(236,72,153,.09),rgba(249,115,22,.08))] p-2 shadow-[0_0_32px_rgba(236,72,153,.10)]">
+                  <div className="rounded-[21px] bg-white p-4">
+                    <QRCodeCanvas
+                      value={shareUrl || `${window.location.origin}/party/${party.code}`}
+                      size={240}
+                      level="H"
+                      bgColor="#ffffff"
+                      fgColor="#10091b"
+                      imageSettings={{
+                        src: "/branding/icon.png",
+                        width: 48,
+                        height: 48,
+                        excavate: true,
+                      }}
+                      className="h-auto w-full rounded-xl"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-center justify-between rounded-[18px] border border-white/10 bg-white/[0.035] px-4 py-3">
+                  <div>
+                    <p className="text-[8px] font-black uppercase tracking-[.15em] text-white/28">
+                      Code soirée
+                    </p>
+                    <strong className="mt-0.5 block font-[family:var(--font-exo-2)] text-xl font-black tracking-[.17em] text-white">
+                      {party.code}
+                    </strong>
+                  </div>
+                  <span className="rounded-full border border-emerald-300/15 bg-emerald-500/[0.07] px-2.5 py-1.5 text-[8px] font-black text-emerald-300">
+                    {party.participants.length} en ligne
+                  </span>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void copyInvitation()}
+                    className="flex min-h-12 items-center justify-center gap-2 rounded-[18px] border border-white/10 bg-white/[0.045] px-3 text-[10px] font-black text-white/72 transition active:scale-[.98]"
+                  >
+                    {copied ? (
+                      <Check className="h-4 w-4 text-emerald-300" />
+                    ) : (
+                      <Copy className="h-4 w-4 text-fuchsia-300" />
+                    )}
+                    {copied ? "Lien copié" : "Copier le lien"}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => void shareInvitation()}
+                    className="flex min-h-12 items-center justify-center gap-2 rounded-[18px] border border-pink-300/20 bg-gradient-to-r from-violet-600 via-fuchsia-500 to-orange-400 px-3 text-[10px] font-black text-white shadow-[0_12px_28px_rgba(236,72,153,.16)] transition active:scale-[.98]"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    Partager
+                  </button>
+                </div>
+
+                <p className="mt-3 text-center text-[8px] font-bold text-white/22">
+                  Scanner pour rejoindre · aucun compte obligatoire
+                </p>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <header className="desktop-topbar mb-6 hidden items-center justify-between gap-4 md:flex">
 
