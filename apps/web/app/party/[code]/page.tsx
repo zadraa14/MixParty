@@ -1574,7 +1574,20 @@ export default function PartyPage() {
           return;
         }
 
-        setArtistSuggestions(data);
+        const normalizedPrefix = query
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase();
+
+        setArtistSuggestions(
+          data.filter((artist: any) =>
+            String(artist?.name || "")
+              .normalize("NFD")
+              .replace(/[\u0300-\u036f]/g, "")
+              .toLowerCase()
+              .startsWith(normalizedPrefix),
+          ),
+        );
       } catch (error: any) {
         if (error?.name !== "AbortError") {
           console.error("Suggestions artistes indisponibles", error);
