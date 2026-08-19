@@ -6,9 +6,13 @@ import {
 } from "next/font/google";
 import "./globals.css";
 import InstallMixParty from "../components/InstallMixParty";
-import ProfileOnboarding from "../components/ProfileOnboarding";
+import PWARegister from "../components/PWARegister";
+import PWASplash from "../components/PWASplash";
 
 export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
   themeColor: "#090711",
 };
 const geistSans = Geist({
@@ -46,6 +50,16 @@ export const metadata: Metadata = {
   },
 
   manifest: "/manifest.json",
+
+  appleWebApp: {
+    capable: true,
+    title: "MixParty",
+    statusBarStyle: "black-translucent",
+  },
+
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
 };
 
 export default function RootLayout({
@@ -61,7 +75,8 @@ export default function RootLayout({
   className={`${geistSans.variable} ${geistMono.variable} ${exo2.variable} h-full antialiased`}
 >
       <body suppressHydrationWarning className="flex min-h-full flex-col">
-        <ProfileOnboarding />
+        <PWARegister />
+        <PWASplash />
         {children}
         <InstallMixParty />
       </body>

@@ -10,6 +10,7 @@ import {
   Gem,
   History,
   Disc3,
+  Download,
   Images,
   LockKeyhole,
   LogIn,
@@ -1938,6 +1939,40 @@ export default function ProfilePage() {
               </button>
             );
           })}
+        </section>
+
+
+        <section className="mt-6 overflow-hidden rounded-[30px] border border-violet-300/10 bg-[radial-gradient(circle_at_0%_0%,rgba(124,58,237,.14),transparent_42%),linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.025))] shadow-[0_22px_70px_rgba(0,0,0,.24)] backdrop-blur-2xl">
+          <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
+            <div className="flex min-w-0 items-start gap-4">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-violet-300/15 bg-violet-500/10 text-violet-200">
+                <Download className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[.22em] text-violet-300">
+                  Application MixParty
+                </p>
+                <h2 className="mt-1 font-[family:var(--font-exo-2)] text-xl font-black">
+                  Installe MixParty sur ton téléphone
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-white/40">
+                  Ajoute MixParty à ton écran d’accueil pour l’ouvrir en mode application,
+                  sans barre Safari/Chrome, avec son icône et son affichage plein écran.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent("mixparty:pwa-install"));
+              }}
+              className="mixparty-pwa-install-trigger inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-2xl border border-violet-300/20 bg-gradient-to-r from-violet-500/15 via-fuchsia-500/12 to-orange-500/10 px-5 text-xs font-black uppercase tracking-[.1em] text-violet-100 shadow-[0_14px_38px_rgba(124,58,237,.10)] transition hover:border-violet-300/30 hover:bg-violet-500/20"
+            >
+              <Download className="h-4 w-4" />
+              Installer l’app
+            </button>
+          </div>
         </section>
 
         <section className="mt-6 overflow-hidden rounded-[30px] border border-cyan-300/10 bg-white/[0.05] shadow-[0_22px_70px_rgba(0,0,0,.24)] backdrop-blur-2xl">

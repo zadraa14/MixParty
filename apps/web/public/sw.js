@@ -1,15 +1,16 @@
-const CACHE_NAME = "mixparty-shell-v1";
-const APP_SHELL = [
+const CACHE_NAME = "mixparty-pwa-shell-v1";
+const SHELL = [
   "/",
   "/manifest.json",
-  "/branding/icon-192.png",
-  "/branding/icon-512.png",
-  "/branding/apple-touch-icon.png"
+  "/icons/mixparty-192.png",
+  "/icons/mixparty-512.png",
+  "/icons/mixparty-maskable-512.png",
+  "/icons/apple-touch-icon.png"
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).catch(() => undefined)
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(SHELL)).catch(() => undefined)
   );
   self.skipWaiting();
 });
@@ -17,24 +18,24 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key)))
+      Promise.all(
+        keys
+          .filter((key) => key.startsWith("mixparty-pwa-shell-") && key !== CACHE_NAME)
+          .map((key) => caches.delete(key))
+      )
     )
   );
   self.clients.claim();
 });
 
 self.addEventListener("fetch", (event) => {
-  if (event.request.method !== "GET" || new URL(event.request.url).origin !== self.location.origin) return;
+  const request = event.request;
+  if (request.method !== "GET" || request.mode !== "navigate") return;
 
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response.ok && event.request.destination !== "document") {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
-        }
-        return response;
-      })
-      .catch(() => caches.match(event.request).then((cached) => cached || caches.match("/")))
+    fetch(request).catch(async () => {
+      const cached = await caches.match("/");
+      return cached || Response.error();
+    })
   );
 });
