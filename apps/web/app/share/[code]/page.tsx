@@ -73,7 +73,7 @@ function initials(name?: string) {
 function truncate(value: string | undefined, max: number) {
   const text = String(value || "").trim();
   if (text.length <= max) return text;
-  return `${text.slice(0, Math.max(0, max - 1)).trimEnd()}â€¦`;
+  return `${text.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
 }
 
 function escapeXml(value: unknown) {
@@ -99,8 +99,8 @@ function buildStorySvg(result: PartyResult) {
   const stats = [
     { label: "Participants", value: String(result.uniqueParticipants || 0) },
     { label: "Votes", value: String(result.totalVotes || 0) },
-    { label: "Titres jouÃ©s", value: String(result.songsPlayed || 0) },
-    { label: "DurÃ©e", value: formatDuration(result.durationMs || 0) },
+    { label: "Titres joués", value: String(result.songsPlayed || 0) },
+    { label: "Durée", value: formatDuration(result.durationMs || 0) },
   ];
 
   return `
@@ -137,20 +137,20 @@ function buildStorySvg(result: PartyResult) {
   <rect x="54" y="54" width="972" height="1812" rx="42" fill="rgba(9,6,20,0.42)" stroke="rgba(255,255,255,0.10)" />
 
   <text x="120" y="155" fill="#ffffff" font-size="52" font-family="Arial, Helvetica, sans-serif" font-weight="800">MixParty</text>
-  <text x="120" y="208" fill="#f0abfc" font-size="28" font-family="Arial, Helvetica, sans-serif" letter-spacing="4">RÃ‰CAP DE SOIRÃ‰E</text>
+  <text x="120" y="208" fill="#f0abfc" font-size="28" font-family="Arial, Helvetica, sans-serif" letter-spacing="4">RÉCAP DE SOIRÉE</text>
 
   <rect x="760" y="104" width="200" height="58" rx="29" fill="rgba(255,255,255,0.07)" stroke="rgba(255,255,255,0.10)" />
   <text x="860" y="142" text-anchor="middle" fill="#ffffff" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="700">${escapeXml(result.code)}</text>
 
   <text x="120" y="315" fill="#ffffff" font-size="78" font-family="Arial, Helvetica, sans-serif" font-weight="900">Classement final</text>
-  <text x="120" y="365" fill="#d1d5db" font-size="28" font-family="Arial, Helvetica, sans-serif">${escapeXml(formatDate(result.endedAt))} Â· organisÃ©e par ${escapeXml(result.host?.name || "MixParty")}</text>
+  <text x="120" y="365" fill="#d1d5db" font-size="28" font-family="Arial, Helvetica, sans-serif">${escapeXml(formatDate(result.endedAt))} · organisée par ${escapeXml(result.host?.name || "MixParty")}</text>
 
   <rect x="120" y="420" width="840" height="244" rx="36" fill="rgba(16,12,35,0.78)" stroke="rgba(255,255,255,0.10)" />
   <text x="160" y="488" fill="#fbbf24" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="800" letter-spacing="2">GRAND GAGNANT</text>
   <text x="160" y="560" fill="#ffffff" font-size="58" font-family="Arial, Helvetica, sans-serif" font-weight="900">${escapeXml(truncate(winner?.name || "Champion", 22))}</text>
-  <text x="160" y="615" fill="#e5e7eb" font-size="28" font-family="Arial, Helvetica, sans-serif">${escapeXml(String(winner?.votesReceived || 0))} votes Â· ${escapeXml(String(winner?.songsAdded || 0))} titres ajoutÃ©s</text>
+  <text x="160" y="615" fill="#e5e7eb" font-size="28" font-family="Arial, Helvetica, sans-serif">${escapeXml(String(winner?.votesReceived || 0))} votes · ${escapeXml(String(winner?.songsAdded || 0))} titres ajoutés</text>
   <rect x="755" y="470" width="145" height="145" rx="72" fill="url(#accent)" opacity="0.92" />
-  <text x="827" y="566" text-anchor="middle" fill="#ffffff" font-size="72" font-family="Arial, Helvetica, sans-serif">ðŸ‘‘</text>
+  <text x="827" y="566" text-anchor="middle" fill="#ffffff" font-size="72" font-family="Arial, Helvetica, sans-serif">👑</text>
 
   ${stats.map((item, index) => {
     const x = 120 + (index % 2) * 420;
@@ -176,13 +176,13 @@ function buildStorySvg(result: PartyResult) {
     `;
   }).join("")}
 
-  <text x="120" y="1585" fill="#fcd34d" font-size="26" font-family="Arial, Helvetica, sans-serif" font-weight="800" letter-spacing="3">MORCEAUX LES PLUS VOTÃ‰S</text>
+  <text x="120" y="1585" fill="#fcd34d" font-size="26" font-family="Arial, Helvetica, sans-serif" font-weight="800" letter-spacing="3">MORCEAUX LES PLUS VOTÉS</text>
   ${songs.map((song, index) => {
     const y = 1620 + index * 64;
     return `
       <text x="130" y="${y}" fill="#ffffff" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="800">${index + 1}. ${escapeXml(truncate(song.title, 28))}</text>
       <text x="130" y="${y + 28}" fill="#cbd5e1" font-size="20" font-family="Arial, Helvetica, sans-serif">${escapeXml(truncate(song.artistName || "Artiste inconnu", 32))}</text>
-      <text x="950" y="${y + 14}" text-anchor="end" fill="#fbbf24" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="900">${escapeXml(String(song.votes || 0))} â¤</text>
+      <text x="950" y="${y + 14}" text-anchor="end" fill="#fbbf24" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="900">${escapeXml(String(song.votes || 0))} ❤</text>
     `;
   }).join("")}
 
@@ -215,16 +215,16 @@ function buildPostSvg(result: PartyResult) {
   <rect x="50" y="50" width="980" height="1250" rx="40" fill="rgba(8,6,18,0.45)" stroke="rgba(255,255,255,0.10)" />
 
   <text x="100" y="132" fill="#ffffff" font-size="52" font-family="Arial, Helvetica, sans-serif" font-weight="900">MixParty</text>
-  <text x="100" y="175" fill="#f0abfc" font-size="24" font-family="Arial, Helvetica, sans-serif" letter-spacing="3">RÃ‰SULTAT DE SOIRÃ‰E</text>
+  <text x="100" y="175" fill="#f0abfc" font-size="24" font-family="Arial, Helvetica, sans-serif" letter-spacing="3">RÉSULTAT DE SOIRÉE</text>
   <text x="980" y="132" text-anchor="end" fill="#ffffff" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="800">${escapeXml(result.code)}</text>
   <text x="980" y="173" text-anchor="end" fill="#cbd5e1" font-size="20" font-family="Arial, Helvetica, sans-serif">${escapeXml(formatDate(result.endedAt))}</text>
 
   <rect x="100" y="220" width="880" height="190" rx="34" fill="rgba(16,12,35,0.78)" stroke="rgba(255,255,255,0.10)" />
   <text x="140" y="278" fill="#fbbf24" font-size="20" font-family="Arial, Helvetica, sans-serif" font-weight="800" letter-spacing="2">GRAND GAGNANT</text>
   <text x="140" y="345" fill="#ffffff" font-size="56" font-family="Arial, Helvetica, sans-serif" font-weight="900">${escapeXml(truncate(winner?.name || "Champion", 25))}</text>
-  <text x="140" y="388" fill="#d1d5db" font-size="24" font-family="Arial, Helvetica, sans-serif">${escapeXml(String(winner?.votesReceived || 0))} votes Â· ${escapeXml(String(result.uniqueParticipants || 0))} participants</text>
+  <text x="140" y="388" fill="#d1d5db" font-size="24" font-family="Arial, Helvetica, sans-serif">${escapeXml(String(winner?.votesReceived || 0))} votes · ${escapeXml(String(result.uniqueParticipants || 0))} participants</text>
   <circle cx="890" cy="315" r="62" fill="url(#accent2)" />
-  <text x="890" y="336" text-anchor="middle" fill="#ffffff" font-size="60" font-family="Arial, Helvetica, sans-serif">ðŸ†</text>
+  <text x="890" y="336" text-anchor="middle" fill="#ffffff" font-size="60" font-family="Arial, Helvetica, sans-serif">🏆</text>
 
   <rect x="100" y="450" width="420" height="300" rx="32" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)" />
   <text x="135" y="504" fill="#ffffff" font-size="34" font-family="Arial, Helvetica, sans-serif" font-weight="900">Top classement</text>
@@ -239,29 +239,29 @@ function buildPostSvg(result: PartyResult) {
   }).join("")}
 
   <rect x="560" y="450" width="420" height="300" rx="32" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)" />
-  <text x="595" y="504" fill="#ffffff" font-size="34" font-family="Arial, Helvetica, sans-serif" font-weight="900">Stats soirÃ©e</text>
-  <text x="595" y="570" fill="#c4b5fd" font-size="22" font-family="Arial, Helvetica, sans-serif">DurÃ©e</text>
+  <text x="595" y="504" fill="#ffffff" font-size="34" font-family="Arial, Helvetica, sans-serif" font-weight="900">Stats soirée</text>
+  <text x="595" y="570" fill="#c4b5fd" font-size="22" font-family="Arial, Helvetica, sans-serif">Durée</text>
   <text x="930" y="570" text-anchor="end" fill="#ffffff" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="800">${escapeXml(formatDuration(result.durationMs || 0))}</text>
   <text x="595" y="622" fill="#c4b5fd" font-size="22" font-family="Arial, Helvetica, sans-serif">Votes</text>
   <text x="930" y="622" text-anchor="end" fill="#ffffff" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="800">${escapeXml(String(result.totalVotes || 0))}</text>
-  <text x="595" y="674" fill="#c4b5fd" font-size="22" font-family="Arial, Helvetica, sans-serif">Titres jouÃ©s</text>
+  <text x="595" y="674" fill="#c4b5fd" font-size="22" font-family="Arial, Helvetica, sans-serif">Titres joués</text>
   <text x="930" y="674" text-anchor="end" fill="#ffffff" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="800">${escapeXml(String(result.songsPlayed || 0))}</text>
   <text x="595" y="726" fill="#c4b5fd" font-size="22" font-family="Arial, Helvetica, sans-serif">Total titres</text>
   <text x="930" y="726" text-anchor="end" fill="#ffffff" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="800">${escapeXml(String(result.totalSongs || 0))}</text>
 
   <rect x="100" y="790" width="880" height="370" rx="32" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)" />
-  <text x="140" y="848" fill="#ffffff" font-size="34" font-family="Arial, Helvetica, sans-serif" font-weight="900">Morceaux les plus votÃ©s</text>
+  <text x="140" y="848" fill="#ffffff" font-size="34" font-family="Arial, Helvetica, sans-serif" font-weight="900">Morceaux les plus votés</text>
   ${songs.map((song, index) => {
     const y = 910 + index * 84;
     return `
       <text x="145" y="${y}" fill="#ffffff" font-size="28" font-family="Arial, Helvetica, sans-serif" font-weight="800">${index + 1}. ${escapeXml(truncate(song.title, 36))}</text>
       <text x="145" y="${y + 28}" fill="#cbd5e1" font-size="20" font-family="Arial, Helvetica, sans-serif">${escapeXml(truncate(song.artistName || "Artiste inconnu", 42))}</text>
-      <text x="935" y="${y + 12}" text-anchor="end" fill="#fbbf24" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="900">${escapeXml(String(song.votes || 0))} â¤</text>
+      <text x="935" y="${y + 12}" text-anchor="end" fill="#fbbf24" font-size="24" font-family="Arial, Helvetica, sans-serif" font-weight="900">${escapeXml(String(song.votes || 0))} ❤</text>
     `;
   }).join("")}
 
   <text x="540" y="1235" text-anchor="middle" fill="#ffffff" font-size="30" font-family="Arial, Helvetica, sans-serif" font-weight="800">mixpartyapp.fr/share/${escapeXml(result.code)}</text>
-  <text x="540" y="1272" text-anchor="middle" fill="#d1d5db" font-size="18" font-family="Arial, Helvetica, sans-serif">La musique, les votes, le classementâ€¦ tout le recap en un lien.</text>
+  <text x="540" y="1272" text-anchor="middle" fill="#d1d5db" font-size="18" font-family="Arial, Helvetica, sans-serif">La musique, les votes, le classement… tout le recap en un lien.</text>
 </svg>`;
 }
 
@@ -342,13 +342,13 @@ export default function PartySharePage() {
 
         const data = await response.json().catch(() => ({}));
         if (!response.ok || !data?.result) {
-          throw new Error(data?.error || "RÃ©cap indisponible.");
+          throw new Error(data?.error || "Récap indisponible.");
         }
 
         setResult(data.result);
       } catch (e: any) {
         if (e?.name !== "AbortError") {
-          setError(e instanceof Error ? e.message : "RÃ©cap indisponible.");
+          setError(e instanceof Error ? e.message : "Récap indisponible.");
         }
       } finally {
         setLoading(false);
@@ -367,8 +367,8 @@ export default function PartySharePage() {
   const shareText = useMemo(() => {
     const winner = result?.ranking?.[0]?.name;
     return winner
-      ? `ðŸ† ${winner} remporte la soirÃ©e MixParty ${result?.code} ! DÃ©couvre le classement ðŸ‘‡`
-      : `ðŸŽ‰ DÃ©couvre le rÃ©cap de la soirÃ©e MixParty ${code} !`;
+      ? `🏆 ${winner} remporte la soirée MixParty ${result?.code} ! Découvre le classement 👇`
+      : `🎉 Découvre le récap de la soirée MixParty ${code} !`;
   }, [result, code]);
 
   async function copyLink() {
@@ -387,7 +387,7 @@ export default function PartySharePage() {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `MixParty Â· ${result.code}`,
+          title: `MixParty · ${result.code}`,
           text: shareText,
           url: shareUrl,
         });
@@ -473,7 +473,7 @@ export default function PartySharePage() {
         <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center px-6 py-16">
           <div className="rounded-[28px] border border-white/10 bg-white/[0.04] px-8 py-7 text-center shadow-[0_30px_100px_rgba(0,0,0,0.35)]">
             <div className="mb-3 text-sm font-black uppercase tracking-[0.32em] text-fuchsia-300">MixParty</div>
-            <div className="text-3xl font-black">Chargement du rÃ©capâ€¦</div>
+            <div className="text-3xl font-black">Chargement du récap…</div>
           </div>
         </div>
       </div>
@@ -489,13 +489,13 @@ export default function PartySharePage() {
             <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-fuchsia-300">
               <Share2 className="h-7 w-7" />
             </div>
-            <div className="mb-2 text-4xl font-black">RÃ©cap indisponible</div>
-            <div className="mb-7 text-base text-white/65">{error || "Impossible de rÃ©cupÃ©rer ce partage."}</div>
+            <div className="mb-2 text-4xl font-black">Récap indisponible</div>
+            <div className="mb-7 text-base text-white/65">{error || "Impossible de récupérer ce partage."}</div>
             <a
               href="/"
               className="inline-flex items-center justify-center rounded-full border border-white/10 bg-white/[0.06] px-6 py-3 text-sm font-bold text-white transition hover:bg-white/[0.1]"
             >
-              Retour Ã  lâ€™accueil
+              Retour �  l’accueil
             </a>
           </div>
         </div>
@@ -519,9 +519,9 @@ export default function PartySharePage() {
               <Share2 className="h-3.5 w-3.5" />
               Partage MixParty
             </div>
-            <h1 className="text-3xl font-black sm:text-4xl lg:text-5xl">Classement de la soirÃ©e</h1>
+            <h1 className="text-3xl font-black sm:text-4xl lg:text-5xl">Classement de la soirée</h1>
             <p className="mt-2 text-sm text-white/65 sm:text-base">
-              {result.code} Â· {formatDate(result.endedAt)} Â· organisÃ©e par {result.host?.name || "MixParty"}
+              {result.code} · {formatDate(result.endedAt)} · organisée par {result.host?.name || "MixParty"}
             </p>
           </div>
 
@@ -531,7 +531,7 @@ export default function PartySharePage() {
               className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-bold text-white transition hover:bg-white/[0.1]"
             >
               {copied ? <Check className="h-4 w-4 text-emerald-300" /> : <Copy className="h-4 w-4" />}
-              {copied ? "Lien copiÃ©" : "Copier le lien"}
+              {copied ? "Lien copié" : "Copier le lien"}
             </button>
             <button
               onClick={nativeShare}
@@ -546,8 +546,8 @@ export default function PartySharePage() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatCard icon={<Users className="h-4 w-4" />} label="Participants" value={String(result.uniqueParticipants || 0)} />
           <StatCard icon={<Trophy className="h-4 w-4" />} label="Votes" value={String(result.totalVotes || 0)} />
-          <StatCard icon={<Music2 className="h-4 w-4" />} label="Titres jouÃ©s" value={String(result.songsPlayed || 0)} />
-          <StatCard icon={<Link2 className="h-4 w-4" />} label="DurÃ©e" value={formatDuration(result.durationMs || 0)} />
+          <StatCard icon={<Music2 className="h-4 w-4" />} label="Titres joués" value={String(result.songsPlayed || 0)} />
+          <StatCard icon={<Link2 className="h-4 w-4" />} label="Durée" value={formatDuration(result.durationMs || 0)} />
         </div>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[1.3fr_0.7fr]">
@@ -557,18 +557,18 @@ export default function PartySharePage() {
                 <div className="mb-2 text-[11px] font-black uppercase tracking-[0.3em] text-amber-300">Grand gagnant</div>
                 <div className="text-3xl font-black sm:text-4xl">{winner?.name || "Champion"}</div>
                 <div className="mt-2 text-sm text-white/65 sm:text-base">
-                  {winner?.votesReceived || 0} votes Â· {winner?.songsAdded || 0} titre(s) ajoutÃ©(s)
+                  {winner?.votesReceived || 0} votes · {winner?.songsAdded || 0} titre(s) ajouté(s)
                 </div>
               </div>
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-r from-fuchsia-500 via-violet-500 to-orange-400 text-4xl shadow-[0_20px_60px_rgba(217,70,239,0.35)]">
-                ðŸ‘‘
+                👑
               </div>
             </div>
 
             <div className="mb-4 flex items-center justify-between">
               <div>
                 <div className="text-[11px] font-black uppercase tracking-[0.3em] text-fuchsia-200">Podium</div>
-                <h2 className="mt-2 text-2xl font-black">Les meilleurs de la soirÃ©e</h2>
+                <h2 className="mt-2 text-2xl font-black">Les meilleurs de la soirée</h2>
               </div>
             </div>
 
@@ -601,7 +601,7 @@ export default function PartySharePage() {
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-lg font-black text-white">{row.name || `Participant ${rank}`}</div>
                       <div className="truncate text-sm text-white/55">
-                        {row.votesReceived || 0} votes Â· {row.songsAdded || 0} titre(s) Â· {row.songsWithVotes || 0} titre(s) votÃ©(s)
+                        {row.votesReceived || 0} votes · {row.songsAdded || 0} titre(s) · {row.songsWithVotes || 0} titre(s) voté(s)
                       </div>
                     </div>
                     <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-black text-fuchsia-100">
@@ -615,10 +615,10 @@ export default function PartySharePage() {
 
           <div className="space-y-6">
             <section className="rounded-[34px] border border-white/10 bg-[#090614]/88 p-5 shadow-[0_30px_90px_rgba(0,0,0,0.35)] sm:p-6">
-              <div className="mb-4 text-[11px] font-black uppercase tracking-[0.3em] text-fuchsia-200">Partage rÃ©seaux sociaux</div>
-              <h2 className="text-2xl font-black">Exports prÃªts Ã  poster</h2>
+              <div className="mb-4 text-[11px] font-black uppercase tracking-[0.3em] text-fuchsia-200">Partage réseaux sociaux</div>
+              <h2 className="text-2xl font-black">Exports prêts �  poster</h2>
               <p className="mt-2 text-sm text-white/60">
-                Insta / Snap : tÃ©lÃ©charge la Story. Instagram / Facebook / X : utilise le format Post.
+                Insta / Snap : télécharge la Story. Instagram / Facebook / X : utilise le format Post.
               </p>
 
               <div className="mt-5 space-y-4">
@@ -626,14 +626,14 @@ export default function PartySharePage() {
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-black text-white">Format Story</div>
-                      <div className="text-xs text-white/50">1080 Ã— 1920 Â· idÃ©al Snap / Insta Story</div>
+                      <div className="text-xs text-white/50">1080 × 1920 · idéal Snap / Insta Story</div>
                     </div>
                     <button
                       onClick={downloadStory}
                       className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-fuchsia-500 via-violet-500 to-orange-400 px-4 py-2 text-sm font-black text-white"
                     >
                       <Download className="h-4 w-4" />
-                      {downloading === "story" ? "Exportâ€¦" : "TÃ©lÃ©charger"}
+                      {downloading === "story" ? "Export…" : "Télécharger"}
                     </button>
                   </div>
                   <div className="aspect-[9/16] overflow-hidden rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.35),transparent_32%),radial-gradient(circle_at_top_right,rgba(236,72,153,0.22),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.16),transparent_26%),#0a0616] p-4">
@@ -650,7 +650,7 @@ export default function PartySharePage() {
                         {topThree.map((row, index) => (
                           <div key={`story-${row.accountId || index}`} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm">
                             <div className="min-w-0 truncate font-bold">#{index + 1} {row.name || `Participant ${index + 1}`}</div>
-                            <div className="ml-3 shrink-0 text-amber-300">{row.votesReceived || 0} â¤</div>
+                            <div className="ml-3 shrink-0 text-amber-300">{row.votesReceived || 0} ❤</div>
                           </div>
                         ))}
                       </div>
@@ -663,14 +663,14 @@ export default function PartySharePage() {
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <div>
                       <div className="text-sm font-black text-white">Format Post</div>
-                      <div className="text-xs text-white/50">1080 Ã— 1350 Â· idÃ©al feed Instagram / Facebook / X</div>
+                      <div className="text-xs text-white/50">1080 × 1350 · idéal feed Instagram / Facebook / X</div>
                     </div>
                     <button
                       onClick={downloadPost}
                       className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-black text-white"
                     >
                       <Download className="h-4 w-4" />
-                      {downloading === "post" ? "Exportâ€¦" : "TÃ©lÃ©charger"}
+                      {downloading === "post" ? "Export…" : "Télécharger"}
                     </button>
                   </div>
                   <div className="aspect-[4/5] overflow-hidden rounded-[24px] border border-white/10 bg-[radial-gradient(circle_at_top_left,rgba(139,92,246,0.35),transparent_32%),radial-gradient(circle_at_top_right,rgba(236,72,153,0.22),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.16),transparent_26%),#0a0616] p-4">
@@ -685,13 +685,13 @@ export default function PartySharePage() {
                       <div className="mt-4 rounded-[18px] border border-white/10 bg-white/[0.05] p-3">
                         <div className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">Grand gagnant</div>
                         <div className="mt-1 text-xl font-black">{winner?.name || "Champion"}</div>
-                        <div className="mt-1 text-xs text-white/60">{winner?.votesReceived || 0} votes Â· {result.uniqueParticipants || 0} participants</div>
+                        <div className="mt-1 text-xs text-white/60">{winner?.votesReceived || 0} votes · {result.uniqueParticipants || 0} participants</div>
                       </div>
                       <div className="mt-4 space-y-2">
                         {topThree.map((row, index) => (
                           <div key={`post-${row.accountId || index}`} className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm">
                             <div className="min-w-0 truncate font-bold">#{index + 1} {row.name || `Participant ${index + 1}`}</div>
-                            <div className="ml-3 shrink-0 text-amber-300">{row.votesReceived || 0} â¤</div>
+                            <div className="ml-3 shrink-0 text-amber-300">{row.votesReceived || 0} ❤</div>
                           </div>
                         ))}
                       </div>
@@ -727,7 +727,7 @@ export default function PartySharePage() {
                 </a>
               </div>
               <p className="mt-4 text-xs text-white/45">
-                Pour Instagram et Snapchat, tÃ©lÃ©charge dâ€™abord la Story puis publie lâ€™image directement depuis ton tÃ©lÃ©phone.
+                Pour Instagram et Snapchat, télécharge d’abord la Story puis publie l’image directement depuis ton téléphone.
               </p>
             </section>
           </div>
@@ -736,21 +736,21 @@ export default function PartySharePage() {
         <div className="mt-6 grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
           <section className="rounded-[34px] border border-white/10 bg-[#090614]/88 p-5 shadow-[0_30px_90px_rgba(0,0,0,0.35)] sm:p-6">
             <div className="mb-4 text-[11px] font-black uppercase tracking-[0.3em] text-fuchsia-200">Top morceaux</div>
-            <h2 className="text-2xl font-black">Les plus votÃ©s</h2>
+            <h2 className="text-2xl font-black">Les plus votés</h2>
             <div className="mt-4 space-y-3">
               {topSongs.map((song, index) => (
                 <div key={`${song.videoId || song.title}-${index}`} className="flex items-center gap-3 rounded-[24px] border border-white/10 bg-white/[0.03] p-3">
                   {song.thumbnail ? (
                     <img src={song.thumbnail} alt="" className="h-14 w-14 rounded-2xl border border-white/10 object-cover" />
                   ) : (
-                    <div className="grid h-14 w-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.05] text-xl">ðŸŽµ</div>
+                    <div className="grid h-14 w-14 place-items-center rounded-2xl border border-white/10 bg-white/[0.05] text-xl">🎵</div>
                   )}
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-base font-black text-white">{song.title}</div>
                     <div className="truncate text-sm text-white/55">{song.artistName || "Artiste inconnu"}</div>
                   </div>
                   <div className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-black text-amber-300">
-                    {song.votes || 0} â¤
+                    {song.votes || 0} ❤
                   </div>
                 </div>
               ))}
@@ -758,14 +758,14 @@ export default function PartySharePage() {
           </section>
 
           <section className="rounded-[34px] border border-white/10 bg-[#090614]/88 p-5 shadow-[0_30px_90px_rgba(0,0,0,0.35)] sm:p-6">
-            <div className="mb-4 text-[11px] font-black uppercase tracking-[0.3em] text-fuchsia-200">Pourquoi câ€™est utile ?</div>
-            <h2 className="text-2xl font-black">Un rÃ©cap fait pour partager</h2>
+            <div className="mb-4 text-[11px] font-black uppercase tracking-[0.3em] text-fuchsia-200">Pourquoi c’est utile ?</div>
+            <h2 className="text-2xl font-black">Un récap fait pour partager</h2>
             <div className="mt-4 grid gap-3">
               {[
-                "Lien public propre Ã  envoyer aux invitÃ©s.",
-                "Story verticale 1080Ã—1920 prÃªte pour Insta / Snap.",
-                "Post 1080Ã—1350 parfait pour Instagram / Facebook / X.",
-                "Classement, stats et top morceaux dÃ©jÃ  mis en page.",
+                "Lien public propre �  envoyer aux invités.",
+                "Story verticale 1080×1920 prête pour Insta / Snap.",
+                "Post 1080×1350 parfait pour Instagram / Facebook / X.",
+                "Classement, stats et top morceaux déj�  mis en page.",
               ].map((item) => (
                 <div key={item} className="rounded-[22px] border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-white/75">
                   {item}

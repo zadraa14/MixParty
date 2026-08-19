@@ -28,7 +28,7 @@ dotenv.config();
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
 
-// KARAOKÃ‰ PAUSED â€” 2026-08-12
+// KARAOKÉ PAUSED — 2026-08-12
 // Default OFF on purpose. All code/data are preserved for a future reactivation.
 const karaokeFeatureEnabled =
   String(process.env.KARAOKE_ENABLED || "false").toLowerCase() === "true";
@@ -122,7 +122,7 @@ function writeAdminAudit(account: any, action: string, details: Record<string, u
       "utf8",
     );
   } catch (error) {
-    console.error("âš ï¸ Admin audit write failed", error);
+    console.error("� ï¸ Admin audit write failed", error);
   }
 }
 
@@ -148,7 +148,7 @@ function adminPartySummary(party: Party) {
 }
 
 
-// Public/admin KaraokÃ© endpoints are frozen while the feature is paused.
+// Public/admin Karaoké endpoints are frozen while the feature is paused.
 // Nothing is deleted; KARAOKE_ENABLED=true will reactivate them later.
 app.use((req, res, next) => {
   if (
@@ -157,7 +157,7 @@ app.use((req, res, next) => {
   ) {
     return res.status(503).json({
       error: "KARAOKE_PAUSED",
-      message: "Le KaraokÃ© MixParty est temporairement dÃ©sactivÃ©.",
+      message: "Le Karaoké MixParty est temporairement désactivé.",
     });
   }
   next();
@@ -246,8 +246,8 @@ type MusicBrainSong = {
   autoAcceptedAt?: number;
   autoAcceptReason?: string;
 
-  // KaraokÃ© Sync Certified V5
-  // Ne sert jamais Ã  supprimer le morceau de PartyBrain.
+  // Karaoké Sync Certified V5
+  // Ne sert jamais �  supprimer le morceau de PartyBrain.
   karaokeSyncOffsetSeconds?: number;
   karaokeSyncCertifiedAt?: number;
   karaokeSyncCertifiedReason?: string;
@@ -443,7 +443,7 @@ function recordPartyEvent(
   try {
     fs.appendFileSync(partyEventsFilePath, `${JSON.stringify(payload)}\n`, "utf8");
   } catch (error) {
-    console.error("PartyBrain Intelligence: Ã©vÃ©nement non enregistrÃ©", error);
+    console.error("PartyBrain Intelligence: événement non enregistré", error);
   }
 }
 
@@ -521,7 +521,7 @@ function loadKnownSongVideoIds() {
       } catch {}
     }
   } catch (error) {
-    console.error("âš ï¸ Impossible de charger le catalogue historique MixParty", error);
+    console.error("� ï¸ Impossible de charger le catalogue historique MixParty", error);
   }
 
   return known;
@@ -613,10 +613,10 @@ function partyBrainSearchInsight(query: string): PartyBrainSearchInsight {
   const artistNames = nextArtists.slice(0, 3).map((item) => item.artistName);
   const message = artistNames.length
     ? `Les utilisateurs qui ajoutent ${query} ajoutent ensuite souvent ${artistNames.join(", ")}.`
-    : `PartyBrain commence Ã  apprendre les enchaÃ®nements aprÃ¨s ${query}. Davantage de soirÃ©es amÃ©lioreront cette recommandation.`;
+    : `PartyBrain commence �  apprendre les enchaînements après ${query}. Davantage de soirées amélioreront cette recommandation.`;
   const bestHour = popularHours[0];
   const hourMessage = bestHour
-    ? `${query} reÃ§oit le plus dâ€™ajouts et de votes autour de ${String(bestHour.hour).padStart(2, "0")} h.`
+    ? `${query} reçoit le plus d’ajouts et de votes autour de ${String(bestHour.hour).padStart(2, "0")} h.`
     : undefined;
 
   return { query, normalizedQuery, sampleSize: matchingAdds.length, nextArtists, popularHours, message, hourMessage };
@@ -773,7 +773,7 @@ function partyIntelligenceStats() {
     dataCoverage: {
       partyEndedEvents: counts.PARTY_ENDED || 0,
       songRemovedEvents: counts.SONG_REMOVED || 0,
-      note: "Les statistiques de durÃ©e et de suppression gagnent en prÃ©cision Ã  mesure que PARTY_ENDED et SONG_REMOVED sont enregistrÃ©s.",
+      note: "Les statistiques de durée et de suppression gagnent en précision �  mesure que PARTY_ENDED et SONG_REMOVED sont enregistrés.",
     },
     storage: { format: "jsonl", file: path.basename(partyEventsFilePath) },
   };
@@ -961,7 +961,7 @@ function loadAttendanceHistory() {
     cleanupAttendanceHistory();
     saveAttendanceHistory();
   } catch (error) {
-    console.warn("Historique des prÃ©sences illisible, nouvelle base crÃ©Ã©e :", error);
+    console.warn("Historique des présences illisible, nouvelle base créée :", error);
     attendanceHistory = createEmptyAttendanceHistory();
     saveAttendanceHistory();
   }
@@ -1041,7 +1041,7 @@ function loadMusicBrain() {
       mergeMusicBrainArtists();
     }
   } catch (error) {
-    console.warn("MusicBrain illisible, nouvelle base crÃ©Ã©e :", error);
+    console.warn("MusicBrain illisible, nouvelle base créée :", error);
     musicBrain = createEmptyMusicBrain();
     saveMusicBrain();
   }
@@ -1108,7 +1108,7 @@ function saveMusicBrain() {
     try {
       fs.writeFileSync(musicBrainFilePath, JSON.stringify(musicBrain, null, 2), "utf-8");
     } catch (error) {
-      console.warn("MusicBrain non sauvegardÃ© :", error);
+      console.warn("MusicBrain non sauvegardé :", error);
     }
   }, 120);
 }
@@ -1285,8 +1285,8 @@ async function searchAppleArtistFallback(song: MusicBrainSong): Promise<CoverLoo
       ? coverTextSimilarity(song.albumName, collectionName)
       : 0;
 
-    // Une correspondance dâ€™album connue est prÃ©fÃ©rable. Sinon, on choisit
-    // simplement une pochette fiable appartenant exactement au mÃªme artiste.
+    // Une correspondance d’album connue est préférable. Sinon, on choisit
+    // simplement une pochette fiable appartenant exactement au même artiste.
     const score = artistScore * 0.8 + albumScore * 0.15 + Math.min(titleScore, 0.25) * 0.05;
 
     if (!best || score > best.score) {
@@ -1403,8 +1403,8 @@ function queueHdCoverLookup(videoId: string) {
         return;
       }
 
-      // Dernier secours visuel : une pochette fiable appartenant au mÃªme artiste.
-      // Elle est clairement identifiÃ©e comme fallback artiste pour lâ€™administration.
+      // Dernier secours visuel : une pochette fiable appartenant au même artiste.
+      // Elle est clairement identifiée comme fallback artiste pour l’administration.
       const artistFallback = await searchAppleArtistFallback(learnedSong);
       persistCoverResult(videoId, artistFallback, false);
     } catch (error) {
@@ -1417,8 +1417,8 @@ function queueHdCoverLookup(videoId: string) {
 }
 
 /* =========================================================
-   PARTYBRAIN â€” RECHERCHE AUTONOME DES JAQUETTES CONNUES
-   RÃ©utilise exactement le moteur de jaquettes existant.
+   PARTYBRAIN — RECHERCHE AUTONOME DES JAQUETTES CONNUES
+   Réutilise exactement le moteur de jaquettes existant.
    ========================================================= */
 
 function knownCoverLookupPriority(song: MusicBrainSong) {
@@ -1622,8 +1622,8 @@ function musicBrainLearningDecision(params: {
       (channelKey.includes(artistKey) || artistKey.includes(channelKey))
     );
 
-  // Un nom gÃ©nÃ©rique peut exceptionnellement Ãªtre un vrai artiste.
-  // On ne l'accepte que si YouTube fournit un signal trÃ¨s fort.
+  // Un nom générique peut exceptionnellement être un vrai artiste.
+  // On ne l'accepte que si YouTube fournit un signal très fort.
   const genericButStrong =
     genericArtist &&
     (
@@ -1636,13 +1636,13 @@ function musicBrainLearningDecision(params: {
   if (genericArtist && !genericButStrong) return { learn: false, reason: "artiste_generique" };
 
   // IMPORTANT :
-  // QUERY_FALLBACK ou une confiance faible ne suffisent PAS Ã  rejeter un morceau.
-  // De vrais artistes peuvent Ãªtre mal dÃ©crits par YouTube (ex. Aznavour, Big Ali).
-  // On ne bloque automatiquement que les erreurs Ã©videntes : inconnu, artiste
-  // gÃ©nÃ©rique non confirmÃ© ou contenu clairement non musical.
+  // QUERY_FALLBACK ou une confiance faible ne suffisent PAS �  rejeter un morceau.
+  // De vrais artistes peuvent être mal décrits par YouTube (ex. Aznavour, Big Ali).
+  // On ne bloque automatiquement que les erreurs évidentes : inconnu, artiste
+  // générique non confirmé ou contenu clairement non musical.
   //
-  // Les mÃ©tadonnÃ©es faibles restent apprises, mais elles apparaissent dans
-  // l'outil "EntrÃ©es incertaines" pour contrÃ´le manuel.
+  // Les métadonnées faibles restent apprises, mais elles apparaissent dans
+  // l'outil "Entrées incertaines" pour contrôle manuel.
 
   return {
     learn: true,
@@ -1689,7 +1689,7 @@ function shouldLearnPartySong(song: Song) {
 }
 
 function recordMusicBrainSearch(query: string, results: YoutubeSearchResult[]) {
-  // Important : les rÃ©sultats restent affichÃ©s Ã  l'utilisateur.
+  // Important : les résultats restent affichés �  l'utilisateur.
   // Ce filtre agit uniquement sur ce que PartyBrain apprend.
   musicBrain.totals.searches += 1;
   const touchedArtists = new Set<string>();
@@ -1725,8 +1725,8 @@ function recordMusicBrainSearch(query: string, results: YoutubeSearchResult[]) {
 
   saveMusicBrain();
 
-  // DÃ¨s qu'un morceau fiable entre dans MusicBrain, LRCLIB est vÃ©rifiÃ©
-  // automatiquement en arriÃ¨re-plan. Academy utilise aussi cette fonction.
+  // Dès qu'un morceau fiable entre dans MusicBrain, LRCLIB est vérifié
+  // automatiquement en arrière-plan. Academy utilise aussi cette fonction.
   for (const videoId of learnedVideoIds) {
     enqueueAutomaticLrclibCheck(videoId, "musicbrain-search");
   }
@@ -1756,8 +1756,8 @@ function recordMusicBrainAddition(song: Song) {
   item.addedCount += 1;
   saveMusicBrain();
 
-  // Filet de sÃ©curitÃ© : un morceau ajoutÃ© est Ã©galement vÃ©rifiÃ© s'il ne
-  // possÃ¨de pas encore de statut LRCLIB exploitable.
+  // Filet de sécurité : un morceau ajouté est également vérifié s'il ne
+  // possède pas encore de statut LRCLIB exploitable.
   enqueueAutomaticLrclibCheck(item.videoId, "party-addition");
 }
 
@@ -2093,9 +2093,9 @@ function isPartyBrainRelaySafeSong(song: MusicBrainSong) {
   const channelText = String(song.channelTitle || "").toLowerCase();
   const combined = `${titleText} ${channelText}`;
 
-  // PartyBrain Relay doit Ã©viter les reprises amateurs, karaokÃ©s, parodies,
-  // auditions et autres vidÃ©os qui ne correspondent pas Ã  la version officielle.
-  if (/(karaoke|instrumental|cover|reprise|tribute|hommage|parodie|fanmade|fan made|amateur|audition|the voice|incroyable talent|chorale|choir|school|Ã©cole|concours|talent show)/i.test(combined)) {
+  // PartyBrain Relay doit éviter les reprises amateurs, karaokés, parodies,
+  // auditions et autres vidéos qui ne correspondent pas �  la version officielle.
+  if (/(karaoke|instrumental|cover|reprise|tribute|hommage|parodie|fanmade|fan made|amateur|audition|the voice|incroyable talent|chorale|choir|school|école|concours|talent show)/i.test(combined)) {
     return false;
   }
 
@@ -2142,17 +2142,17 @@ function chooseDiversifiedPartyBrainRecommendation(
     };
   });
 
-  // 1. MÃªme artiste : idÃ©al pour prolonger naturellement une sÃ©rie Gims, Jul, etc.
+  // 1. Même artiste : idéal pour prolonger naturellement une série Gims, Jul, etc.
   const sameArtistPool = enriched.filter((entry) => entry.sameArtist);
 
   // 2. Style compatible reconnu.
   const compatiblePool = enriched.filter((entry) => entry.compatibility >= 0.55);
 
-  // 3. Transition rÃ©ellement apprise, mÃªme lorsque le genre est encore inconnu.
+  // 3. Transition réellement apprise, même lorsque le genre est encore inconnu.
   const learnedPool = enriched.filter((entry) => entry.learnedEvidence > 0);
 
-  // 4. DÃ©marrage Ã  froid : les morceaux sont dÃ©jÃ  filtrÃ©s contre les contenus amateurs.
-  // On autorise donc le meilleur candidat sÃ»r lorsque PartyBrain ne connaÃ®t pas encore le genre.
+  // 4. Démarrage �  froid : les morceaux sont déj�  filtrés contre les contenus amateurs.
+  // On autorise donc le meilleur candidat sûr lorsque PartyBrain ne connaît pas encore le genre.
   const sourcePool = sameArtistPool.length
     ? sameArtistPool
     : compatiblePool.length
@@ -2524,15 +2524,15 @@ function buildPartyBrainRecommendationScores(
     );
 
     const reasons: string[] = [];
-    if (directTransitionCount > 0) reasons.push(`dÃ©jÃ  jouÃ© ${directTransitionCount} fois aprÃ¨s le morceau actuel`);
-    if (genreCompatibility >= 0.55) reasons.push("style compatible avec le morceau prÃ©cÃ©dent");
-    else if (artistTransitionCount + knownArtistRelation > 0) reasons.push("enchaÃ®nement dâ€™artistes dÃ©jÃ  validÃ©");
-    if (smoothedCompletionRate >= 0.72) reasons.push("bon taux de lecture jusquâ€™au bout");
-    if (candidate.voteCount >= 2) reasons.push("reÃ§oit rÃ©guliÃ¨rement des votes");
+    if (directTransitionCount > 0) reasons.push(`déj�  joué ${directTransitionCount} fois après le morceau actuel`);
+    if (genreCompatibility >= 0.55) reasons.push("style compatible avec le morceau précédent");
+    else if (artistTransitionCount + knownArtistRelation > 0) reasons.push("enchaînement d’artistes déj�  validé");
+    if (smoothedCompletionRate >= 0.72) reasons.push("bon taux de lecture jusqu’au bout");
+    if (candidate.voteCount >= 2) reasons.push("reçoit régulièrement des votes");
     if (hourRate >= 0.62 && combinedHourSamples > 0) reasons.push(`fonctionne bien autour de ${String(currentHour).padStart(2, "0")} h`);
-    if (popularityPart >= 10) reasons.push("titre populaire dans lâ€™historique MixParty");
-    if (relaySelection?.count) reasons.push("rotation appliquÃ©e pour Ã©viter les rÃ©pÃ©titions PartyBrain");
-    if (!reasons.length) reasons.push("meilleur Ã©quilibre disponible avec les donnÃ©es actuelles");
+    if (popularityPart >= 10) reasons.push("titre populaire dans l’historique MixParty");
+    if (relaySelection?.count) reasons.push("rotation appliquée pour éviter les répétitions PartyBrain");
+    if (!reasons.length) reasons.push("meilleur équilibre disponible avec les données actuelles");
 
     recommendations.push({
       videoId: candidate.videoId,
@@ -2694,10 +2694,10 @@ function selectPartyBrainFallbackSong(party: Party): PartyBrainFallbackSong | nu
         fallbackScore,
         reason:
           genreCompatibility >= 0.55
-            ? "Titre de secours compatible avec le style du morceau prÃ©cÃ©dent."
+            ? "Titre de secours compatible avec le style du morceau précédent."
             : positiveSignal > 0
-              ? "Titre de secours populaire, diversifiÃ© et peu risquÃ© dans lâ€™historique MixParty."
-              : "Titre de secours disponible avec des mÃ©tadonnÃ©es valides.",
+              ? "Titre de secours populaire, diversifié et peu risqué dans l’historique MixParty."
+              : "Titre de secours disponible avec des métadonnées valides.",
       } satisfies PartyBrainFallbackSong;
     })
     .sort((a, b) => {
@@ -3068,13 +3068,13 @@ function accountErrorResponse(error: unknown) {
     return { status: 400, body: { error: "Entre une adresse e-mail valide." } };
   }
   if (code === "PASSWORD_INVALID") {
-    return { status: 400, body: { error: "Le mot de passe doit contenir au moins 8 caractÃ¨res." } };
+    return { status: 400, body: { error: "Le mot de passe doit contenir au moins 8 caractères." } };
   }
   if (code === "NAME_INVALID") {
-    return { status: 400, body: { error: "Le pseudo doit contenir au moins 2 caractÃ¨res." } };
+    return { status: 400, body: { error: "Le pseudo doit contenir au moins 2 caractères." } };
   }
   if (code === "EMAIL_ALREADY_USED") {
-    return { status: 409, body: { error: "Un compte MixParty existe dÃ©jÃ  avec cette adresse e-mail." } };
+    return { status: 409, body: { error: "Un compte MixParty existe déj�  avec cette adresse e-mail." } };
   }
   if (code === "INVALID_CREDENTIALS") {
     return { status: 401, body: { error: "E-mail ou mot de passe incorrect." } };
@@ -3083,7 +3083,7 @@ function accountErrorResponse(error: unknown) {
     return { status: 413, body: { error: "La photo de profil est trop volumineuse." } };
   }
   if (code === "UNAUTHORIZED") {
-    return { status: 401, body: { error: "Session MixParty expirÃ©e ou invalide." } };
+    return { status: 401, body: { error: "Session MixParty expirée ou invalide." } };
   }
 
   console.error("MixParty Accounts:", error);
@@ -3195,7 +3195,7 @@ app.get("/account/me", (req, res) => {
   const account = token ? accountsStore.authenticate(token) : null;
 
   if (!account) {
-    return res.status(401).json({ error: "Session MixParty expirÃ©e ou invalide." });
+    return res.status(401).json({ error: "Session MixParty expirée ou invalide." });
   }
 
   return res.json({ account });
@@ -3318,7 +3318,7 @@ app.post("/admin/party/:code/song/:index/simulate-votes", (req, res) => {
   if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
 
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "SoirÃ©e introuvable" });
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
 
   const index = Number(req.params.index);
   const song = party.songs[index];
@@ -3326,7 +3326,7 @@ app.post("/admin/party/:code/song/:index/simulate-votes", (req, res) => {
 
   const delta = Math.trunc(Number(req.body?.delta || 0));
   if (!Number.isFinite(delta) || delta === 0 || Math.abs(delta) > 25) {
-    return res.status(400).json({ error: "delta doit Ãªtre compris entre -25 et 25, hors 0." });
+    return res.status(400).json({ error: "delta doit être compris entre -25 et 25, hors 0." });
   }
 
   if (delta > 0) {
@@ -3406,14 +3406,14 @@ app.post("/admin/party/:code/song/:index/scenario-comeback", (req, res) => {
   if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
 
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "SoirÃ©e introuvable" });
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
 
   const index = Number(req.params.index);
   const song = party.songs[index];
   if (!song) return res.status(404).json({ error: "Morceau introuvable" });
   if (!song.addedByAccountId) {
     return res.status(400).json({
-      error: "Ce morceau n'est pas liÃ© Ã  un compte MixParty permanent.",
+      error: "Ce morceau n'est pas lié �  un compte MixParty permanent.",
     });
   }
 
@@ -3462,7 +3462,7 @@ app.post("/admin/party/:code/scenario-jackpot", (req, res) => {
   if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
 
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "SoirÃ©e introuvable" });
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
 
   const targetAccountId = String(req.body?.accountId || account.id).trim();
   const ownedSongs = party.songs.filter(
@@ -3471,7 +3471,7 @@ app.post("/admin/party/:code/scenario-jackpot", (req, res) => {
 
   if (ownedSongs.length < 5) {
     return res.status(400).json({
-      error: "Il faut au moins 5 morceaux ajoutÃ©s par le compte sÃ©lectionnÃ© dans cette soirÃ©e.",
+      error: "Il faut au moins 5 morceaux ajoutés par le compte sélectionné dans cette soirée.",
     });
   }
 
@@ -3516,12 +3516,12 @@ app.post("/admin/party/:code/song/:index/scenario-sniper", (req, res) => {
   if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
 
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "SoirÃ©e introuvable" });
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
 
   const index = Number(req.params.index);
   const song = party.songs[index];
   if (!song || !song.addedByAccountId) {
-    return res.status(400).json({ error: "Morceau liÃ© Ã  un compte permanent requis." });
+    return res.status(400).json({ error: "Morceau lié �  un compte permanent requis." });
   }
 
   const now = Date.now();
@@ -3568,12 +3568,12 @@ app.post("/admin/party/:code/song/:index/scenario-devin", (req, res) => {
   if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
 
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "SoirÃ©e introuvable" });
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
 
   const index = Number(req.params.index);
   const song = party.songs[index];
   if (!song || !song.addedByAccountId) {
-    return res.status(400).json({ error: "Morceau liÃ© Ã  un compte permanent requis." });
+    return res.status(400).json({ error: "Morceau lié �  un compte permanent requis." });
   }
 
   const now = Date.now();
@@ -3625,12 +3625,12 @@ app.post("/admin/party/:code/song/:index/scenario-pepite", (req, res) => {
   if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
 
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "SoirÃ©e introuvable" });
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
 
   const index = Number(req.params.index);
   const song = party.songs[index];
   if (!song || !song.addedByAccountId) {
-    return res.status(400).json({ error: "Morceau liÃ© Ã  un compte permanent requis." });
+    return res.status(400).json({ error: "Morceau lié �  un compte permanent requis." });
   }
 
   const songKey = accountSongKey(song);
@@ -3723,7 +3723,7 @@ app.post("/admin/account/:accountId/scenario-result", (req, res) => {
 
   if (!targetAccountId || !["win", "podium", "loss"].includes(result)) {
     return res.status(400).json({
-      error: "accountId requis et result doit Ãªtre win, podium ou loss.",
+      error: "accountId requis et result doit être win, podium ou loss.",
     });
   }
 
@@ -3771,7 +3771,7 @@ app.post("/admin/party/:code/scenario-grosse-soiree", (req, res) => {
   if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
 
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "SoirÃ©e introuvable" });
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
 
   for (let index = party.seenParticipantIds.length; index < 25; index += 1) {
     party.seenParticipantIds.push(`ADMIN_GUEST_${index + 1}`);
@@ -3799,21 +3799,21 @@ app.post("/admin/party/:code/scenario-ranking", (req, res) => {
   if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
 
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "SoirÃ©e introuvable" });
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
 
   const targetAccountId = String(req.body?.accountId || "").trim();
   if (!targetAccountId) {
     return res.status(400).json({ error: "accountId requis." });
   }
 
-  // Le compte doit Ãªtre qualifiÃ© pour recevoir un rÃ©sultat de soirÃ©e.
+  // Le compte doit être qualifié pour recevoir un résultat de soirée.
   accountsStore.adminAdvancePartyTime(
     targetAccountId,
     party.code,
     30,
   );
 
-  // Donne au compte sÃ©lectionnÃ© un morceau gagnant artificiel si possible.
+  // Donne au compte sélectionné un morceau gagnant artificiel si possible.
   const ownedSong = party.songs.find(
     (song) => song.addedByAccountId === targetAccountId,
   );
@@ -3849,7 +3849,7 @@ app.post("/admin/party/:code/song/:index/outcome", (req, res) => {
   if (!account) return res.status(403).json({ error: "ADMIN_FORBIDDEN" });
 
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "SoirÃ©e introuvable" });
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
 
   const index = Number(req.params.index);
   const song = party.songs[index];
@@ -3857,7 +3857,7 @@ app.post("/admin/party/:code/song/:index/outcome", (req, res) => {
 
   const outcome = String(req.body?.outcome || "");
   if (outcome !== "completed" && outcome !== "skipped") {
-    return res.status(400).json({ error: "outcome doit Ãªtre completed ou skipped." });
+    return res.status(400).json({ error: "outcome doit être completed ou skipped." });
   }
 
   if (song.addedByAccountId) {
@@ -4007,25 +4007,25 @@ app.post("/admin/account/me/badge", (req, res) => {
 app.get("/", (req, res) => {
 
   res.json({
-    message:"MixParty API fonctionne ðŸŽ‰"
+    message:"MixParty API fonctionne 🎉"
   });
 
 });
 
 
 
-// Test tÃ©lÃ©phone
+// Test téléphone
 app.get("/party", (req,res)=>{
 
   res.json({
-    message:"API OK depuis le tÃ©lÃ©phone"
+    message:"API OK depuis le téléphone"
   });
 
 });
 
 
 
-// CrÃ©er une soirÃ©e
+// Créer une soirée
 app.post("/party",(req,res)=>{
 
 
@@ -4063,7 +4063,7 @@ res.json({ ...toPublicParty(party), creatorToken: party.creatorToken });
 
 
 
-// Voir une soirÃ©e
+// Voir une soirée
 app.get("/party/:code",(req,res)=>{
 
 
@@ -4075,7 +4075,7 @@ app.get("/party/:code",(req,res)=>{
   if(!party){
 
     return res.status(404).json({
-      error:"SoirÃ©e introuvable"
+      error:"Soirée introuvable"
     });
 
   }
@@ -4089,7 +4089,7 @@ app.get("/party/:code",(req,res)=>{
 
 
 
-// Rejoindre une soirÃ©e
+// Rejoindre une soirée
 app.post("/party/:code/join",(req,res)=>{
 
 
@@ -4101,7 +4101,7 @@ app.post("/party/:code/join",(req,res)=>{
   if(!party){
 
     return res.status(404).json({
-      error:"SoirÃ©e introuvable"
+      error:"Soirée introuvable"
     });
 
   }
@@ -4166,7 +4166,7 @@ app.post("/party/:code/join",(req,res)=>{
 // Maintenir un participant en ligne
 app.post("/party/:code/presence", (req, res) => {
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "SoirÃ©e introuvable" });
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
 
   const id = String(req.body.id || "").trim();
   const name = String(req.body.name || "").trim();
@@ -4209,7 +4209,7 @@ app.post("/party/:code/presence", (req, res) => {
 
 app.post("/party/:code/leave", (req, res) => {
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "SoirÃ©e introuvable" });
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
   const id = String(req.body.id || "").trim();
   const existed = party.participants.some((participant) => participant.id === id);
   party.participants = party.participants.filter((participant) => participant.id !== id);
@@ -4230,7 +4230,7 @@ app.post("/party/:code/song",(req,res)=>{
   if(!party){
 
     return res.status(404).json({
-      error:"SoirÃ©e introuvable"
+      error:"Soirée introuvable"
     });
 
   }
@@ -4392,7 +4392,7 @@ app.post("/party/:code/song/:index/vote",(req,res)=>{
   if(!party){
 
     return res.status(404).json({
-      error:"SoirÃ©e introuvable"
+      error:"Soirée introuvable"
     });
 
   }
@@ -4420,10 +4420,10 @@ app.post("/party/:code/song/:index/vote",(req,res)=>{
 
 
   const name = req.body.name?.trim().toLowerCase();
-console.log("Vote reÃ§u de :", name);
+console.log("Vote reçu de :", name);
 console.log("Votants actuels :", song.voters);
-console.log("Nom reÃ§u :", JSON.stringify(name));
-console.log("RÃ©sultat includes :", song.voters.includes(name));
+console.log("Nom reçu :", JSON.stringify(name));
+console.log("Résultat includes :", song.voters.includes(name));
 
   if(!name){
 
@@ -4438,7 +4438,7 @@ console.log("RÃ©sultat includes :", song.voters.includes(name));
   if(song.voters.includes(name)){
 
     return res.status(400).json({
-      error:"Tu as dÃ©jÃ  votÃ© pour cette chanson"
+      error:"Tu as déj�  voté pour cette chanson"
     });
 
   }
@@ -4509,7 +4509,7 @@ console.log("RÃ©sultat includes :", song.voters.includes(name));
 // Retirer son vote d'une chanson
 app.post("/party/:code/song/:index/downvote", (req, res) => {
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "SoirÃ©e introuvable" });
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
 
   const index = Number(req.params.index);
   const song = party.songs[index];
@@ -4520,7 +4520,7 @@ app.post("/party/:code/song/:index/downvote", (req, res) => {
 
   const voterIndex = song.voters.indexOf(name);
   if (voterIndex < 0) {
-    return res.status(400).json({ error: "Tu nâ€™as pas encore votÃ© pour cette chanson" });
+    return res.status(400).json({ error: "Tu n’as pas encore voté pour cette chanson" });
   }
 
   song.voters.splice(voterIndex, 1);
@@ -4556,7 +4556,7 @@ app.delete("/party/:code/song/:index", (req, res) => {
   const party = findParty(req.params.code);
 
   if (!party) {
-    return res.status(404).json({ error: "SoirÃ©e introuvable" });
+    return res.status(404).json({ error: "Soirée introuvable" });
   }
 
   const index = Number(req.params.index);
@@ -4591,7 +4591,7 @@ app.delete("/party/:code/song/:index", (req, res) => {
 
   if (!isCreator && !isOwner) {
     return res.status(403).json({
-      error: "Tu peux supprimer uniquement les musiques que tu as ajoutÃ©es."
+      error: "Tu peux supprimer uniquement les musiques que tu as ajoutées."
     });
   }
 
@@ -4623,10 +4623,10 @@ app.delete("/party/:code/song/:index", (req, res) => {
   return res.json(toPublicParty(party));
 });
 
-// RÃ©ordonner manuellement la file
+// Réordonner manuellement la file
 app.post("/party/:code/reorder", (req, res) => {
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "SoirÃ©e introuvable" });
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
 
   const orderedIds = Array.isArray(req.body.videoIds)
     ? req.body.videoIds.map(String)
@@ -4669,10 +4669,10 @@ app.post("/party/:code/reorder", (req, res) => {
   return res.json(toPublicParty(party));
 });
 
-// Terminer explicitement une soirÃ©e
+// Terminer explicitement une soirée
 app.post("/party/:code/end", (req, res) => {
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "SoirÃ©e introuvable" });
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
 
   const providedCreatorToken = String(
     req.body.creatorToken ||
@@ -4681,7 +4681,7 @@ app.post("/party/:code/end", (req, res) => {
   );
 
   if (!providedCreatorToken || providedCreatorToken !== party.creatorToken) {
-    return res.status(403).json({ error: "Seul le crÃ©ateur peut terminer la soirÃ©e" });
+    return res.status(403).json({ error: "Seul le créateur peut terminer la soirée" });
   }
 
   if (party.currentSong) {
@@ -4798,7 +4798,7 @@ app.post("/party/:code/play/:index",(req,res)=>{
   if(!party){
 
     return res.status(404).json({
-      error:"SoirÃ©e introuvable"
+      error:"Soirée introuvable"
     });
 
   }
@@ -4837,13 +4837,13 @@ app.post("/party/:code/play/:index",(req,res)=>{
 
 });
 
-// Activer ou dÃ©sactiver le relais automatique PartyBrain
+// Activer ou désactiver le relais automatique PartyBrain
 app.post("/party/:code/partybrain/auto-relay", (req, res) => {
   const party = findParty(req.params.code);
 
   if (!party) {
     return res.status(404).json({
-      error: "SoirÃ©e introuvable",
+      error: "Soirée introuvable",
     });
   }
 
@@ -4855,7 +4855,7 @@ app.post("/party/:code/partybrain/auto-relay", (req, res) => {
 
   if (!providedCreatorToken || providedCreatorToken !== party.creatorToken) {
     return res.status(403).json({
-      error: "Seul le crÃ©ateur peut modifier le relais PartyBrain",
+      error: "Seul le créateur peut modifier le relais PartyBrain",
     });
   }
 
@@ -4892,7 +4892,7 @@ app.post("/party/:code/next",(req,res)=>{
   if(!party){
 
     return res.status(404).json({
-      error:"SoirÃ©e introuvable"
+      error:"Soirée introuvable"
     });
 
   }
@@ -4943,7 +4943,7 @@ app.post("/party/:code/next",(req,res)=>{
           relayAttempted: false,
           relayUsed: false,
           autoRelayEnabled: false,
-          reason: "Le relais automatique PartyBrain est dÃ©sactivÃ©."
+          reason: "Le relais automatique PartyBrain est désactivé."
         }
       });
     }
@@ -4981,8 +4981,8 @@ app.post("/party/:code/next",(req,res)=>{
           relayUsed: false,
           fallbackAttempted: fallbackEnabled,
           reason: bestRecommendation
-            ? "Aucune transition musicale suffisamment sÃ»re nâ€™est disponible."
-            : "PartyBrain ne possÃ¨de encore aucune transition musicale compatible.",
+            ? "Aucune transition musicale suffisamment sûre n’est disponible."
+            : "PartyBrain ne possède encore aucune transition musicale compatible.",
           thresholds: {
             minimumScore,
             minimumConfidence
@@ -5084,11 +5084,11 @@ app.post("/party/:code/previous", (req, res) => {
   const party = findParty(req.params.code);
 
   if (!party) {
-    return res.status(404).json({ error: "SoirÃ©e introuvable" });
+    return res.status(404).json({ error: "Soirée introuvable" });
   }
 
   if (!party.history?.length) {
-    return res.status(400).json({ error: "Aucun morceau prÃ©cÃ©dent" });
+    return res.status(400).json({ error: "Aucun morceau précédent" });
   }
 
   const currentSong = party.currentSong;
@@ -5101,7 +5101,7 @@ app.post("/party/:code/previous", (req, res) => {
   const previousSong = party.history.pop();
 
   if (!previousSong) {
-    return res.status(400).json({ error: "Aucun morceau prÃ©cÃ©dent" });
+    return res.status(400).json({ error: "Aucun morceau précédent" });
   }
 
   previousSong.played = true;
@@ -5204,7 +5204,7 @@ io.on("connection",(socket)=>{
 
 
   console.log(
-    "Client connectÃ©",
+    "Client connecté",
     socket.id
   );
 
@@ -5215,7 +5215,7 @@ io.on("connection",(socket)=>{
     }
 
     console.log(
-      "Client dÃ©connectÃ©",
+      "Client déconnecté",
       socket.id
     );
 
@@ -5353,7 +5353,7 @@ function saveAcademyState() {
   try {
     fs.writeFileSync(academyFilePath, JSON.stringify(academyState, null, 2), "utf-8");
   } catch (error) {
-    console.warn("PartyBrain Academy non sauvegardÃ©e :", error);
+    console.warn("PartyBrain Academy non sauvegardée :", error);
   }
 }
 
@@ -5371,7 +5371,7 @@ function loadAcademyState() {
         running: false,
       };
     } catch (error) {
-      console.warn("Etat Academy illisible, nouvel Ã©tat crÃ©Ã© :", error);
+      console.warn("Etat Academy illisible, nouvel état créé :", error);
       academyState = createAcademyState();
     }
   }
@@ -5387,7 +5387,7 @@ function addAcademyLog(
   academyState.logs.push({ at: Date.now(), level, message, ...details });
   academyState.logs = academyState.logs.slice(-400);
   saveAcademyState();
-  const prefix = level === "error" ? "âŒ" : level === "warning" ? "âš ï¸" : level === "success" ? "âœ…" : "ðŸ§ ";
+  const prefix = level === "error" ? "❌" : level === "warning" ? "� ï¸" : level === "success" ? "✅" : "� ";
   console.log(`${prefix} Academy : ${message}`);
 }
 
@@ -5399,7 +5399,7 @@ function ensureAcademyQuotaCycle() {
       used: 0,
       lastResetAt: Date.now(),
     };
-    addAcademyLog("info", `Nouveau cycle de quota ${currentKey} : compteur remis Ã  zÃ©ro.`);
+    addAcademyLog("info", `Nouveau cycle de quota ${currentKey} : compteur remis �  zéro.`);
   }
 }
 
@@ -5410,7 +5410,7 @@ function registerYoutubeApiCall(source: "user" | "academy") {
   academyState.updatedAt = Date.now();
   saveAcademyState();
   if (source === "academy") {
-    console.log(`ðŸ§  Academy utilise l'appel YouTube ${academyState.quota.used}/${academyDailyLimit}`);
+    console.log(`�  Academy utilise l'appel YouTube ${academyState.quota.used}/${academyDailyLimit}`);
   }
 }
 
@@ -5446,26 +5446,26 @@ function logYoutubeSearchDiagnostic(params: {
   matchedQuery?: string;
 }) {
   const sourceLabel = {
-    YOUTUBE: "ðŸ”µ YouTube API",
-    MUSICBRAIN: "ðŸ§  MusicBrain",
-    CACHE: "ðŸŸ¢ Cache exact",
-    FUZZY_CACHE: "ðŸŸ£ Cache faute corrigÃ©e",
-    ALIAS_CACHE: "ðŸŸ  Cache variante",
-    IN_FLIGHT: "ðŸŸ¡ Recherche dÃ©jÃ  en cours",
+    YOUTUBE: "🔵 YouTube API",
+    MUSICBRAIN: "�  MusicBrain",
+    CACHE: "🟢 Cache exact",
+    FUZZY_CACHE: "🟣 Cache faute corrigée",
+    ALIAS_CACHE: "�  Cache variante",
+    IN_FLIGHT: "🟡 Recherche déj�  en cours",
   }[params.source];
 
-  console.log("\nâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•");
-  console.log("ðŸ”Ž MixParty Search Engine");
+  console.log("\n══════════════════════════════════════");
+  console.log("🔎 MixParty Search Engine");
   console.log(`Recherche : ${params.query}`);
-  console.log(`ClÃ© normalisÃ©e : ${params.normalizedQuery}`);
+  console.log(`Clé normalisée : ${params.normalizedQuery}`);
   if (params.matchedQuery) console.log(`Correspondance : ${params.matchedQuery}`);
   console.log(`Source : ${sourceLabel}`);
   console.log(`Temps : ${params.durationMs} ms`);
-  console.log(`RÃ©sultats : ${params.resultCount}`);
-  console.log(`Cache : ${youtubeSearchCache.size} entrÃ©es`);
+  console.log(`Résultats : ${params.resultCount}`);
+  console.log(`Cache : ${youtubeSearchCache.size} entrées`);
   console.log(`Appels YouTube : ${youtubeSearchStats.youtubeCalls}`);
-  console.log(`RequÃªtes Ã©conomisÃ©es : ${youtubeSearchStats.quotaSaved}`);
-  console.log("â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•\n");
+  console.log(`Requêtes économisées : ${youtubeSearchStats.quotaSaved}`);
+  console.log("══════════════════════════════════════\n");
 }
 
 function stripDiacritics(value: string) {
@@ -5551,7 +5551,7 @@ function saveYoutubeCache() {
       "utf-8"
     );
   } catch (error) {
-    console.warn("Cache YouTube non sauvegardÃ© :", error);
+    console.warn("Cache YouTube non sauvegardé :", error);
   }
 }
 
@@ -5576,7 +5576,7 @@ function loadYoutubeCache() {
     }
     pruneYoutubeCache();
   } catch (error) {
-    console.warn("Cache YouTube illisible, nouveau cache crÃ©Ã© :", error);
+    console.warn("Cache YouTube illisible, nouveau cache créé :", error);
   }
 }
 
@@ -5608,7 +5608,7 @@ function extractMusicMetadata(params: {
 function normalizeSearchMatchText(value: string) {
   return stripDiacritics(value)
     .toLowerCase()
-    .replace(/[\'â€™`]/g, "")
+    .replace(/[\'’`]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -5654,7 +5654,7 @@ function scoreMusicResult(result: YoutubeSearchResult, query: string) {
 
   let score = 0;
 
-  // Les versions rÃ©ellement officielles doivent dominer le classement.
+  // Les versions réellement officielles doivent dominer le classement.
   if (/official audio|audio officiel/i.test(titleText)) score += 190;
   if (/provided to youtube/i.test(titleText)) score += 180;
   if (result.metadataSource === "ART_TRACK_DESCRIPTION") score += 175;
@@ -5664,8 +5664,8 @@ function scoreMusicResult(result: YoutubeSearchResult, query: string) {
   if (/official|officiel/i.test(channel)) score += 90;
   if (/music/i.test(channel)) score += 15;
 
-  // Correspondance forte avec l'artiste / la chaÃ®ne. Le compact permet
-  // notamment de rapprocher "Diam's" et "Diams" sans polluer la requÃªte avec "s".
+  // Correspondance forte avec l'artiste / la chaîne. Le compact permet
+  // notamment de rapprocher "Diam's" et "Diams" sans polluer la requête avec "s".
   if (compactQuery.length >= 3 && compactArtist === compactQuery) score += 145;
   else if (normalizedQuery && normalizedArtist.includes(normalizedQuery)) score += 75;
 
@@ -5678,7 +5678,7 @@ function scoreMusicResult(result: YoutubeSearchResult, query: string) {
     if (normalizedChannel.includes(token)) score += 12;
   }
 
-  // Les versions alternatives restent visibles, mais passent aprÃ¨s les versions propres.
+  // Les versions alternatives restent visibles, mais passent après les versions propres.
   if (/lyrics?|paroles/i.test(titleText)) score -= 50;
   if (/karaoke|instrumental/i.test(titleText)) score -= 100;
   if (/cover|reprise/i.test(titleText)) score -= 110;
@@ -5801,7 +5801,7 @@ async function requestYoutubeMusic(
       .filter((result: any) => result.embeddable && result.privacyStatus !== "private")
       .filter((result: YoutubeSearchResult) => {
         const text = `${result.rawTitle || ""} ${result.title} ${result.channelTitle || ""}`.toLowerCase();
-        // On Ã©carte seulement les contenus clairement non musicaux ou trop courts.
+        // On écarte seulement les contenus clairement non musicaux ou trop courts.
         // Les remix, lives, paroles, instrumentaux, reprises et versions alternatives restent disponibles.
         return !/(podcast|interview|reaction|reacts?|documentary|documentaire|#shorts|\bshorts?\b|audition|the voice|incroyable talent|concours|talent show|making of|behind the scenes)/i.test(text);
       })
@@ -5830,7 +5830,7 @@ async function requestYoutubeMusic(
 
 function deduplicateMusicResults(results: YoutubeSearchResult[]) {
   // On retire uniquement les doublons stricts YouTube.
-  // Deux vidÃ©os diffÃ©rentes restent visibles mÃªme lorsqu'il s'agit du mÃªme titre
+  // Deux vidéos différentes restent visibles même lorsqu'il s'agit du même titre
   // en version live, remix, paroles, acoustique ou instrumentale.
   const byVideoId = new Map<string, YoutubeSearchResult>();
   for (const result of results) {
@@ -5881,7 +5881,7 @@ function normalizedPhraseTokens(value: string) {
 function normalizePreciseMatchText(value: string) {
   return stripDiacritics(String(value || ""))
     .toLowerCase()
-    .replace(/[â€™'`Â´]/g, "")
+    .replace(/[’'`´]/g, "")
     .replace(/\b(feat|featuring|ft|avec)\.?\b.*$/i, " ")
     .replace(/\b(official|officiel|official audio|audio officiel|official video|clip officiel|lyrics?|paroles|topic|art track|remaster(?:ed)?)\b/gi, " ")
     .replace(/[^a-z0-9]+/g, " ")
@@ -5926,7 +5926,7 @@ function preciseTitleMatch(queryTitleTokens: string[], songTitle: string) {
   const queryJoined = queryTitleTokens.join(" ");
   const titleJoined = titleTokens.join(" ");
 
-  // TolÃ¨re uniquement de petites diffÃ©rences de ponctuation / formes contractÃ©es /
+  // Tolère uniquement de petites différences de ponctuation / formes contractées /
   // variantes mineures, jamais une simple ressemblance vague.
   if (
     queryJoined.length >= 6 &&
@@ -5990,7 +5990,7 @@ function musicBrainStrongArtistTitleMatches(
     const remainingQueryTokens = removeArtistTokensFromQuery(query, artistName);
     if (!remainingQueryTokens?.length) continue;
 
-    // RÃ¨gle volontairement stricte mais tolÃ©rante aux petites diffÃ©rences :
+    // Règle volontairement stricte mais tolérante aux petites différences :
     // ponctuation, apostrophes, tirets et variantes techniques YouTube.
     // Une recherche approximative continue toujours vers YouTube.
     if (preciseTitleMatch(remainingQueryTokens, title)) {
@@ -6067,13 +6067,13 @@ async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResu
   const known = musicBrainResultsForQuery(query);
   const directDecision = musicBrainDirectSearchDecision(query, known);
 
-  // Deux cas seulement permettent d'Ã©viter complÃ¨tement YouTube :
-  // 1) recherche large d'un artiste avec plus de 20 titres dÃ©jÃ  connus ;
-  // 2) recherche prÃ©cise "artiste + titre" avec correspondance exacte dans MusicBrain.
+  // Deux cas seulement permettent d'éviter complètement YouTube :
+  // 1) recherche large d'un artiste avec plus de 20 titres déj�  connus ;
+  // 2) recherche précise "artiste + titre" avec correspondance exacte dans MusicBrain.
   //
-  // Toute recherche prÃ©cise non confirmÃ©e continue vers YouTube, mÃªme si MusicBrain
-  // connaÃ®t Ã©normÃ©ment de titres de l'artiste. C'est la garantie fondamentale :
-  // MusicBrain Ã©conomise du quota, mais ne doit jamais masquer une musique trouvable
+  // Toute recherche précise non confirmée continue vers YouTube, même si MusicBrain
+  // connaît énormément de titres de l'artiste. C'est la garantie fondamentale :
+  // MusicBrain économise du quota, mais ne doit jamais masquer une musique trouvable
   // sur YouTube.
   if (directDecision.useMusicBrainOnly) {
     const results = rankMusicBrainDirectResults(
@@ -6086,11 +6086,11 @@ async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResu
 
     if (directDecision.reason === "strong_artist_title_match") {
       console.log(
-        `ðŸ§  MusicBrain "${query}" : correspondance exacte artiste + titre, YouTube Ã©vitÃ©.`
+        `�  MusicBrain "${query}" : correspondance exacte artiste + titre, YouTube évité.`
       );
     } else {
       console.log(
-        `ðŸ§  MusicBrain "${query}" : ${known.length} titre(s) connu(s), YouTube Ã©vitÃ©.`
+        `�  MusicBrain "${query}" : ${known.length} titre(s) connu(s), YouTube évité.`
       );
     }
 
@@ -6098,7 +6098,7 @@ async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResu
   }
 
   console.log(
-    `ðŸ§  MusicBrain "${query}" : ${known.length} rÃ©sultat(s) local(aux), complÃ©ment YouTube pour garantir le catalogue complet.`
+    `�  MusicBrain "${query}" : ${known.length} résultat(s) local(aux), complément YouTube pour garantir le catalogue complet.`
   );
 
   const primary = await requestYoutubeMusic(query, "user");
@@ -6108,11 +6108,11 @@ async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResu
   const officialCount = firstPass.filter((result) => officialMusicStrength(result) >= 4).length;
   const compactQueryTokenCount = significantSearchTokens(query).length;
 
-  console.log(`ðŸŽµ Recherche "${query}" : ${firstPass.length} rÃ©sultat(s), ${officialCount} officiel(s)/fiable(s) avant secours ciblÃ©.`);
+  console.log(`🎵 Recherche "${query}" : ${firstPass.length} résultat(s), ${officialCount} officiel(s)/fiable(s) avant secours ciblé.`);
 
-  // Une liste peut contenir 30 ou 40 vidÃ©os et pourtant presque aucune version
-  // officielle. Dans ce cas on lance une recherche ciblÃ©e au lieu de considÃ©rer
-  // Ã  tort que la premiÃ¨re page est "assez riche".
+  // Une liste peut contenir 30 ou 40 vidéos et pourtant presque aucune version
+  // officielle. Dans ce cas on lance une recherche ciblée au lieu de considérer
+  // �  tort que la première page est "assez riche".
   const needsOfficialFallback =
     firstPass.length < 16 ||
     (compactQueryTokenCount > 0 && compactQueryTokenCount <= 5 && officialCount < 6);
@@ -6140,9 +6140,9 @@ const ACADEMY_QUERY_VARIANTS = [
   (artist: string) => `${artist} meilleurs titres`,
 ];
 
-// PARTYBRAIN ACADEMY V2 â€” rendement adaptatif
-// Deux recherches consÃ©cutives sans nouveau morceau mettent temporairement
-// l'artiste de cÃ´tÃ© pour Ã©viter de gaspiller le quota YouTube.
+// PARTYBRAIN ACADEMY V2 — rendement adaptatif
+// Deux recherches consécutives sans nouveau morceau mettent temporairement
+// l'artiste de côté pour éviter de gaspiller le quota YouTube.
 const academyZeroCooldownHours = Math.max(
   12,
   Number(process.env.PARTYBRAIN_ACADEMY_ZERO_COOLDOWN_HOURS || 72)
@@ -6212,8 +6212,8 @@ function academyResultIsTrusted(result: YoutubeSearchResult, expectedArtist: str
   const combined = `${titleText} ${channelText}`;
 
   // Academy doit enrichir MusicBrain avec des versions propres, pas avec des
-  // reprises amateurs, karaokÃ©s, rÃ©actions, auditions ou contenus parasites.
-  if (/(karaoke|instrumental|cover|reprise|tribute|hommage|parodie|fanmade|fan made|amateur|audition|the voice|incroyable talent|chorale|choir|school|Ã©cole|concours|talent show)/i.test(combined)) {
+  // reprises amateurs, karaokés, réactions, auditions ou contenus parasites.
+  if (/(karaoke|instrumental|cover|reprise|tribute|hommage|parodie|fanmade|fan made|amateur|audition|the voice|incroyable talent|chorale|choir|school|école|concours|talent show)/i.test(combined)) {
     return false;
   }
   if (/(reaction|reacts?|interview|podcast|documentary|documentaire|making of|behind the scenes|shorts?|#shorts)/i.test(combined)) {
@@ -6351,10 +6351,10 @@ function academyMissionCandidates(excludedArtistKeys: Set<string> = new Set()) {
       const demandScore = Number(artist.searchCount || 0) * 20;
       const recencyScore = searchedRecently ? 80 : 0;
 
-      // V2 : le rendement observÃ© devient un signal majeur.
+      // V2 : le rendement observé devient un signal majeur.
       const recentYield = academyRecentYield(progress);
       const yieldScore = recentYield === null
-        ? 45 // exploration : on laisse une vraie chance aux artistes jamais mesurÃ©s
+        ? 45 // exploration : on laisse une vraie chance aux artistes jamais mesurés
         : Math.min(260, recentYield * 42);
 
       const zeroPenalty = Number(progress.consecutiveZeroAdds || 0) * 95;
@@ -6385,8 +6385,8 @@ function academyMissionCandidates(excludedArtistKeys: Set<string> = new Set()) {
     })
     .filter((candidate) => !candidate.inCooldown)
     .filter((candidate) => {
-      // On continue Ã  explorer un artiste dÃ©jÃ  riche seulement s'il rapporte encore
-      // rÃ©ellement des nouveautÃ©s. Cela Ã©vite de boucler Ã©ternellement sur les stars.
+      // On continue �  explorer un artiste déj�  riche seulement s'il rapporte encore
+      // réellement des nouveautés. Cela évite de boucler éternellement sur les stars.
       if (candidate.songCount < academyTargetSongs) return true;
       return Number(candidate.recentYield || 0) >= 1;
     })
@@ -6438,11 +6438,11 @@ async function runPartyBrainAcademy(trigger: "scheduler" | "manual" = "scheduler
   academyState.lastSessionAt = session.startedAt;
   addAcademyLog(
     "info",
-    `Session lancÃ©e : ${initialSnapshot.remaining} appel(s) disponible(s) avant la rÃ©initialisation.`,
+    `Session lancée : ${initialSnapshot.remaining} appel(s) disponible(s) avant la réinitialisation.`,
   );
 
-  // V2 : on fait tourner les artistes avant de revenir sur le mÃªme.
-  // Si tous les artistes utiles ont Ã©tÃ© testÃ©s, on ouvre un nouveau tour.
+  // V2 : on fait tourner les artistes avant de revenir sur le même.
+  // Si tous les artistes utiles ont été testés, on ouvre un nouveau tour.
   const artistsUsedThisRound = new Set<string>();
 
   try {
@@ -6450,18 +6450,18 @@ async function runPartyBrainAcademy(trigger: "scheduler" | "manual" = "scheduler
       const snapshot = academyQuotaSnapshot();
       if (snapshot.remaining <= 0) {
         session.status = "completed";
-        session.reason = "Quota restant entiÃ¨rement transformÃ© en connaissances.";
+        session.reason = "Quota restant entièrement transformé en connaissances.";
         break;
       }
       if (trigger === "scheduler" && snapshot.msUntilReset <= 20_000) {
         session.status = "stopped";
-        session.reason = "ArrÃªt de sÃ©curitÃ© 20 secondes avant la rÃ©initialisation.";
+        session.reason = "Arrêt de sécurité 20 secondes avant la réinitialisation.";
         break;
       }
 
-      // KaraokÃ© OFF : 100 % du quota Academy sert maintenant Ã  enrichir
-      // le catalogue musical normal. Si le KaraokÃ© est rÃ©activÃ© un jour,
-      // son ancien chemin reste conservÃ© ci-dessous.
+      // Karaoké OFF : 100 % du quota Academy sert maintenant �  enrichir
+      // le catalogue musical normal. Si le Karaoké est réactivé un jour,
+      // son ancien chemin reste conservé ci-dessous.
       let karaokeMission = karaokeFeatureEnabled && session.callsUsed % 4 !== 3
         ? nextAcademyKaraokeMission()
         : null;
@@ -6469,8 +6469,8 @@ async function runPartyBrainAcademy(trigger: "scheduler" | "manual" = "scheduler
         ? null
         : nextAcademyDiscoveryMission(artistsUsedThisRound);
 
-      // Tous les artistes utiles ont dÃ©jÃ  Ã©tÃ© visitÃ©s dans ce tour : on recommence
-      // avec les prioritÃ©s recalculÃ©es grÃ¢ce au rendement fraÃ®chement observÃ©.
+      // Tous les artistes utiles ont déj�  été visités dans ce tour : on recommence
+      // avec les priorités recalculées gr�ce au rendement fraîchement observé.
       if (!karaokeMission && !discoveryMission && artistsUsedThisRound.size > 0) {
         artistsUsedThisRound.clear();
         discoveryMission = nextAcademyDiscoveryMission(artistsUsedThisRound);
@@ -6484,7 +6484,7 @@ async function runPartyBrainAcademy(trigger: "scheduler" | "manual" = "scheduler
 
       if (!mission) {
         session.status = "completed";
-        session.reason = "Aucune mission utile restante : artistes saturÃ©s ou temporairement en cooldown.";
+        session.reason = "Aucune mission utile restante : artistes saturés ou temporairement en cooldown.";
         break;
       }
 
@@ -6501,7 +6501,7 @@ async function runPartyBrainAcademy(trigger: "scheduler" | "manual" = "scheduler
 
       addAcademyLog(
         "info",
-        `${mission.mode === "karaoke" ? "Audio prioritaire" : "DÃ©couverte"} ${session.callsUsed + 1}/${session.callsPlanned} : ${mission.query}`,
+        `${mission.mode === "karaoke" ? "Audio prioritaire" : "Découverte"} ${session.callsUsed + 1}/${session.callsPlanned} : ${mission.query}`,
         {
           artist: mission.name,
           query: mission.query,
@@ -6588,7 +6588,7 @@ async function runPartyBrainAcademy(trigger: "scheduler" | "manual" = "scheduler
           if (Number(discoveryProgress.cooldownUntil || 0) > Date.now()) {
             addAcademyLog(
               "warning",
-              `${mission.name} mis en pause ${academyZeroCooldownHours} h aprÃ¨s ${discoveryProgress.consecutiveZeroAdds} recherche(s) consÃ©cutive(s) Ã  +0.`,
+              `${mission.name} mis en pause ${academyZeroCooldownHours} h après ${discoveryProgress.consecutiveZeroAdds} recherche(s) consécutive(s) �  +0.`,
               { artist: mission.name, query: mission.query, songsAdded: added }
             );
           }
@@ -6597,8 +6597,8 @@ async function runPartyBrainAcademy(trigger: "scheduler" | "manual" = "scheduler
         addAcademyLog(
           acceptedCount > 0 ? "success" : "info",
           mission.mode === "karaoke"
-            ? `${mission.name} â€” ${mission.sourceSong.title} : ${acceptedCount ? "version audio officielle trouvÃ©e" : "aucune version audio fiable trouvÃ©e"}.`
-            : `${mission.name} enrichi : +${added} nouveau(x) morceau(x), ${rejectedCount} rÃ©sultat(s) douteux Ã©cartÃ©(s) â€¢ rendement rÃ©cent ${academyRecentYield(discoveryProgress || academyProgressForArtist(mission.key))?.toFixed(1) || "0.0"}/appel.`,
+            ? `${mission.name} — ${mission.sourceSong.title} : ${acceptedCount ? "version audio officielle trouvée" : "aucune version audio fiable trouvée"}.`
+            : `${mission.name} enrichi : +${added} nouveau(x) morceau(x), ${rejectedCount} résultat(s) douteux écarté(s) • rendement récent ${academyRecentYield(discoveryProgress || academyProgressForArtist(mission.key))?.toFixed(1) || "0.0"}/appel.`,
           {
             artist: mission.name,
             query: mission.query,
@@ -6609,11 +6609,11 @@ async function runPartyBrainAcademy(trigger: "scheduler" | "manual" = "scheduler
         const status = Number(error?.status || 500);
         if (status === 429) {
           session.status = "quota_exhausted";
-          session.reason = "YouTube a signalÃ© que le quota rÃ©el Ã©tait Ã©puisÃ©.";
-          addAcademyLog("warning", "Quota YouTube rÃ©el Ã©puisÃ© : session arrÃªtÃ©e immÃ©diatement.");
+          session.reason = "YouTube a signalé que le quota réel était épuisé.";
+          addAcademyLog("warning", "Quota YouTube réel épuisé : session arrêtée immédiatement.");
           break;
         }
-        addAcademyLog("error", `Ã‰chec pour ${mission.name} : ${error?.message || "erreur inconnue"}.`, {
+        addAcademyLog("error", `Échec pour ${mission.name} : ${error?.message || "erreur inconnue"}.`, {
           artist: mission.name,
           query: mission.query,
         });
@@ -6634,7 +6634,7 @@ async function runPartyBrainAcademy(trigger: "scheduler" | "manual" = "scheduler
     saveAcademyState();
     addAcademyLog(
       session.status === "completed" ? "success" : "warning",
-      `Session terminÃ©e : ${session.callsUsed} recherche(s), +${session.songsAdded} morceau(x), ${session.artistsTouched.length} artiste(s) touchÃ©(s).`,
+      `Session terminée : ${session.callsUsed} recherche(s), +${session.songsAdded} morceau(x), ${session.artistsTouched.length} artiste(s) touché(s).`,
     );
   }
 }
@@ -6746,7 +6746,7 @@ function saveKaraokeAudit() {
   try {
     fs.writeFileSync(karaokeAuditFilePath, JSON.stringify(karaokeAudit, null, 2), "utf-8");
   } catch (error) {
-    console.warn("Audit KaraokÃ© non sauvegardÃ© :", error);
+    console.warn("Audit Karaoké non sauvegardé :", error);
   }
 }
 
@@ -6763,7 +6763,7 @@ function loadKaraokeAudit() {
       entries: parsed?.entries && typeof parsed.entries === "object" ? parsed.entries : {},
     };
   } catch (error) {
-    console.warn("Audit KaraokÃ© illisible, nouvelle base crÃ©Ã©e :", error);
+    console.warn("Audit Karaoké illisible, nouvelle base créée :", error);
     karaokeAudit = createEmptyKaraokeAudit();
     saveKaraokeAudit();
   }
@@ -6867,7 +6867,7 @@ function karaokeLooksLikeClip(song: MusicBrainSong) {
   const channel = String(song.channelTitle || "").toLowerCase();
   return (
     /\bofficial\s+(music\s+)?video\b/i.test(title) ||
-    /\b(?:clip|vid[eÃ©]o)\s+officiel(?:le)?\b/i.test(title) ||
+    /\b(?:clip|vid[eé]o)\s+officiel(?:le)?\b/i.test(title) ||
     /\bmusic\s+video\b/i.test(title) ||
     /\bvevo\b/i.test(channel)
   );
@@ -7037,7 +7037,7 @@ function karaokeAuditSummary() {
       foundOfficialAudio: discoveredOfficialAudio,
       notFound: noOfficialAudio,
     },
-    note: "MusicBrain est analysÃ© localement d'abord : versions audio directes + autres videoId du mÃªme titre dÃ©jÃ  connus. YouTube reste une seconde Ã©tape sÃ©parÃ©e uniquement pour les morceaux encore sans solution locale.",
+    note: "MusicBrain est analysé localement d'abord : versions audio directes + autres videoId du même titre déj�  connus. YouTube reste une seconde étape séparée uniquement pour les morceaux encore sans solution locale.",
     youtubeSearchesPerBatchMax: 10,
   };
 }
@@ -7081,7 +7081,7 @@ function saveKaraokeLyricsAudit() {
       "utf-8"
     );
   } catch (error) {
-    console.warn("Audit paroles KaraokÃ© non sauvegardÃ© :", error);
+    console.warn("Audit paroles Karaoké non sauvegardé :", error);
   }
 }
 
@@ -7102,7 +7102,7 @@ function loadKaraokeLyricsAudit() {
           : {},
     };
   } catch (error) {
-    console.warn("Audit paroles KaraokÃ© illisible, nouvelle base crÃ©Ã©e :", error);
+    console.warn("Audit paroles Karaoké illisible, nouvelle base créée :", error);
     karaokeLyricsAudit = createEmptyKaraokeLyricsAudit();
     saveKaraokeLyricsAudit();
   }
@@ -7162,8 +7162,8 @@ function karaokeVersionComparable(value: unknown) {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[â€™'`Â´]/g, "'")
-    .replace(/[â€â€‘â€’â€“â€”]/g, "-")
+    .replace(/[’'`´]/g, "'")
+    .replace(/[‐‑‒–—]/g, "-")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -7183,7 +7183,7 @@ function karaokeSourceLooksAudioExact(song: MusicBrainSong) {
   const raw = karaokeVersionComparable(song.rawTitle || song.title || "");
 
   // YouTube Art Tracks / Topic sont les sources les plus stables pour faire
-  // correspondre la durÃ©e et les timestamps LRCLIB.
+  // correspondre la durée et les timestamps LRCLIB.
   const topicChannel =
     /(^|\s)-?\s*topic$/.test(channel) ||
     channel.endsWith(" topic");
@@ -7195,7 +7195,7 @@ function karaokeSourceLooksAudioExact(song: MusicBrainSong) {
   const learnedAsArtTrack =
     song.metadataSource === "ART_TRACK_DESCRIPTION";
 
-  // On accepte seulement des sources audio trÃ¨s fiables.
+  // On accepte seulement des sources audio très fiables.
   return topicChannel || officialAudio || learnedAsArtTrack;
 }
 
@@ -7207,7 +7207,7 @@ function karaokeLyricsCertifiedSource(song: MusicBrainSong) {
 
 function karaokeLyricsStrictIdentityMatch(song: MusicBrainSong, item: any) {
   // V5 : un bon match LRCLIB ne suffit plus. La source audio YouTube doit
-  // elle-mÃªme Ãªtre une version jugÃ©e assez stable pour le KaraokÃ©.
+  // elle-même être une version jugée assez stable pour le Karaoké.
   if (!karaokeLyricsCertifiedSource(song)) return false;
 
   const targetTitle = karaokeLyricsComparable(song.title || song.rawTitle || "");
@@ -7217,14 +7217,14 @@ function karaokeLyricsStrictIdentityMatch(song: MusicBrainSong, item: any) {
 
   if (!targetTitle || !targetArtist || !resultTitle || !resultArtist) return false;
 
-  // Mode fiabilitÃ© maximale : titre et artiste doivent correspondre exactement.
+  // Mode fiabilité maximale : titre et artiste doivent correspondre exactement.
   if (resultTitle !== targetTitle) return false;
   if (resultArtist !== targetArtist) return false;
 
   const sourceDuration = Number(song.durationSeconds || 0);
   const resultDuration = Number(item?.duration || 0);
 
-  // Sans durÃ©e des deux cÃ´tÃ©s, on ne publie pas.
+  // Sans durée des deux côtés, on ne publie pas.
   if (!(sourceDuration > 0) || !(resultDuration > 0)) return false;
 
   return (
@@ -7244,15 +7244,15 @@ function karaokeLyricsStrictTimedLines(raw: unknown, expectedDuration?: number) 
 
   const duration = Number(expectedDuration || 0);
   if (duration > 0) {
-    // V5 : on refuse les fichiers qui dÃ©passent rÃ©ellement l'audio.
+    // V5 : on refuse les fichiers qui dépassent réellement l'audio.
     if (lastTimedLine > duration + 0.75) return false;
 
-    // Les paroles ne doivent pas s'arrÃªter trÃ¨s tÃ´t par rapport au morceau.
+    // Les paroles ne doivent pas s'arrêter très tôt par rapport au morceau.
     // On garde une marge pour les longues outros instrumentales.
     if (lastTimedLine < duration * 0.55) return false;
   }
 
-  // Timestamps strictement croissants : sinon le dÃ©filement est imprÃ©visible.
+  // Timestamps strictement croissants : sinon le défilement est imprévisible.
   for (let index = 1; index < nonEmpty.length; index += 1) {
     if (nonEmpty[index].time <= nonEmpty[index - 1].time) return false;
   }
@@ -7437,7 +7437,7 @@ function karaokeLyricsAuditSummary() {
     batchSizeMax: 100,
     delayMs: 300,
     note:
-      "KaraokÃ© Sync Certified V5 : seuls les Art Tracks/Topic/Official Audio sans variante douteuse, avec titre exact + artiste exact + durÃ©e Â±0,5 s + timestamps cohÃ©rents sont publiables. Rien nâ€™est supprimÃ© de PartyBrain.",
+      "Karaoké Sync Certified V5 : seuls les Art Tracks/Topic/Official Audio sans variante douteuse, avec titre exact + artiste exact + durée ±0,5 s + timestamps cohérents sont publiables. Rien n’est supprimé de PartyBrain.",
   };
 }
 
@@ -7470,14 +7470,14 @@ function automaticLrclibNeedsCheck(song: MusicBrainSong) {
     return !karaokeLyricsAuditEntryIsStrictlyVerified(song, existing);
   }
 
-  // Si MusicBrain a corrigÃ© l'artiste depuis l'ancien audit, on retente.
+  // Si MusicBrain a corrigé l'artiste depuis l'ancien audit, on retente.
   const currentArtist = normalizeMusicQuery(song.artistName || "");
   const auditedArtist = normalizeMusicQuery(existing.matchedArtistName || "");
   if (currentArtist && auditedArtist && currentArtist !== auditedArtist) {
     return true;
   }
 
-  // LRCLIB Ã©volue : les Ã©checs/paroles simples sont retestÃ©s aprÃ¨s 14 jours.
+  // LRCLIB évolue : les échecs/paroles simples sont retestés après 14 jours.
   const ageMs = Date.now() - Number(existing.checkedAt || 0);
   return ageMs >= 14 * 24 * 60 * 60_000;
 }
@@ -7559,7 +7559,7 @@ async function runAutomaticLrclibWorker() {
 
         if (kind === "synced") {
           console.log(
-            `ðŸŽ¤ LRCLIB AUTO : ajoutÃ© au catalogue KaraokÃ© â†’ ${song.artistName} â€” ${song.title}`
+            `🎤 LRCLIB AUTO : ajouté au catalogue Karaoké → ${song.artistName} — ${song.title}`
           );
         }
 
@@ -7582,7 +7582,7 @@ async function runAutomaticLrclibWorker() {
           }
 
           console.warn(
-            `ðŸŽ¤ LRCLIB AUTO : limite atteinte, nouvelle tentative dans ${Math.ceil(
+            `🎤 LRCLIB AUTO : limite atteinte, nouvelle tentative dans ${Math.ceil(
               retryAfterMs / 1000
             )}s.`
           );
@@ -7591,9 +7591,9 @@ async function runAutomaticLrclibWorker() {
           continue;
         }
 
-        // Une erreur rÃ©seau/serveur n'est pas mÃ©morisÃ©e comme "introuvable".
+        // Une erreur réseau/serveur n'est pas mémorisée comme "introuvable".
         console.warn(
-          `ðŸŽ¤ LRCLIB AUTO : vÃ©rification impossible pour ${song.artistName} â€” ${song.title}`,
+          `🎤 LRCLIB AUTO : vérification impossible pour ${song.artistName} — ${song.title}`,
           error
         );
         await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -7756,7 +7756,7 @@ async function runKaraokeLyricsAuditBatch(limit: number) {
         }
 
         console.warn(
-          `Audit LRCLIB impossible pour ${song.artistName} â€” ${song.title}`,
+          `Audit LRCLIB impossible pour ${song.artistName} — ${song.title}`,
           error
         );
 
@@ -7769,14 +7769,14 @@ async function runKaraokeLyricsAuditBatch(limit: number) {
 
     if (!karaokeLyricsAuditJob.rateLimited) {
       karaokeLyricsAuditJob.message =
-        `Audit terminÃ© : ${karaokeLyricsAuditJob.searched} morceau(x) testÃ©(s), ` +
-        `${karaokeLyricsAuditJob.synced} synchronisÃ©(s).`;
+        `Audit terminé : ${karaokeLyricsAuditJob.searched} morceau(x) testé(s), ` +
+        `${karaokeLyricsAuditJob.synced} synchronisé(s).`;
     }
   }
 }
 
 /* =========================================================
-   KARAOKÃ‰ AUDIT V2 â€” PLANIFICATEUR LRCLIB AUTONOME
+   KARAOKÉ AUDIT V2 — PLANIFICATEUR LRCLIB AUTONOME
    - LRCLIB uniquement : aucun appel YouTube
    - 100 morceaux maximum par vague
    - une tentative toutes les 60 secondes
@@ -7831,24 +7831,24 @@ async function runScheduledKaraokeLyricsAudit() {
   karaokeLyricsAuditSchedulerLastCheckAt = Date.now();
 
   if (!karaokeLyricsAuditSchedulerEnabled) {
-    karaokeLyricsAuditSchedulerLastSkipReason = "Planificateur dÃ©sactivÃ©.";
+    karaokeLyricsAuditSchedulerLastSkipReason = "Planificateur désactivé.";
     return;
   }
 
   // Ne jamais superposer deux lots LRCLIB.
   if (karaokeLyricsAuditJob.running) {
-    karaokeLyricsAuditSchedulerLastSkipReason = "Audit LRCLIB dÃ©jÃ  en cours.";
+    karaokeLyricsAuditSchedulerLastSkipReason = "Audit LRCLIB déj�  en cours.";
     return;
   }
 
-  // Le petit worker automatique utilisÃ© lors des recherches/ajouts passe d'abord.
-  // Cela Ã©vite de bombarder LRCLIB avec deux flux en parallÃ¨le.
+  // Le petit worker automatique utilisé lors des recherches/ajouts passe d'abord.
+  // Cela évite de bombarder LRCLIB avec deux flux en parallèle.
   if (automaticLrclibWorkerRunning || automaticLrclibQueue.length > 0) {
-    karaokeLyricsAuditSchedulerLastSkipReason = "Worker LRCLIB temps rÃ©el occupÃ©.";
+    karaokeLyricsAuditSchedulerLastSkipReason = "Worker LRCLIB temps réel occupé.";
     return;
   }
 
-  // Respecte aussi un Ã©ventuel Retry-After renvoyÃ© par LRCLIB lors de la vague prÃ©cÃ©dente.
+  // Respecte aussi un éventuel Retry-After renvoyé par LRCLIB lors de la vague précédente.
   const retryAfterMs = Math.max(
     0,
     Number(karaokeLyricsAuditJob.retryAfterSeconds || 0) * 1000
@@ -7860,13 +7860,13 @@ async function runScheduledKaraokeLyricsAudit() {
 
   if (retryUntil > Date.now()) {
     karaokeLyricsAuditSchedulerLastSkipReason =
-      `Pause LRCLIB jusqu'Ã  ${new Date(retryUntil).toISOString()}.`;
+      `Pause LRCLIB jusqu'�  ${new Date(retryUntil).toISOString()}.`;
     return;
   }
 
   const pending = karaokeLyricsAuditPendingCount();
   if (pending <= 0) {
-    karaokeLyricsAuditSchedulerLastSkipReason = "Aucun nouveau morceau Ã  vÃ©rifier.";
+    karaokeLyricsAuditSchedulerLastSkipReason = "Aucun nouveau morceau �  vérifier.";
     return;
   }
 
@@ -7876,19 +7876,19 @@ async function runScheduledKaraokeLyricsAudit() {
   karaokeLyricsAuditSchedulerLastSkipReason = "";
 
   console.log(
-    `ðŸŽ¤ KARAOKÃ‰ AUDIT V2 AUTO : lancement d'une vague LRCLIB de ${batchSize} morceau(x) ` +
+    `🎤 KARAOKÉ AUDIT V2 AUTO : lancement d'une vague LRCLIB de ${batchSize} morceau(x) ` +
     `(${pending} en attente).`
   );
 
   try {
     await runKaraokeLyricsAuditBatch(batchSize);
   } catch (error) {
-    console.error("ðŸŽ¤ KARAOKÃ‰ AUDIT V2 AUTO : vague LRCLIB interrompue", error);
+    console.error("🎤 KARAOKÉ AUDIT V2 AUTO : vague LRCLIB interrompue", error);
   }
 }
 
 if (karaokeLyricsAuditSchedulerEnabled) {
-  // Petit dÃ©lai au dÃ©marrage de Railway pour laisser MusicBrain et les fichiers persistants se charger.
+  // Petit délai au démarrage de Railway pour laisser MusicBrain et les fichiers persistants se charger.
   setTimeout(() => {
     void runScheduledKaraokeLyricsAudit();
   }, 15_000);
@@ -7902,15 +7902,15 @@ if (karaokeLyricsAuditSchedulerEnabled) {
 
 
 /* =========================================================
-   KARAOKÃ‰ SYNC ENGINE V1 â€” SHADOW MODE
+   KARAOKÉ SYNC ENGINE V1 — SHADOW MODE
    ---------------------------------------------------------
    Objectif :
-   - ne casse PAS le KaraokÃ© LRCLIB actuel ;
-   - prÃ©pare une file de morceaux Ã  rÃ©aligner ;
-   - dÃ©lÃ¨gue l'alignement audio Ã  un worker externe spÃ©cialisÃ© ;
-   - mÃ©morise les rÃ©sultats certifiÃ©s, sans les publier automatiquement.
+   - ne casse PAS le Karaoké LRCLIB actuel ;
+   - prépare une file de morceaux �  réaligner ;
+   - délègue l'alignement audio �  un worker externe spécialisé ;
+   - mémorise les résultats certifiés, sans les publier automatiquement.
 
-   Le worker externe est optionnel au dÃ©part.
+   Le worker externe est optionnel au départ.
    Variable Railway :
      KARAOKE_SYNC_ENGINE_URL=https://.../align
 
@@ -7993,7 +7993,7 @@ function saveKaraokeSyncEngineState() {
       "utf-8"
     );
   } catch (error) {
-    console.warn("Karaoke Sync Engine non sauvegardÃ© :", error);
+    console.warn("Karaoke Sync Engine non sauvegardé :", error);
   }
 }
 
@@ -8020,11 +8020,11 @@ function loadKaraokeSyncEngineState() {
     };
 
     // Un crash Railway pendant une analyse ne doit pas laisser un morceau
-    // bloquÃ© Ã©ternellement en "analyzing".
+    // bloqué éternellement en "analyzing".
     for (const entry of Object.values(karaokeSyncEngineState.entries)) {
       if (entry.status === "analyzing") {
         entry.status = "pending";
-        entry.reason = "Analyse interrompue par un redÃ©marrage du serveur.";
+        entry.reason = "Analyse interrompue par un redémarrage du serveur.";
         entry.updatedAt = Date.now();
       }
     }
@@ -8032,7 +8032,7 @@ function loadKaraokeSyncEngineState() {
     saveKaraokeSyncEngineState();
   } catch (error) {
     console.warn(
-      "Karaoke Sync Engine illisible, nouvelle base crÃ©Ã©e :",
+      "Karaoke Sync Engine illisible, nouvelle base créée :",
       error
     );
     karaokeSyncEngineState = createEmptyKaraokeSyncEngineState();
@@ -8047,8 +8047,8 @@ const karaokeSyncEngineQueuedIds = new Set<string>();
 let karaokeSyncEngineWorkerRunning = false;
 
 // V1.2 TEST AUDIO
-// URL audio autorisÃ©e fournie manuellement pour UN test.
-// Elle reste uniquement en mÃ©moire et n'est jamais Ã©crite dans
+// URL audio autorisée fournie manuellement pour UN test.
+// Elle reste uniquement en mémoire et n'est jamais écrite dans
 // karaoke-sync-engine.json.
 const karaokeSyncEngineAudioUrlOverrides = new Map<string, string>();
 
@@ -8076,8 +8076,8 @@ function karaokeSyncEngineUrl() {
   ).trim();
 
   // Railway doit normalement fournir KARAOKE_SYNC_ENGINE_URL.
-  // Le fallback garde le worker fonctionnel mÃªme si cette variable
-  // n'est pas injectÃ©e dans le runtime API du service monorepo.
+  // Le fallback garde le worker fonctionnel même si cette variable
+  // n'est pas injectée dans le runtime API du service monorepo.
   const raw = configured || KARAOKE_SYNC_ENGINE_DEFAULT_URL;
 
   try {
@@ -8108,8 +8108,8 @@ function karaokeSyncEngineAuthorizedAudioUrl(value: unknown) {
     const parsed = new URL(raw);
     if (!["http:", "https:"].includes(parsed.protocol)) return "";
 
-    // On refuse localhost / loopback pour Ã©viter qu'un endpoint admin
-    // devienne une porte SSRF vers le service Railway lui-mÃªme.
+    // On refuse localhost / loopback pour éviter qu'un endpoint admin
+    // devienne une porte SSRF vers le service Railway lui-même.
     const host = parsed.hostname.toLowerCase();
     if (
       host === "localhost" ||
@@ -8266,7 +8266,7 @@ async function requestKaraokeSyncAlignment(
         },
 
         // V1.2 : seulement une URL audio que l'administrateur MixParty
-        // est autorisÃ© Ã  faire analyser.
+        // est autorisé �  faire analyser.
         audioUrl: audioUrl || undefined,
       }),
       signal: controller.signal,
@@ -8301,7 +8301,7 @@ async function requestKaraokeSyncAlignmentUpload(
   const endpoint = karaokeSyncEngineUrl();
   if (!endpoint) {
     throw new Error(
-      "KARAOKE_SYNC_ENGINE_NOT_CONFIGURED: aucune URL worker valide n'a pu Ãªtre rÃ©solue."
+      "KARAOKE_SYNC_ENGINE_NOT_CONFIGURED: aucune URL worker valide n'a pu être résolue."
     );
   }
 
@@ -8433,7 +8433,7 @@ async function runKaraokeSyncEngineWorker() {
       if (!karaokeSyncEngineEnabled()) {
         entry.status = "blocked";
         entry.reason =
-          "Worker dâ€™alignement non configurÃ© : KARAOKE_SYNC_ENGINE_URL manquant.";
+          "Worker d’alignement non configuré : KARAOKE_SYNC_ENGINE_URL manquant.";
         entry.updatedAt = Date.now();
         saveKaraokeSyncEngineState();
         continue;
@@ -8491,7 +8491,7 @@ async function runKaraokeSyncEngineWorker() {
           entry.alignedLines = alignedLines;
           entry.reason =
             String(result?.reason || "").trim() ||
-            "Alignement audio certifiÃ© en shadow mode.";
+            "Alignement audio certifié en shadow mode.";
         } else if (
           resultStatus === "needs_review" ||
           workerClaimsCertified
@@ -8502,13 +8502,13 @@ async function runKaraokeSyncEngineWorker() {
             : undefined;
           entry.reason =
             String(result?.reason || "").trim() ||
-            `RÃ©sultat non certifiÃ© automatiquement (confiance ${confidence}%).`;
+            `Résultat non certifié automatiquement (confiance ${confidence}%).`;
         } else {
           entry.status = "failed";
           entry.alignedLines = undefined;
           entry.reason =
             String(result?.reason || "").trim() ||
-            "Le moteur dâ€™alignement nâ€™a pas pu certifier ce morceau.";
+            "Le moteur d’alignement n’a pas pu certifier ce morceau.";
         }
       } catch (error: any) {
         entry.status =
@@ -8516,16 +8516,16 @@ async function runKaraokeSyncEngineWorker() {
             ? "blocked"
             : "failed";
         entry.reason =
-          error?.message || "Erreur inconnue du moteur dâ€™alignement.";
+          error?.message || "Erreur inconnue du moteur d’alignement.";
       } finally {
-        // L'URL audio de test n'est conservÃ©e ni sur disque ni aprÃ¨s l'analyse.
+        // L'URL audio de test n'est conservée ni sur disque ni après l'analyse.
         karaokeSyncEngineAudioUrlOverrides.delete(videoId);
 
         entry.finishedAt = Date.now();
         entry.updatedAt = Date.now();
         saveKaraokeSyncEngineState();
 
-        // V1 Shadow : surtout ne pas toucher au cache/runtime KaraokÃ© actuel.
+        // V1 Shadow : surtout ne pas toucher au cache/runtime Karaoké actuel.
         await new Promise((resolve) => setTimeout(resolve, 250));
       }
     }
@@ -8576,7 +8576,7 @@ function karaokeSyncEngineSummary() {
     failed: count("failed"),
     blocked: count("blocked"),
     note:
-      "Shadow mode : les rÃ©sultats du nouveau moteur sont enregistrÃ©s sÃ©parÃ©ment et ne remplacent pas encore les paroles LRCLIB servies par MixParty.",
+      "Shadow mode : les résultats du nouveau moteur sont enregistrés séparément et ne remplacent pas encore les paroles LRCLIB servies par MixParty.",
   };
 }
 
@@ -8751,7 +8751,7 @@ async function runJamendoBenchmarkCampaign(campaignId: string) {
 
     if (!tracks.length) {
       throw new Error(
-        "Aucune piste Jamendo avec audio tÃ©lÃ©chargeable + paroles n'a Ã©tÃ© trouvÃ©e."
+        "Aucune piste Jamendo avec audio téléchargeable + paroles n'a été trouvée."
       );
     }
 
@@ -8766,7 +8766,7 @@ async function runJamendoBenchmarkCampaign(campaignId: string) {
       const resultEntry = campaign.tracks[index];
 
       resultEntry.status = "analyzing";
-      campaign.currentTrack = `${source.artistName} â€” ${source.title}`;
+      campaign.currentTrack = `${source.artistName} — ${source.title}`;
 
       try {
         const audio = await downloadBenchmarkAudio(source.audioUrl);
@@ -8861,7 +8861,7 @@ app.get("/partybrain/karaoke-benchmark/config", (_req, res) => {
     maxTracks: 50,
     mode: "technical-benchmark",
     note:
-      "Jamendo fournit l'audio et les paroles, mais pas des timestamps karaokÃ© de rÃ©fÃ©rence.",
+      "Jamendo fournit l'audio et les paroles, mais pas des timestamps karaoké de référence.",
   });
 });
 
@@ -8870,7 +8870,7 @@ app.post("/partybrain/karaoke-benchmark/start", (req, res) => {
 
   if (!jamendoClientId()) {
     return res.status(503).json({
-      error: "JAMENDO_CLIENT_ID n'est pas configurÃ© sur l'API MixParty.",
+      error: "JAMENDO_CLIENT_ID n'est pas configuré sur l'API MixParty.",
     });
   }
 
@@ -8981,7 +8981,7 @@ app.get("/partybrain/karaoke-sync-engine/entry/:videoId", (req, res) => {
       karaokeSyncEngineAudioUrlOverrides.has(videoId),
     shadowMode: true,
     note:
-      "Le rÃ©sultat n'est pas encore utilisÃ© par le lecteur KaraokÃ© public.",
+      "Le résultat n'est pas encore utilisé par le lecteur Karaoké public.",
   });
 });
 
@@ -9004,8 +9004,8 @@ app.post("/partybrain/karaoke-sync-engine/queue", (req, res) => {
       videoId: requestedVideoId,
       summary: karaokeSyncEngineSummary(),
       message: queued
-        ? "Morceau ajoutÃ© Ã  la file du Karaoke Sync Engine."
-        : "Morceau non Ã©ligible, dÃ©jÃ  certifiÃ© ou dÃ©jÃ  en cours.",
+        ? "Morceau ajouté �  la file du Karaoke Sync Engine."
+        : "Morceau non éligible, déj�  certifié ou déj�  en cours.",
     });
   }
 
@@ -9078,7 +9078,7 @@ app.post(
     if (!candidate) {
       return res.status(409).json({
         error:
-          "Ce morceau doit dÃ©jÃ  Ãªtre synchronisÃ© LRCLIB et validÃ© V5 avant le test Sync Engine.",
+          "Ce morceau doit déj�  être synchronisé LRCLIB et validé V5 avant le test Sync Engine.",
       });
     }
 
@@ -9087,7 +9087,7 @@ app.post(
       : Buffer.from(req.body || []);
 
     if (!audioBuffer.length) {
-      return res.status(400).json({ error: "Fichier audio vide ou non reÃ§u." });
+      return res.status(400).json({ error: "Fichier audio vide ou non reçu." });
     }
 
     const fileName = decodeURIComponent(
@@ -9117,7 +9117,7 @@ app.post(
         lrclibDuration: candidate.audit.matchedDuration,
       },
       attempts: Number(previous?.attempts || 0) + 1,
-      reason: "Analyse du fichier audio envoyÃ© depuis MusicBrain.",
+      reason: "Analyse du fichier audio envoyé depuis MusicBrain.",
     };
 
     karaokeSyncEngineState.entries[videoId] = entry;
@@ -9172,14 +9172,14 @@ app.post("/partybrain/karaoke-sync-engine/test/:videoId", (req, res) => {
   if (!audioUrl) {
     return res.status(400).json({
       error:
-        "audioUrl invalide. Utilise une URL HTTP/HTTPS directe vers un fichier audio que tu es autorisÃ© Ã  faire analyser.",
+        "audioUrl invalide. Utilise une URL HTTP/HTTPS directe vers un fichier audio que tu es autorisé �  faire analyser.",
     });
   }
 
   if (!karaokeSyncEngineEnabled()) {
     return res.status(503).json({
       error:
-        "KARAOKE_SYNC_ENGINE_URL n'est pas configurÃ© sur l'API MixParty.",
+        "KARAOKE_SYNC_ENGINE_URL n'est pas configuré sur l'API MixParty.",
     });
   }
 
@@ -9188,7 +9188,7 @@ app.post("/partybrain/karaoke-sync-engine/test/:videoId", (req, res) => {
   if (!candidate) {
     return res.status(409).json({
       error:
-        "Ce morceau n'est pas encore Ã©ligible au test : il doit dÃ©jÃ  avoir une entrÃ©e LRCLIB synchronisÃ©e et validÃ©e par le filtre V5.",
+        "Ce morceau n'est pas encore éligible au test : il doit déj�  avoir une entrée LRCLIB synchronisée et validée par le filtre V5.",
     });
   }
 
@@ -9196,14 +9196,14 @@ app.post("/partybrain/karaoke-sync-engine/test/:videoId", (req, res) => {
 
   if (existing?.status === "analyzing") {
     return res.status(409).json({
-      error: "Ce morceau est dÃ©jÃ  en cours d'analyse.",
+      error: "Ce morceau est déj�  en cours d'analyse.",
     });
   }
 
-  // On force une nouvelle passe de test, mÃªme si un ancien rÃ©sultat Shadow existe.
+  // On force une nouvelle passe de test, même si un ancien résultat Shadow existe.
   if (existing) {
     existing.status = "pending";
-    existing.reason = "Test audio autorisÃ© demandÃ© manuellement.";
+    existing.reason = "Test audio autorisé demandé manuellement.";
     existing.updatedAt = Date.now();
     existing.alignedLines = undefined;
     existing.confidence = undefined;
@@ -9215,8 +9215,8 @@ app.post("/partybrain/karaoke-sync-engine/test/:videoId", (req, res) => {
 
   karaokeSyncEngineAudioUrlOverrides.set(videoId, audioUrl);
 
-  // karaokeSyncEngineQueueSong refuse un morceau dÃ©jÃ  certifiÃ©.
-  // Pour un test explicite on rÃ©initialise donc le statut avant la mise en file.
+  // karaokeSyncEngineQueueSong refuse un morceau déj�  certifié.
+  // Pour un test explicite on réinitialise donc le statut avant la mise en file.
   const queued = karaokeSyncEngineQueueSong(videoId);
 
   if (!queued) {
@@ -9224,7 +9224,7 @@ app.post("/partybrain/karaoke-sync-engine/test/:videoId", (req, res) => {
 
     return res.status(409).json({
       error:
-        "Impossible de mettre ce morceau en file. VÃ©rifie qu'il n'est pas dÃ©jÃ  en attente ou en cours.",
+        "Impossible de mettre ce morceau en file. Vérifie qu'il n'est pas déj�  en attente ou en cours.",
       summary: karaokeSyncEngineSummary(),
     });
   }
@@ -9235,7 +9235,7 @@ app.post("/partybrain/karaoke-sync-engine/test/:videoId", (req, res) => {
     title: candidate.song.title,
     artistName: candidate.song.artistName,
     message:
-      "Test audio lancÃ© en Shadow Mode. L'URL audio ne sera pas sauvegardÃ©e.",
+      "Test audio lancé en Shadow Mode. L'URL audio ne sera pas sauvegardée.",
     statusUrl: `/partybrain/karaoke-sync-engine/entries?q=${encodeURIComponent(
       candidate.song.title
     )}`,
@@ -9251,13 +9251,13 @@ app.post("/partybrain/karaoke-sync-engine/retry/:videoId", (req, res) => {
 
   if (existing?.status === "analyzing") {
     return res.status(409).json({
-      error: "Ce morceau est dÃ©jÃ  en cours dâ€™analyse.",
+      error: "Ce morceau est déj�  en cours d’analyse.",
     });
   }
 
   if (existing) {
     existing.status = "pending";
-    existing.reason = "Nouvelle tentative demandÃ©e manuellement.";
+    existing.reason = "Nouvelle tentative demandée manuellement.";
     existing.updatedAt = Date.now();
     saveKaraokeSyncEngineState();
   }
@@ -9285,7 +9285,7 @@ app.post("/partybrain/karaoke-sync-engine/certify/:videoId", (req, res) => {
 
   if (!entry.alignedLines?.length) {
     return res.status(400).json({
-      error: "Aucune parole rÃ©alignÃ©e disponible pour ce morceau.",
+      error: "Aucune parole réalignée disponible pour ce morceau.",
     });
   }
 
@@ -9294,7 +9294,7 @@ app.post("/partybrain/karaoke-sync-engine/certify/:videoId", (req, res) => {
     Number(entry.confidence || 0),
     KARAOKE_SYNC_ENGINE_MIN_CONFIDENCE
   );
-  entry.reason = "Certification manuelle validÃ©e dans MusicBrain.";
+  entry.reason = "Certification manuelle validée dans MusicBrain.";
   entry.finishedAt = Date.now();
   entry.updatedAt = Date.now();
   saveKaraokeSyncEngineState();
@@ -9304,7 +9304,7 @@ app.post("/partybrain/karaoke-sync-engine/certify/:videoId", (req, res) => {
     entry,
     summary: karaokeSyncEngineSummary(),
     note:
-      "Toujours en shadow mode : cette certification n'est pas encore utilisÃ©e par le lecteur KaraokÃ©.",
+      "Toujours en shadow mode : cette certification n'est pas encore utilisée par le lecteur Karaoké.",
   });
 });
 
@@ -9415,7 +9415,7 @@ app.post("/partybrain/maintenance/karaoke-sync-offset/:videoId", (req, res) => {
   if (Math.abs(offsetSeconds) > 5) {
     return res.status(400).json({
       error:
-        "Offset refusÃ© : au-delÃ  de Â±5 s, il faut rechercher une meilleure version plutÃ´t que corriger artificiellement.",
+        "Offset refusé : au-del�  de ±5 s, il faut rechercher une meilleure version plutôt que corriger artificiellement.",
     });
   }
 
@@ -9440,7 +9440,7 @@ app.post("/partybrain/maintenance/karaoke-sync-offset/:videoId", (req, res) => {
     videoId,
     offsetSeconds: song.karaokeSyncOffsetSeconds,
     message:
-      `Offset KaraokÃ© enregistrÃ© : ${song.karaokeSyncOffsetSeconds >= 0 ? "+" : ""}${song.karaokeSyncOffsetSeconds}s. Le morceau reste dans PartyBrain.`,
+      `Offset Karaoké enregistré : ${song.karaokeSyncOffsetSeconds >= 0 ? "+" : ""}${song.karaokeSyncOffsetSeconds}s. Le morceau reste dans PartyBrain.`,
   });
 });
 
@@ -9467,7 +9467,7 @@ app.get("/partybrain/karaoke/lyrics/:videoId", async (req, res) => {
       videoId,
       available: false,
       kind: "unchecked",
-      message: "Ce morceau n'a pas encore Ã©tÃ© vÃ©rifiÃ© par l'audit LRCLIB.",
+      message: "Ce morceau n'a pas encore été vérifié par l'audit LRCLIB.",
     };
 
     karaokeLyricsRuntimeCache.set(videoId, {
@@ -9494,7 +9494,7 @@ app.get("/partybrain/karaoke/lyrics/:videoId", async (req, res) => {
       albumName: audit.matchedAlbumName,
       duration: audit.matchedDuration,
       message:
-        "Paroles bloquÃ©es par KaraokÃ© Sync Certified V5 : la version audio exacte nâ€™est pas certifiÃ©e.",
+        "Paroles bloquées par Karaoké Sync Certified V5 : la version audio exacte n’est pas certifiée.",
     };
 
     karaokeLyricsRuntimeCache.set(videoId, {
@@ -9517,10 +9517,10 @@ app.get("/partybrain/karaoke/lyrics/:videoId", async (req, res) => {
       duration: audit.matchedDuration,
       message:
         audit.kind === "plain"
-          ? "Paroles disponibles, mais pas synchronisÃ©es."
+          ? "Paroles disponibles, mais pas synchronisées."
           : audit.kind === "instrumental"
-            ? "Morceau indiquÃ© comme instrumental."
-            : "Aucune parole synchronisÃ©e trouvÃ©e.",
+            ? "Morceau indiqué comme instrumental."
+            : "Aucune parole synchronisée trouvée.",
     };
 
     karaokeLyricsRuntimeCache.set(videoId, {
@@ -9552,7 +9552,7 @@ app.get("/partybrain/karaoke/lyrics/:videoId", async (req, res) => {
         albumName: record?.albumName || audit.matchedAlbumName,
         duration: Number(record?.duration || audit.matchedDuration || 0) || undefined,
         message:
-          "Certification KaraokÃ© V5 Ã©chouÃ©e au moment de la lecture : paroles non servies.",
+          "Certification Karaoké V5 échouée au moment de la lecture : paroles non servies.",
       };
 
       karaokeLyricsRuntimeCache.set(videoId, {
@@ -9581,7 +9581,7 @@ app.get("/partybrain/karaoke/lyrics/:videoId", async (req, res) => {
         albumName: record?.albumName || audit.matchedAlbumName,
         duration: Number(record?.duration || audit.matchedDuration || 0) || undefined,
         plainLyrics: String(record?.plainLyrics || "").trim() || undefined,
-        message: "LRCLIB ne renvoie plus de paroles synchronisÃ©es pour ce morceau.",
+        message: "LRCLIB ne renvoie plus de paroles synchronisées pour ce morceau.",
       };
 
       karaokeLyricsRuntimeCache.set(videoId, {
@@ -9622,7 +9622,7 @@ app.get("/partybrain/karaoke/lyrics/:videoId", async (req, res) => {
         : {}),
     } as KaraokeLyricsRuntimeResponse;
 
-    // Un morceau dÃ©jÃ  rÃ©solu peut rester en cache 6 h sur l'API.
+    // Un morceau déj�  résolu peut rester en cache 6 h sur l'API.
     karaokeLyricsRuntimeCache.set(videoId, {
       expiresAt: Date.now() + 6 * 60 * 60_000,
       payload,
@@ -9650,8 +9650,8 @@ app.get("/partybrain/karaoke/lyrics/:videoId", async (req, res) => {
 function normalizeKaraokeArtistCandidate(value: unknown) {
   return normalizeMusicQuery(
     String(value || "")
-      .replace(/[-â€“â€”_]+topic$/i, "")
-      .replace(/\b(?:official|lyrics?|paroles|karaok[eÃ©]|music|audio|video|channel)\b/gi, " ")
+      .replace(/[-–—_]+topic$/i, "")
+      .replace(/\b(?:official|lyrics?|paroles|karaok[eé]|music|audio|video|channel)\b/gi, " ")
       .replace(/\s+/g, " ")
       .trim()
   );
@@ -9693,23 +9693,23 @@ function inferKaraokeArtistFromRawTitle(song: MusicBrainSong) {
   const raw = String(song.rawTitle || "").trim();
   if (!raw) return "";
 
-  // Beaucoup de chaÃ®nes de paroles (ex. 7clouds) publient sous la forme :
+  // Beaucoup de chaînes de paroles (ex. 7clouds) publient sous la forme :
   // "Ariana Grande - 7 rings (Lyrics)".
-  // On rÃ©cupÃ¨re donc le prÃ©fixe avant le sÃ©parateur comme candidat artiste.
+  // On récupère donc le préfixe avant le séparateur comme candidat artiste.
   const match = raw.match(
-    /^\s*(.{2,90}?)\s+(?:-|â€“|â€”|\||:)\s+.{2,}\s*$/
+    /^\s*(.{2,90}?)\s+(?:-|–|—|\||:)\s+.{2,}\s*$/
   );
 
   const candidate = String(match?.[1] || "")
     .replace(/\[[^\]]*]/g, " ")
     .replace(/\([^)]*\)/g, " ")
-    .replace(/\b(?:official|lyrics?|paroles|karaok[eÃ©]|audio|video|clip)\b/gi, " ")
+    .replace(/\b(?:official|lyrics?|paroles|karaok[eé]|audio|video|clip)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 
   if (!candidate || isGenericKaraokeArtistName(candidate)) return "";
 
-  // Ã‰vite de prendre un titre de chanson entier pour un artiste.
+  // Évite de prendre un titre de chanson entier pour un artiste.
   if (candidate.length > 70) return "";
 
   return candidate;
@@ -9725,19 +9725,19 @@ function resolveKaraokeArtistName(song: MusicBrainSong, entry: KaraokeLyricsAudi
     return lrclibArtist;
   }
 
-  // 2. Si LRCLIB a hÃ©ritÃ© d'un faux artiste (7clouds, Lyrics, etc.),
-  // on tente de rÃ©cupÃ©rer l'artiste rÃ©el depuis le titre YouTube brut.
+  // 2. Si LRCLIB a hérité d'un faux artiste (7clouds, Lyrics, etc.),
+  // on tente de récupérer l'artiste réel depuis le titre YouTube brut.
   if (rawTitleArtist) {
     return rawTitleArtist;
   }
 
-  // 3. MusicBrain sert ensuite de secours uniquement s'il n'est pas gÃ©nÃ©rique.
+  // 3. MusicBrain sert ensuite de secours uniquement s'il n'est pas générique.
   if (musicBrainArtist && !isGenericKaraokeArtistName(musicBrainArtist)) {
     return musicBrainArtist;
   }
 
   // Jamais de dossier "7clouds", "Lyrics", etc.
-  return "Ã€ classer";
+  return "À classer";
 }
 
 app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
@@ -9786,8 +9786,8 @@ app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
       }
 
       // IMPORTANT :
-      // Ã€ partir d'ici MixParty ne "rÃ©pare" plus rien.
-      // Le nom d'artiste et le titre viennent du MusicBrain nettoyÃ©.
+      // À partir d'ici MixParty ne "répare" plus rien.
+      // Le nom d'artiste et le titre viennent du MusicBrain nettoyé.
       return {
         videoId: entry.videoId,
         title: song.title || song.rawTitle || entry.matchedTrackName || "Titre inconnu",
@@ -9830,12 +9830,12 @@ app.get("/partybrain/karaoke-lyrics-audit/ready", (req, res) => {
     // Nombre LRCLIB brut : utile pour l'admin.
     totalSynced: rawSyncedEntries.length,
 
-    // Nombre qui passe rÃ©ellement le filtre KaraokÃ© Sync Certified V5.
+    // Nombre qui passe réellement le filtre Karaoké Sync Certified V5.
     totalStrictlyVerified: syncedEntries.length,
     totalCertified: syncedEntries.length,
     heldForSyncCertification: Math.max(0, rawSyncedEntries.length - syncedEntries.length),
 
-    // Nombre rÃ©ellement publiÃ© dans MixParty aprÃ¨s certification synchro + validation MusicBrain.
+    // Nombre réellement publié dans MixParty après certification synchro + validation MusicBrain.
     totalReady: items.length,
     heldForReview,
     blockedByMusicBrain,
@@ -9867,7 +9867,7 @@ app.post("/partybrain/karaoke-lyrics-audit/run", (req, res) => {
 
   if (karaokeLyricsAuditJob.running) {
     return res.status(409).json({
-      error: "Un audit LRCLIB est dÃ©jÃ  en cours.",
+      error: "Un audit LRCLIB est déj�  en cours.",
       summary: karaokeLyricsAuditSummary(),
       job: karaokeLyricsAuditJob,
     });
@@ -9879,10 +9879,10 @@ app.post("/partybrain/karaoke-lyrics-audit/run", (req, res) => {
     Math.min(100, Number.isFinite(requestedLimit) ? requestedLimit : 100)
   );
 
-  // Important : on lance le scan en arriÃ¨re-plan et on rÃ©pond immÃ©diatement.
-  // Cela Ã©vite le timeout HTTP Railway pendant les ~30+ secondes du lot de 100.
+  // Important : on lance le scan en arrière-plan et on répond immédiatement.
+  // Cela évite le timeout HTTP Railway pendant les ~30+ secondes du lot de 100.
   void runKaraokeLyricsAuditBatch(limit).catch((error) => {
-    console.error("Audit LRCLIB arriÃ¨re-plan interrompu :", error);
+    console.error("Audit LRCLIB arrière-plan interrompu :", error);
     karaokeLyricsAuditJob.running = false;
     karaokeLyricsAuditJob.finishedAt = Date.now();
     karaokeLyricsAuditJob.message = "Audit interrompu par une erreur serveur.";
@@ -9907,7 +9907,7 @@ app.post("/partybrain/karaoke-audit/scan-musicbrain", (_req, res) => {
   const localScan = karaokeLocalMusicBrainScan();
   return res.json({
     ok: true,
-    message: `Scan MusicBrain terminÃ© : ${localScan.scannedSongs} morceaux analysÃ©s sans quota YouTube.`,
+    message: `Scan MusicBrain terminé : ${localScan.scannedSongs} morceaux analysés sans quota YouTube.`,
     localScan,
     summary: karaokeAuditSummary(),
   });
@@ -9986,8 +9986,8 @@ app.post("/partybrain/karaoke-audit/run", async (req, res) => {
       saveKaraokeAudit();
     } catch (error) {
       errors += 1;
-      console.warn(`Audit KaraokÃ© impossible pour ${song.artistName} â€” ${song.title}`, error);
-      // Une erreur YouTube/quota n'est volontairement pas mÃ©morisÃ©e afin de pouvoir rÃ©essayer plus tard.
+      console.warn(`Audit Karaoké impossible pour ${song.artistName} — ${song.title}`, error);
+      // Une erreur YouTube/quota n'est volontairement pas mémorisée afin de pouvoir réessayer plus tard.
       break;
     }
   }
@@ -10009,7 +10009,7 @@ function requirePartyBrainAdmin(req: express.Request, res: express.Response) {
   const expectedToken = String(process.env.PARTYBRAIN_ADMIN_TOKEN || "").trim();
   if (!expectedToken) {
     res.status(503).json({
-      error: "Administration des jaquettes dÃ©sactivÃ©e : configure PARTYBRAIN_ADMIN_TOKEN sur Railway.",
+      error: "Administration des jaquettes désactivée : configure PARTYBRAIN_ADMIN_TOKEN sur Railway.",
     });
     return false;
   }
@@ -10095,7 +10095,7 @@ app.post("/partybrain/covers/:videoId/retry", (req, res) => {
   const song = musicBrain.songs[videoId];
   if (!song) return res.status(404).json({ error: "Morceau introuvable dans MusicBrain." });
   if (coverLookupsInFlight.has(videoId)) {
-    return res.status(409).json({ error: "Une recherche est dÃ©jÃ  en cours pour ce morceau." });
+    return res.status(409).json({ error: "Une recherche est déj�  en cours pour ce morceau." });
   }
 
   song.coverStatus = undefined;
@@ -10109,7 +10109,7 @@ app.post("/partybrain/covers/:videoId/retry", (req, res) => {
 
   return res.status(202).json({
     ok: true,
-    message: `Nouvelle recherche lancÃ©e pour Â« ${song.title} Â».`,
+    message: `Nouvelle recherche lancée pour « ${song.title} ».`,
   });
 });
 
@@ -10122,7 +10122,7 @@ app.put("/partybrain/covers/:videoId", (req, res) => {
 
   const coverUrl = String(req.body?.coverUrl || "").trim();
   if (!/^https?:\/\/\S+$/i.test(coverUrl)) {
-    return res.status(400).json({ error: "Entre une URL complÃ¨te commenÃ§ant par http:// ou https://." });
+    return res.status(400).json({ error: "Entre une URL complète commençant par http:// ou https://." });
   }
 
   song.coverStatus = "found";
@@ -10136,7 +10136,7 @@ app.put("/partybrain/covers/:videoId", (req, res) => {
 
   return res.json({
     ok: true,
-    message: `Jaquette manuelle enregistrÃ©e pour Â« ${song.title} Â».`,
+    message: `Jaquette manuelle enregistrée pour « ${song.title} ».`,
     song: {
       videoId: song.videoId,
       coverStatus: song.coverStatus,
@@ -10166,7 +10166,7 @@ app.delete("/partybrain/covers/:videoId", (req, res) => {
 
   return res.json({
     ok: true,
-    message: `Jaquette supprimÃ©e pour Â« ${song.title} Â». Le morceau est de nouveau Ã  rechercher.`,
+    message: `Jaquette supprimée pour « ${song.title} ». Le morceau est de nouveau �  rechercher.`,
   });
 });
 
@@ -10324,14 +10324,14 @@ function isSuspiciousArtistName(value: unknown) {
   if (!key) return true;
   if (/^(unknown|inconnu|artiste inconnu|unknown artist)$/i.test(artist)) return true;
 
-  // Noms dÃ©jÃ  observÃ©s comme faux positifs / valeurs de parsing.
+  // Noms déj�  observés comme faux positifs / valeurs de parsing.
   if (/^(da|art)$/i.test(key)) return true;
 
-  // Les noms trÃ¨s courts sont seulement suspects, jamais supprimÃ©s automatiquement.
+  // Les noms très courts sont seulement suspects, jamais supprimés automatiquement.
   if (key.length <= 2) return true;
 
-  // ChaÃ®nes / agrÃ©gateurs de paroles et de repost dÃ©jÃ  rencontrÃ©s dans MusicBrain.
-  // Ils sont conservÃ©s pour contrÃ´le : ils ne sont PAS supprimÃ©s automatiquement.
+  // Chaînes / agrégateurs de paroles et de repost déj�  rencontrés dans MusicBrain.
+  // Ils sont conservés pour contrôle : ils ne sont PAS supprimés automatiquement.
   if (
     /^(7clouds?|clouds?|lyrics?|lyricsmusic|music|musique|official|officiel|topic|audio|video|records?|recordings?|channel|youtube)$/i.test(
       compact
@@ -10375,9 +10375,9 @@ function artistFromTitlePrefix(rawTitle: unknown) {
   const raw = decodeHtmlEntities(String(rawTitle || "")).trim();
   if (!raw) return "";
 
-  // On exige un sÃ©parateur clair afin d'Ã©viter de deviner un artiste Ã  partir
-  // d'un simple mot prÃ©sent dans le titre.
-  const parts = raw.split(/\s+(?:-|â€“|â€”|\||:)\s+/);
+  // On exige un séparateur clair afin d'éviter de deviner un artiste �  partir
+  // d'un simple mot présent dans le titre.
+  const parts = raw.split(/\s+(?:-|–|—|\||:)\s+/);
   if (parts.length < 2) return "";
 
   let candidate = cleanArtistName(parts[0]);
@@ -10409,15 +10409,15 @@ function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRe
     !repairArtistLooksMulti(topicArtist) &&
     normalizeMusicQuery(topicArtist) !== currentKey;
 
-  // RÃˆGLE V1.5.3 :
-  // Une rÃ©paration automatique exige AU MOINS DEUX signaux indÃ©pendants
-  // qui confirment exactement le mÃªme artiste.
+  // RÈGLE V1.5.3 :
+  // Une réparation automatique exige AU MOINS DEUX signaux indépendants
+  // qui confirment exactement le même artiste.
   //
   // Signal 1 : le titre YouTube commence clairement par "Artiste - Morceau".
-  // Signal 2 : la chaÃ®ne YouTube confirme ce mÃªme artiste
-  //            (chaÃ®ne artiste, chaÃ®ne officielle ou "Artiste - Topic").
+  // Signal 2 : la chaîne YouTube confirme ce même artiste
+  //            (chaîne artiste, chaîne officielle ou "Artiste - Topic").
   //
-  // Une chaÃ®ne Topic seule n'est JAMAIS suffisante.
+  // Une chaîne Topic seule n'est JAMAIS suffisante.
   if (
     titleArtistValid &&
     channelConfirmsRepairArtist(channelTitle, titleArtist)
@@ -10434,18 +10434,18 @@ function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRe
         : "TITLE_CHANNEL_MATCH",
       sourceLabel:
         topicArtistValid && normalizeMusicQuery(topicArtist) === normalizeMusicQuery(titleArtist)
-          ? "Titre + chaÃ®ne Topic concordants"
-          : "Titre + chaÃ®ne YouTube concordants",
+          ? "Titre + chaîne Topic concordants"
+          : "Titre + chaîne YouTube concordants",
       confidence: 99,
       level: "safe",
       reason:
         topicArtistValid && normalizeMusicQuery(topicArtist) === normalizeMusicQuery(titleArtist)
-          ? `Le titre identifie Â« ${titleArtist} Â» et la chaÃ®ne Topic confirme exactement le mÃªme artiste.`
-          : `Le titre identifie Â« ${titleArtist} Â» et la chaÃ®ne YouTube confirme exactement le mÃªme artiste.`,
+          ? `Le titre identifie « ${titleArtist} » et la chaîne Topic confirme exactement le même artiste.`
+          : `Le titre identifie « ${titleArtist} » et la chaîne YouTube confirme exactement le même artiste.`,
     };
   }
 
-  // Une chaÃ®ne Topic seule = proposition Ã  vÃ©rifier, jamais rÃ©paration auto.
+  // Une chaîne Topic seule = proposition �  vérifier, jamais réparation auto.
   if (topicArtistValid) {
     return {
       videoId: song.videoId,
@@ -10455,11 +10455,11 @@ function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRe
       proposedArtistName: topicArtist,
       channelTitle: song.channelTitle,
       source: "TOPIC_CHANNEL",
-      sourceLabel: "ChaÃ®ne YouTube Topic seule",
+      sourceLabel: "Chaîne YouTube Topic seule",
       confidence: 75,
       level: "review",
       reason:
-        "La chaÃ®ne Topic suggÃ¨re cet artiste, mais le titre YouTube ne fournit pas un second signal indÃ©pendant concordant.",
+        "La chaîne Topic suggère cet artiste, mais le titre YouTube ne fournit pas un second signal indépendant concordant.",
     };
   }
 
@@ -10473,17 +10473,17 @@ function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRe
       proposedArtistName: titleArtist,
       channelTitle: song.channelTitle,
       source: "TITLE_PREFIX",
-      sourceLabel: "Artiste prÃ©sent avant le sÃ©parateur du titre YouTube",
+      sourceLabel: "Artiste présent avant le séparateur du titre YouTube",
       confidence: 70,
       level: "review",
       reason:
-        "Le titre suggÃ¨re cet artiste, mais la chaÃ®ne YouTube ne le confirme pas. VÃ©rification manuelle nÃ©cessaire.",
+        "Le titre suggère cet artiste, mais la chaîne YouTube ne le confirme pas. Vérification manuelle nécessaire.",
     };
   }
 
   // Nouvelle analyse locale : proposition uniquement.
-  // Elle ne devient jamais automatique Ã  elle seule, car elle repose sur
-  // les mÃªmes mÃ©tadonnÃ©es dÃ©jÃ  utilisÃ©es pour interprÃ©ter le titre/chaÃ®ne.
+  // Elle ne devient jamais automatique �  elle seule, car elle repose sur
+  // les mêmes métadonnées déj�  utilisées pour interpréter le titre/chaîne.
   const reparsed = extractMusicMetadata({
     rawTitle,
     channelTitle,
@@ -10505,11 +10505,11 @@ function proposeMusicBrainArtistRepair(song: MusicBrainSong): MusicBrainArtistRe
       proposedArtistName: reparsedArtist,
       channelTitle: song.channelTitle,
       source: "METADATA_REPARSE",
-      sourceLabel: "Nouvelle analyse locale des mÃ©tadonnÃ©es",
+      sourceLabel: "Nouvelle analyse locale des métadonnées",
       confidence: Math.min(85, Number(reparsed.metadataConfidence || 0)),
       level: "review",
       reason:
-        "La nouvelle analyse propose cet artiste, mais elle ne constitue pas un second signal indÃ©pendant suffisant pour une correction automatique.",
+        "La nouvelle analyse propose cet artiste, mais elle ne constitue pas un second signal indépendant suffisant pour une correction automatique.",
     };
   }
 
@@ -10563,7 +10563,7 @@ function musicBrainArtistRepairReport() {
     reviewProposals,
     unresolved: unresolved.slice(0, 1000),
     note:
-      "Aucun appel YouTube. Seules les rÃ©parations avec preuve forte peuvent Ãªtre appliquÃ©es automatiquement. Les propositions basÃ©es sur le titre seul restent manuelles.",
+      "Aucun appel YouTube. Seules les réparations avec preuve forte peuvent être appliquées automatiquement. Les propositions basées sur le titre seul restent manuelles.",
   };
 }
 
@@ -10725,11 +10725,11 @@ function musicBrainArtistConsensus(song: MusicBrainSong): MusicBrainConsensusRes
       addSignal(currentArtist, "CHANNEL", 2);
     }
 
-    // V3.1 â€” seconde passe :
+    // V3.1 — seconde passe :
     // 1) le titre brut contient explicitement l'artiste actuel ;
-    // 2) un alias dÃ©jÃ  appris de CET artiste apparaÃ®t dans le titre/chaÃ®ne.
-    // Ces signaux servent surtout Ã  valider les QUERY_FALLBACK lÃ©gitimes,
-    // jamais Ã  remplacer seuls un artiste par un autre.
+    // 2) un alias déj�  appris de CET artiste apparaît dans le titre/chaîne.
+    // Ces signaux servent surtout �  valider les QUERY_FALLBACK légitimes,
+    // jamais �  remplacer seuls un artiste par un autre.
     const rawIdentityKey = normalizeMusicQuery(
       `${song.rawTitle || ""} ${song.title || ""}`
     );
@@ -10743,7 +10743,7 @@ function musicBrainArtistConsensus(song: MusicBrainSong): MusicBrainConsensusRes
 
     // LRCLIB peut renvoyer "Artiste feat. X" alors que MusicBrain stocke
     // uniquement l'artiste principal. On confirme alors l'artiste actuel
-    // sans crÃ©er un faux dossier multi-artistes.
+    // sans créer un faux dossier multi-artistes.
     if (
       validRepairArtist(lrclibArtist) &&
       artistParticipantMatch(lrclibArtist, currentArtist)
@@ -10764,8 +10764,8 @@ function musicBrainArtistConsensus(song: MusicBrainSong): MusicBrainConsensusRes
   }
 
   if (validConsensusArtist(lrclibArtist)) {
-    // LRCLIB ne compte ici que lorsque les paroles synchronisÃ©es ont
-    // rÃ©ellement Ã©tÃ© validÃ©es pour ce videoId.
+    // LRCLIB ne compte ici que lorsque les paroles synchronisées ont
+    // réellement été validées pour ce videoId.
     addSignal(lrclibArtist, "LRCLIB", 3);
   }
 
@@ -10782,7 +10782,7 @@ function musicBrainArtistConsensus(song: MusicBrainSong): MusicBrainConsensusRes
       artistName: currentArtist || "Artiste inconnu",
       confidence: 0,
       signals: [],
-      reason: "Aucun signal indÃ©pendant exploitable.",
+      reason: "Aucun signal indépendant exploitable.",
     };
   }
 
@@ -10809,7 +10809,7 @@ function musicBrainArtistConsensus(song: MusicBrainSong): MusicBrainConsensusRes
   );
 
   // Le meilleur consensus pointe vers un autre artiste :
-  // correction automatique seulement avec au moins deux preuves indÃ©pendantes.
+  // correction automatique seulement avec au moins deux preuves indépendantes.
   if (
     currentKey &&
     !sameMusicBrainArtist(best.artistName, currentArtist)
@@ -10821,7 +10821,7 @@ function musicBrainArtistConsensus(song: MusicBrainSong): MusicBrainConsensusRes
         proposedArtistName: best.artistName,
         confidence: Math.max(92, confidence),
         signals,
-        reason: `Consensus fort vers Â« ${best.artistName} Â» (${signals.join(" + ")}).`,
+        reason: `Consensus fort vers « ${best.artistName} » (${signals.join(" + ")}).`,
       };
     }
 
@@ -10831,18 +10831,18 @@ function musicBrainArtistConsensus(song: MusicBrainSong): MusicBrainConsensusRes
       proposedArtistName: best.artistName,
       confidence,
       signals,
-      reason: `Une correction vers Â« ${best.artistName} Â» est plausible, mais les preuves ne sont pas assez indÃ©pendantes.`,
+      reason: `Une correction vers « ${best.artistName} » est plausible, mais les preuves ne sont pas assez indépendantes.`,
     };
   }
 
-  // L'identitÃ© actuelle est confirmÃ©e par des sources concordantes.
+  // L'identité actuelle est confirmée par des sources concordantes.
   if (sameMusicBrainArtist(best.artistName, currentArtist) && hasIndependentPair) {
     return {
       resolution: "auto_validated",
       artistName: currentArtist,
       confidence: Math.max(90, confidence),
       signals,
-      reason: `IdentitÃ© confirmÃ©e automatiquement (${signals.join(" + ")}).`,
+      reason: `Identité confirmée automatiquement (${signals.join(" + ")}).`,
     };
   }
 
@@ -10851,7 +10851,7 @@ function musicBrainArtistConsensus(song: MusicBrainSong): MusicBrainConsensusRes
     artistName: currentArtist || "Artiste inconnu",
     confidence,
     signals,
-    reason: "MusicBrain conserve ce morceau pour vÃ©rification humaine.",
+    reason: "MusicBrain conserve ce morceau pour vérification humaine.",
   };
 }
 
@@ -10954,19 +10954,19 @@ function musicBrainManualReviewCategoryLabel(
 ) {
   switch (category) {
     case "aggregator_channel":
-      return "ChaÃ®ne / agrÃ©gateur";
+      return "Chaîne / agrégateur";
     case "query_fallback":
-      return "Artiste dÃ©duit de la recherche";
+      return "Artiste déduit de la recherche";
     case "featuring_conflict":
       return "Featuring / artistes multiples";
     case "lrclib_conflict":
       return "Conflit LRCLIB";
     case "short_artist":
-      return "Nom artiste trÃ¨s court";
+      return "Nom artiste très court";
     case "weak_identity":
-      return "IdentitÃ© trop faible";
+      return "Identité trop faible";
     case "metadata_conflict":
-      return "Conflit titre / chaÃ®ne";
+      return "Conflit titre / chaîne";
     default:
       return "Autre cas ambigu";
   }
@@ -10978,7 +10978,7 @@ function musicBrainAutomaticActionDecision(
   const publication = musicBrainPublicationDecision(song);
   const thirdPass = musicBrainThirdPassDecision(song);
 
-  // DÃ©jÃ  validÃ© par consensus ou sauvÃ© par la 3e passe : aucune Ã©criture nÃ©cessaire.
+  // Déj�  validé par consensus ou sauvé par la 3e passe : aucune écriture nécessaire.
   if (thirdPass.resolution === "auto_validated") {
     return {
       action: "validate",
@@ -10988,8 +10988,8 @@ function musicBrainAutomaticActionDecision(
     };
   }
 
-  // V3.2 : si l'interface sait dÃ©jÃ  afficher "Auto-corrigeable",
-  // le backend utilise EXACTEMENT cette mÃªme dÃ©cision pour agir.
+  // V3.2 : si l'interface sait déj�  afficher "Auto-corrigeable",
+  // le backend utilise EXACTEMENT cette même décision pour agir.
   if (
     thirdPass.resolution === "auto_fixable" &&
     thirdPass.proposedArtistName &&
@@ -11034,9 +11034,9 @@ function musicBrainPublicationDecision(song: MusicBrainSong): MusicBrainPublicat
     };
   }
 
-  // V3.4.1 â€” une validation humaine explicite est dÃ©finitive pour cette
-  // identitÃ© tant que le morceau n'est pas rÃ©attribuÃ© Ã  un autre artiste.
-  // C'est ce marqueur qui fait rÃ©ellement sortir le morceau de "Ã€ traiter".
+  // V3.4.1 — une validation humaine explicite est définitive pour cette
+  // identité tant que le morceau n'est pas réattribué �  un autre artiste.
+  // C'est ce marqueur qui fait réellement sortir le morceau de "À traiter".
   if (song.manualValidatedAt) {
     return {
       status: "ready",
@@ -11186,8 +11186,8 @@ function musicBrainThirdPassDecision(song: MusicBrainSong) {
     artistFromTopicChannel(song.channelTitle || "")
   );
 
-  // 3e passe sÃ»re :
-  // agrÃ©gateur (ex. 7clouds) + titre + LRCLIB parfaitement concordants.
+  // 3e passe sûre :
+  // agrégateur (ex. 7clouds) + titre + LRCLIB parfaitement concordants.
   if (
     category === "aggregator_channel" &&
     validConsensusArtist(titleArtist) &&
@@ -11204,7 +11204,7 @@ function musicBrainThirdPassDecision(song: MusicBrainSong) {
     };
   }
 
-  // Topic + LRCLIB concordants vers le mÃªme artiste.
+  // Topic + LRCLIB concordants vers le même artiste.
   if (
     validConsensusArtist(topicArtist) &&
     validConsensusArtist(lrclibArtist) &&
@@ -11222,7 +11222,7 @@ function musicBrainThirdPassDecision(song: MusicBrainSong) {
   }
 
   // QUERY_FALLBACK : on valide seulement si le titre brut contient l'artiste
-  // actuel ET LRCLIB confirme exactement le mÃªme artiste.
+  // actuel ET LRCLIB confirme exactement le même artiste.
   if (
     category === "query_fallback" &&
     validConsensusArtist(currentArtist) &&
@@ -11320,8 +11320,8 @@ function musicBrainAutoAcceptV35Decision(
     proposedValid &&
     !lrclibSupportsProposed;
 
-  // 1) Une correction dÃ©jÃ  proposÃ©e par MusicBrain devient automatique
-  // dÃ¨s qu'elle est assez confiante ET qu'aucune source forte ne la contredit.
+  // 1) Une correction déj�  proposée par MusicBrain devient automatique
+  // dès qu'elle est assez confiante ET qu'aucune source forte ne la contredit.
   if (
     proposedValid &&
     publication.consensusConfidence >= 80 &&
@@ -11346,8 +11346,8 @@ function musicBrainAutoAcceptV35Decision(
     }
   }
 
-  // 2) QUERY_FALLBACK : si l'artiste actuel est rÃ©ellement Ã©crit dans le titre
-  // et qu'aucun LRCLIB ne le contredit, on arrÃªte de demander une validation humaine.
+  // 2) QUERY_FALLBACK : si l'artiste actuel est réellement écrit dans le titre
+  // et qu'aucun LRCLIB ne le contredit, on arrête de demander une validation humaine.
   if (
     category === "query_fallback" &&
     currentKey &&
@@ -11366,7 +11366,7 @@ function musicBrainAutoAcceptV35Decision(
   }
 
   // 3) LRCLIB confirme exactement l'artiste actuel : validation automatique,
-  // mÃªme si la source initiale Ã©tait faible.
+  // même si la source initiale était faible.
   if (
     lrclibSupportsCurrent &&
     publication.consensusConfidence >= 60
@@ -11379,7 +11379,7 @@ function musicBrainAutoAcceptV35Decision(
     };
   }
 
-  // 4) Les cas rÃ©ellement contradictoires restent manuels :
+  // 4) Les cas réellement contradictoires restent manuels :
   // exemple MHD vs Black Eyed Peas/Shakira.
   return {
     action: "manual",
@@ -11493,7 +11493,7 @@ function musicBrainAutoAcceptV35Preview() {
     policy: {
       minimumProposalConfidence: 80,
       note:
-        "V3.5 accepte automatiquement les propositions cohÃ©rentes sans contradiction forte. Les conflits LRCLIB rÃ©els restent manuels.",
+        "V3.5 accepte automatiquement les propositions cohérentes sans contradiction forte. Les conflits LRCLIB réels restent manuels.",
     },
   };
 }
@@ -11585,7 +11585,7 @@ function applyMusicBrainArtistRepair(proposal: MusicBrainArtistRepairProposal) {
   const song = musicBrain.songs[proposal.videoId];
   if (!song) return false;
 
-  // On recalcule au moment de l'action pour ne jamais appliquer une proposition obsolÃ¨te.
+  // On recalcule au moment de l'action pour ne jamais appliquer une proposition obsolète.
   const freshProposal = proposeMusicBrainArtistRepair(song);
   if (
     !freshProposal ||
@@ -11749,7 +11749,7 @@ app.post("/partybrain/maintenance/musicbrain-artist-repair/run", (req, res) => {
   return res.json({
     ok: true,
     ...result,
-    message: `${result.repaired} rÃ©paration(s) sÃ»re(s) appliquÃ©e(s). ${result.after.reviewProposalCount} proposition(s) restent Ã  vÃ©rifier et ${result.after.unresolvedCount} restent non rÃ©solue(s).`,
+    message: `${result.repaired} réparation(s) sûre(s) appliquée(s). ${result.after.reviewProposalCount} proposition(s) restent �  vérifier et ${result.after.unresolvedCount} restent non résolue(s).`,
   });
 });
 
@@ -11797,32 +11797,32 @@ function classifyMusicBrainReviewSong(song: MusicBrainSong, decisionReason: stri
   if (isSuspiciousArtistName(song.artistName) && repairProposal) {
     return {
       category: "artiste_probablement_mal_attribue",
-      categoryLabel: "Artiste probablement mal attribuÃ©",
-      explanation: `${song.artistName} peut Ãªtre rÃ©parÃ© en ${repairProposal.proposedArtistName} grÃ¢ce Ã  : ${repairProposal.sourceLabel}.`,
+      categoryLabel: "Artiste probablement mal attribué",
+      explanation: `${song.artistName} peut être réparé en ${repairProposal.proposedArtistName} gr�ce �  : ${repairProposal.sourceLabel}.`,
     };
   }
 
   if (artistKey.length > 0 && artistKey.length <= 3) {
     return {
       category: "nom_artiste_tres_court",
-      categoryLabel: "Nom artiste trÃ¨s court",
-      explanation: "Le nom dÃ©tectÃ© fait 3 caractÃ¨res ou moins et aucun signal assez fort ne confirme encore quâ€™il sâ€™agit bien de lâ€™artiste.",
+      categoryLabel: "Nom artiste très court",
+      explanation: "Le nom détecté fait 3 caractères ou moins et aucun signal assez fort ne confirme encore qu’il s’agit bien de l’artiste.",
     };
   }
 
   if (song.metadataSource === "QUERY_FALLBACK" && !artistTitleMatch && !artistChannelMatch) {
     return {
       category: "query_fallback",
-      categoryLabel: "Artiste dÃ©duit de la recherche",
-      explanation: "Lâ€™artiste provient surtout du texte de recherche et nâ€™est confirmÃ© ni par le titre YouTube ni par la chaÃ®ne.",
+      categoryLabel: "Artiste déduit de la recherche",
+      explanation: "L’artiste provient surtout du texte de recherche et n’est confirmé ni par le titre YouTube ni par la chaîne.",
     };
   }
 
   if (confidence < 35 && !artistTitleMatch && !artistChannelMatch) {
     return {
       category: "confiance_tres_faible",
-      categoryLabel: "Confiance trÃ¨s faible",
-      explanation: `Confiance mÃ©tadonnÃ©es ${Math.round(confidence)} %. Lâ€™identitÃ© du morceau est trop incertaine pour Ãªtre apprise automatiquement.`,
+      categoryLabel: "Confiance très faible",
+      explanation: `Confiance métadonnées ${Math.round(confidence)} %. L’identité du morceau est trop incertaine pour être apprise automatiquement.`,
     };
   }
 
@@ -11830,25 +11830,25 @@ function classifyMusicBrainReviewSong(song: MusicBrainSong, decisionReason: stri
     return {
       category: "confiance_faible",
       categoryLabel: "Confiance faible",
-      explanation: `Confiance mÃ©tadonnÃ©es ${Math.round(confidence)} %. Le morceau peut Ãªtre correct, mais PartyBrain manque de preuves.`,
+      explanation: `Confiance métadonnées ${Math.round(confidence)} %. Le morceau peut être correct, mais PartyBrain manque de preuves.`,
     };
   }
 
   if (!artistChannelMatch && !trustedChannel) {
     return {
       category: "chaine_non_coherente",
-      categoryLabel: "ChaÃ®ne non cohÃ©rente",
-      explanation: "Le nom de la chaÃ®ne YouTube ne confirme pas clairement lâ€™artiste dÃ©tectÃ©.",
+      categoryLabel: "Chaîne non cohérente",
+      explanation: "Le nom de la chaîne YouTube ne confirme pas clairement l’artiste détecté.",
     };
   }
 
   return {
     category: "identite_non_confirmee",
-    categoryLabel: "IdentitÃ© non confirmÃ©e",
+    categoryLabel: "Identité non confirmée",
     explanation:
       decisionReason === "metadata_faible"
-        ? "Les mÃ©tadonnÃ©es sont insuffisantes pour apprendre automatiquement ce morceau."
-        : "Plusieurs signaux existent, mais pas assez pour confirmer lâ€™identitÃ© avec certitude.",
+        ? "Les métadonnées sont insuffisantes pour apprendre automatiquement ce morceau."
+        : "Plusieurs signaux existent, mais pas assez pour confirmer l’identité avec certitude.",
   };
 }
 
@@ -11933,18 +11933,18 @@ function musicBrainCleanupReport() {
       song.metadataSource === "ART_TRACK_DESCRIPTION" ||
       confidence >= 72;
 
-    // Une faible confiance ou QUERY_FALLBACK ne suffit plus du tout Ã  mettre
-    // un vrai artiste en "Ã  vÃ©rifier".
-    // Exemple : "Charles Aznavour - Hier encore" confirme dÃ©jÃ  Aznavour dans le titre,
-    // mÃªme si la chaÃ®ne YouTube est un festival et que la confiance vaut 1 %.
+    // Une faible confiance ou QUERY_FALLBACK ne suffit plus du tout �  mettre
+    // un vrai artiste en "�  vérifier".
+    // Exemple : "Charles Aznavour - Hier encore" confirme déj�  Aznavour dans le titre,
+    // même si la chaîne YouTube est un festival et que la confiance vaut 1 %.
     const positivelyConfirmed =
       artistTitleMatch ||
       artistChannelMatch ||
       trustedChannel ||
       strongMetadata;
 
-    // Les noms trÃ¨s courts restent Ã  vÃ©rifier sauf signal fort,
-    // car "ART", "TV", "DJ"... sont particuliÃ¨rement ambigus.
+    // Les noms très courts restent �  vérifier sauf signal fort,
+    // car "ART", "TV", "DJ"... sont particulièrement ambigus.
     const veryShortArtist = artistKey.length > 0 && artistKey.length <= 3;
     const shortNameConfirmed =
       veryShortArtist &&
@@ -11967,7 +11967,7 @@ function musicBrainCleanupReport() {
     };
 
     // Nettoyage automatique volontairement conservateur :
-    // on supprime seulement les erreurs Ã©videntes.
+    // on supprime seulement les erreurs évidentes.
     if (
       !decision.learn &&
       (
@@ -12036,16 +12036,16 @@ function musicBrainCleanupReport() {
       })
       .slice(0, 1000),
     policy:
-      "Suppression automatique uniquement des erreurs Ã©videntes. Une entrÃ©e nâ€™est classÃ©e Ã  vÃ©rifier que si aucun signal fiable (titre, chaÃ®ne, Topic/Official ou mÃ©tadonnÃ©es fortes) ne confirme lâ€™artiste.",
+      "Suppression automatique uniquement des erreurs évidentes. Une entrée n’est classée �  vérifier que si aucun signal fiable (titre, chaîne, Topic/Official ou métadonnées fortes) ne confirme l’artiste.",
   };
 }
 
 function cleanMusicBrainDatabase() {
   const report = musicBrainCleanupReport();
-  const removedVideoIds = new Set(report.examples.map(() => "")); // remplacÃ© juste aprÃ¨s
+  const removedVideoIds = new Set(report.examples.map(() => "")); // remplacé juste après
   removedVideoIds.clear();
 
-  // Recalcule la liste complÃ¨te, pas seulement les exemples.
+  // Recalcule la liste complète, pas seulement les exemples.
   for (const song of Object.values(musicBrain.songs)) {
     const decision = musicBrainLearningDecision({
       artistName: song.artistName,
@@ -12108,7 +12108,7 @@ function cleanMusicBrainDatabase() {
     }
   }
 
-  // Supprime aussi les rÃ©fÃ©rences de collaborateurs vers des artistes disparus.
+  // Supprime aussi les références de collaborateurs vers des artistes disparus.
   for (const artist of Object.values(musicBrain.artists)) {
     for (const collaboratorKey of Object.keys(artist.collaborators || {})) {
       if (removedArtistKeys.has(collaboratorKey)) {
@@ -12286,7 +12286,7 @@ function musicBrainAutoFixPreview() {
       minimumConfidence: 90,
       minimumIndependentSignals: 2,
       note:
-        "V3.2 applique exactement la dÃ©cision dÃ©jÃ  affichÃ©e comme Auto-corrigeable dans l'onglet QualitÃ©.",
+        "V3.2 applique exactement la décision déj�  affichée comme Auto-corrigeable dans l'onglet Qualité.",
     },
   };
 }
@@ -12358,7 +12358,7 @@ app.get("/partybrain/musicbrain-quality/diagnostic", (_req, res) => {
     stillManual,
     categories,
     note:
-      "Le diagnostic groupe uniquement les cas encore ambigus aprÃ¨s les trois passes. Aucune rÃ¨gle n'abaisse le seuil de sÃ©curitÃ©.",
+      "Le diagnostic groupe uniquement les cas encore ambigus après les trois passes. Aucune règle n'abaisse le seuil de sécurité.",
   });
 });
 
@@ -12393,7 +12393,7 @@ app.get("/partybrain/musicbrain-second-pass/preview", (_req, res) => {
     remainingManualCount: remaining.length,
     remaining: remaining.slice(0, 300),
     note:
-      "V3.1 applique une seconde passe locale et sÃ»re. Aucun appel YouTube et aucune correction forcÃ©e des cas encore ambigus.",
+      "V3.1 applique une seconde passe locale et sûre. Aucun appel YouTube et aucune correction forcée des cas encore ambigus.",
   });
 });
 
@@ -12460,8 +12460,8 @@ app.post("/partybrain/maintenance/musicbrain-autofix/run", (req, res) => {
     before,
     after,
     message:
-      `${corrected} correction(s) sÃ»re(s) appliquÃ©e(s) automatiquement. ` +
-      `${after.manualReview} morceau(x) restent rÃ©ellement Ã  vÃ©rifier par toi.`,
+      `${corrected} correction(s) sûre(s) appliquée(s) automatiquement. ` +
+      `${after.manualReview} morceau(x) restent réellement �  vérifier par toi.`,
   });
 });
 
@@ -12479,7 +12479,7 @@ app.post("/partybrain/maintenance/musicbrain-category-validation/apply", (req, r
     : [];
 
   if (!category) {
-    return res.status(400).json({ error: "CatÃ©gorie de validation manquante." });
+    return res.status(400).json({ error: "Catégorie de validation manquante." });
   }
 
   const candidates = Object.values(musicBrain.songs).filter((song) => {
@@ -12497,14 +12497,14 @@ app.post("/partybrain/maintenance/musicbrain-category-validation/apply", (req, r
 
   if (!selected.length) {
     return res.status(400).json({
-      error: "Aucun morceau sÃ©lectionnÃ© dans cette catÃ©gorie.",
+      error: "Aucun morceau sélectionné dans cette catégorie.",
     });
   }
 
   const validatedAt = Date.now();
 
   for (const song of selected) {
-    // Validation humaine = l'identitÃ© actuellement affichÃ©e est confirmÃ©e.
+    // Validation humaine = l'identité actuellement affichée est confirmée.
     // Aucun changement de titre ou d'artiste.
     song.metadataConfidence = Math.max(
       Number(song.metadataConfidence || 0),
@@ -12538,9 +12538,9 @@ app.post("/partybrain/maintenance/musicbrain-category-validation/apply", (req, r
     validated: selected.length,
     remainingInCategory,
     message:
-      `${selected.length} morceau(x) validÃ©(s) dans Â« ${musicBrainManualReviewCategoryLabel(
+      `${selected.length} morceau(x) validé(s) dans « ${musicBrainManualReviewCategoryLabel(
         category as MusicBrainManualReviewCategory
-      )} Â». ${remainingInCategory} restent Ã  vÃ©rifier dans cette catÃ©gorie.`,
+      )} ». ${remainingInCategory} restent �  vérifier dans cette catégorie.`,
     summary: musicBrainPublicationSummary(),
   });
 });
@@ -12606,9 +12606,9 @@ app.post("/partybrain/maintenance/musicbrain-auto-accept-v35/run", (req, res) =>
     before,
     after,
     message:
-      `${validatedCurrent + correctedArtist} morceau(x) acceptÃ©(s) automatiquement par MusicBrain V3.5 : ` +
+      `${validatedCurrent + correctedArtist} morceau(x) accepté(s) automatiquement par MusicBrain V3.5 : ` +
       `${validatedCurrent} validation(s) directe(s), ${correctedArtist} correction(s) artiste. ` +
-      `${after.stillManual} cas restent rÃ©ellement contradictoires.`,
+      `${after.stillManual} cas restent réellement contradictoires.`,
   });
 });
 
@@ -12740,10 +12740,10 @@ app.post("/partybrain/maintenance/musicbrain-artist-repair/apply-selected", (req
 
   const selections = Array.isArray(req.body?.selections) ? req.body.selections : [];
   if (!selections.length) {
-    return res.status(400).json({ error: "Aucune proposition sÃ©lectionnÃ©e." });
+    return res.status(400).json({ error: "Aucune proposition sélectionnée." });
   }
 
-  // SÃ©curitÃ© : on limite une validation manuelle Ã  200 propositions Ã  la fois.
+  // Sécurité : on limite une validation manuelle �  200 propositions �  la fois.
   const safeSelections = selections.slice(0, 200);
 
   const applied: Array<{
@@ -12788,7 +12788,7 @@ app.post("/partybrain/maintenance/musicbrain-artist-repair/apply-selected", (req
     applied,
     skipped,
     report: musicBrainArtistRepairReport(),
-    message: `${applied.length} proposition(s) sÃ©lectionnÃ©e(s) validÃ©e(s). ${skipped.length} ignorÃ©e(s).`,
+    message: `${applied.length} proposition(s) sélectionnée(s) validée(s). ${skipped.length} ignorée(s).`,
   });
 });
 
@@ -12808,7 +12808,7 @@ app.post("/partybrain/maintenance/musicbrain-cleanup/run", (req, res) => {
   const after = musicBrainCleanupReport();
 
   console.log(
-    `ðŸ§¹ MusicBrain nettoyÃ© : ${result.deletedSongs} morceau(x), ${result.deletedArtists} artiste(s) supprimÃ©(s).`
+    `🧹 MusicBrain nettoyé : ${result.deletedSongs} morceau(x), ${result.deletedArtists} artiste(s) supprimé(s).`
   );
 
   return res.json({
@@ -12816,7 +12816,7 @@ app.post("/partybrain/maintenance/musicbrain-cleanup/run", (req, res) => {
     before,
     result,
     after,
-    message: `MusicBrain nettoyÃ© : ${result.deletedSongs} morceau(x) douteux supprimÃ©(s), ${result.deletedArtists} artiste(s) vide(s) supprimÃ©(s).`,
+    message: `MusicBrain nettoyé : ${result.deletedSongs} morceau(x) douteux supprimé(s), ${result.deletedArtists} artiste(s) vide(s) supprimé(s).`,
   });
 });
 
@@ -12832,7 +12832,7 @@ app.post("/partybrain/maintenance/youtube-cache/clear", (req, res) => {
   const expectedToken = String(process.env.PARTYBRAIN_ADMIN_TOKEN || "").trim();
   if (!expectedToken) {
     return res.status(503).json({
-      error: "Maintenance dÃ©sactivÃ©e : configure PARTYBRAIN_ADMIN_TOKEN sur Railway.",
+      error: "Maintenance désactivée : configure PARTYBRAIN_ADMIN_TOKEN sur Railway.",
     });
   }
 
@@ -12846,12 +12846,12 @@ app.post("/partybrain/maintenance/youtube-cache/clear", (req, res) => {
   youtubeSearchesInFlight.clear();
   saveYoutubeCache();
 
-  console.log(`ðŸ§¹ Cache YouTube vidÃ© depuis l'administration : ${deletedEntries} entrÃ©e(s) supprimÃ©e(s).`);
+  console.log(`🧹 Cache YouTube vidé depuis l'administration : ${deletedEntries} entrée(s) supprimée(s).`);
   return res.json({
     ok: true,
     deletedEntries,
     remainingEntries: youtubeSearchCache.size,
-    message: `Cache YouTube vidÃ© : ${deletedEntries} entrÃ©e(s) supprimÃ©e(s). PartyBrain est conservÃ©.`,
+    message: `Cache YouTube vidé : ${deletedEntries} entrée(s) supprimée(s). PartyBrain est conservé.`,
   });
 });
 app.get("/partybrain/academy", (_req, res) => res.json(academyDashboard()));
@@ -12859,7 +12859,7 @@ app.get("/partybrain/academy", (_req, res) => res.json(academyDashboard()));
 app.post("/partybrain/academy/test-one", async (req, res) => {
   if (!requirePartyBrainAdmin(req, res)) return;
   if (academyState.running) {
-    return res.status(409).json({ error: "Academy est dÃ©jÃ  en cours." });
+    return res.status(409).json({ error: "Academy est déj�  en cours." });
   }
 
   const snapshot = academyQuotaSnapshot();
@@ -12875,7 +12875,7 @@ app.post("/partybrain/academy/test-one", async (req, res) => {
   const beforeSongs = Object.keys(musicBrain.songs).length;
   addAcademyLog(
     "info",
-    `TEST 1 RECHERCHE â€” ${mission.mode === "karaoke" ? "Audio prioritaire" : "DÃ©couverte"} : ${mission.query}`,
+    `TEST 1 RECHERCHE — ${mission.mode === "karaoke" ? "Audio prioritaire" : "Découverte"} : ${mission.query}`,
     { artist: mission.name, query: mission.query }
   );
 
@@ -12957,9 +12957,9 @@ app.post("/partybrain/academy/test-one", async (req, res) => {
     const message =
       mission.mode === "karaoke"
         ? acceptedCount
-          ? `TEST OK â€” ${mission.name} â€” ${mission.sourceSong.title} : version ${foundKind === "topic" ? "Topic / Art Track" : "Official Audio"} trouvÃ©e.`
-          : `TEST OK â€” ${mission.name} â€” ${mission.sourceSong.title} : aucune version audio fiable trouvÃ©e.`
-        : `TEST OK â€” ${mission.name} : ${acceptedCount} rÃ©sultat(s) acceptÃ©(s), ${rejectedCount} Ã©cartÃ©(s), +${added} nouveau(x) morceau(x).`;
+          ? `TEST OK — ${mission.name} — ${mission.sourceSong.title} : version ${foundKind === "topic" ? "Topic / Art Track" : "Official Audio"} trouvée.`
+          : `TEST OK — ${mission.name} — ${mission.sourceSong.title} : aucune version audio fiable trouvée.`
+        : `TEST OK — ${mission.name} : ${acceptedCount} résultat(s) accepté(s), ${rejectedCount} écarté(s), +${added} nouveau(x) morceau(x).`;
 
     addAcademyLog(acceptedCount > 0 ? "success" : "info", message, {
       artist: mission.name,
@@ -12982,7 +12982,7 @@ app.post("/partybrain/academy/test-one", async (req, res) => {
       message,
     });
   } catch (error: any) {
-    addAcademyLog("error", `TEST 1 RECHERCHE Ã©chouÃ© : ${error?.message || "erreur inconnue"}.`, {
+    addAcademyLog("error", `TEST 1 RECHERCHE échoué : ${error?.message || "erreur inconnue"}.`, {
       artist: mission.name,
       query: mission.query,
     });
@@ -12996,11 +12996,11 @@ app.post("/partybrain/academy/test-one", async (req, res) => {
 
 app.post("/partybrain/academy/run", async (_req, res) => {
   if (String(process.env.PARTYBRAIN_ACADEMY_ALLOW_MANUAL || "false").toLowerCase() !== "true") {
-    return res.status(403).json({ error: "Lancement manuel dÃ©sactivÃ©" });
+    return res.status(403).json({ error: "Lancement manuel désactivé" });
   }
-  if (academyState.running) return res.status(409).json({ error: "Academy dÃ©jÃ  en cours" });
+  if (academyState.running) return res.status(409).json({ error: "Academy déj�  en cours" });
   void runPartyBrainAcademy("manual");
-  return res.status(202).json({ ok: true, message: "Session Academy lancÃ©e" });
+  return res.status(202).json({ ok: true, message: "Session Academy lancée" });
 });
 app.get("/partybrain/graph", (_req, res) => {
   const stats = musicBrainStats();
@@ -13016,7 +13016,7 @@ app.get("/partybrain/graph", (_req, res) => {
 
 app.get("/party/:code/partybrain/recommendations", (req, res) => {
   const party = findParty(req.params.code);
-  if (!party) return res.status(404).json({ error: "SoirÃ©e introuvable" });
+  if (!party) return res.status(404).json({ error: "Soirée introuvable" });
 
   const limit = Math.max(1, Math.min(Number(req.query.limit || 10), 25));
   const recommendations = buildPartyBrainRecommendationScores(party, limit);
@@ -13041,7 +13041,7 @@ app.get("/party/:code/partybrain/recommendations", (req, res) => {
       votes: 10,
       hourFit: 7,
       freshness: 8,
-      penalties: "jusquâ€™Ã  -44",
+      penalties: "jusqu’�  -44",
     },
     recommendations,
     learningState: recommendations.length
@@ -13054,7 +13054,7 @@ app.get("/party/:code/partybrain/recommendations", (req, res) => {
   });
 });
 
-// Retourne uniquement le meilleur morceau PartyBrain pour une soirÃ©e.
+// Retourne uniquement le meilleur morceau PartyBrain pour une soirée.
 // Cette route est volontairement sans effet de bord :
 // elle ne modifie ni la file, ni le morceau courant, ni l'historique.
 app.get("/party/:code/partybrain/best-recommendation", (req, res) => {
@@ -13062,7 +13062,7 @@ app.get("/party/:code/partybrain/best-recommendation", (req, res) => {
 
   if (!party) {
     return res.status(404).json({
-      error: "SoirÃ©e introuvable",
+      error: "Soirée introuvable",
     });
   }
 
@@ -13074,7 +13074,7 @@ app.get("/party/:code/partybrain/best-recommendation", (req, res) => {
       error: "Aucune recommandation disponible",
       partyCode: party.code,
       scoringVersion: "partybrain-score-v1",
-      reason: "PartyBrain ne possÃ¨de pas encore de morceau compatible hors de la file actuelle.",
+      reason: "PartyBrain ne possède pas encore de morceau compatible hors de la file actuelle.",
     });
   }
 
@@ -13265,7 +13265,7 @@ function localMusicBrainArtistSuggestions(
         .map((value) => normalizeMusicQuery(value))
         .filter(Boolean);
 
-      // Important UX mobile : dÃ¨s "N", on propose Ninho / Niska / Niro...
+      // Important UX mobile : dès "N", on propose Ninho / Niska / Niro...
       return candidates.some((value) => value.startsWith(normalized));
     })
     .sort((a, b) => {
@@ -13363,11 +13363,11 @@ app.get("/search/artists", async (req, res) => {
     return res.json(cached.results.slice(0, limit));
   }
 
-  // 1) MusicBrain local d'abord : instantanÃ©, appris par MixParty, 0 quota YouTube.
+  // 1) MusicBrain local d'abord : instantané, appris par MixParty, 0 quota YouTube.
   const local = localMusicBrainArtistSuggestions(query, limit);
   let results = [...local];
 
-  // 2) Si le prÃ©fixe n'est pas assez connu localement, MusicBrainz complÃ¨te.
+  // 2) Si le préfixe n'est pas assez connu localement, MusicBrainz complète.
   // Toujours 0 appel YouTube.
   if (normalized && results.length < limit) {
     try {
@@ -13392,8 +13392,8 @@ app.get("/search/artists", async (req, res) => {
   }
 
   results = results.slice(0, limit);
-  // Ne jamais figer un rÃ©sultat vide pour un prÃ©fixe court :
-  // ex. "J" doit pouvoir dÃ©couvrir JUL dÃ¨s que MusicBrain/MusicBrainz le connaÃ®t.
+  // Ne jamais figer un résultat vide pour un préfixe court :
+  // ex. "J" doit pouvoir découvrir JUL dès que MusicBrain/MusicBrainz le connaît.
   if (results.length > 0) {
     artistSuggestionCache.set(cacheKey, {
       createdAt: Date.now(),
@@ -13454,7 +13454,7 @@ app.get("/search/youtube", async (req, res) => {
   }
 
   // Pas de cache approximatif ici : deux recherches proches peuvent viser
-  // des artistes ou des morceaux diffÃ©rents.
+  // des artistes ou des morceaux différents.
 
   const compactKey = compactMusicQuery(query);
   const alias = [...youtubeSearchCache.entries()].find(
@@ -13525,8 +13525,8 @@ app.get("/search/youtube", async (req, res) => {
 
     if (status === 429) {
       return res.status(429).json({
-        error: "Quota YouTube dÃ©passÃ©",
-        message: "La recherche musicale sera de nouveau disponible aprÃ¨s la remise Ã  zÃ©ro du quota.",
+        error: "Quota YouTube dépassé",
+        message: "La recherche musicale sera de nouveau disponible après la remise �  zéro du quota.",
       });
     }
 
@@ -13544,9 +13544,9 @@ httpServer.listen(
   "0.0.0.0",
   ()=>{
     
-    console.log(`API MixParty dÃ©marrÃ©e sur http://localhost:${port}`);
-    console.log(`ðŸ§  PartyBrain : ${process.env.PERSISTENT_DATA_DIR ? "volume Railway persistant" : "JSON local"}`);
-    console.log(`ðŸ’¾ DonnÃ©es : ${persistentDataDir}`);
+    console.log(`API MixParty démarrée sur http://localhost:${port}`);
+    console.log(`�  PartyBrain : ${process.env.PERSISTENT_DATA_DIR ? "volume Railway persistant" : "JSON local"}`);
+    console.log(`💾 Données : ${persistentDataDir}`);
 
   }
 );

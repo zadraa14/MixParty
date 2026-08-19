@@ -98,7 +98,7 @@ export default function PartyResultPage() {
       setLoading(false);
       if (!cached) {
         setMessage(
-          "Ce rÃ©cap est disponible immÃ©diatement aprÃ¨s la soirÃ©e. Pour le retrouver plus tard, utilise un compte MixParty.",
+          "Ce récap est disponible immédiatement après la soirée. Pour le retrouver plus tard, utilise un compte MixParty.",
         );
       }
       return;
@@ -124,7 +124,7 @@ export default function PartyResultPage() {
         if (!response.ok) {
           if (!cached) {
             throw new Error(
-              data?.error || "Impossible de retrouver ce rÃ©cap.",
+              data?.error || "Impossible de retrouver ce récap.",
             );
           }
           return;
@@ -144,7 +144,7 @@ export default function PartyResultPage() {
           setMessage(
             error instanceof Error
               ? error.message
-              : "Impossible de retrouver ce rÃ©cap.",
+              : "Impossible de retrouver ce récap.",
           );
         }
       } finally {
@@ -170,7 +170,7 @@ export default function PartyResultPage() {
         <div className="relative z-10 text-center">
           <div className="mx-auto h-12 w-12 animate-spin rounded-full border-2 border-white/10 border-t-fuchsia-400" />
           <p className="mt-4 text-sm font-black text-white/50">
-            GÃ©nÃ©ration du classementâ€¦
+            Génération du classement…
           </p>
         </div>
       </main>
@@ -183,14 +183,14 @@ export default function PartyResultPage() {
         <MixPartyBackground />
         <div className="relative z-10 w-full max-w-lg rounded-[30px] border border-white/10 bg-[#0b0813]/90 p-7 text-center backdrop-blur-2xl">
           <PartyPopper className="mx-auto h-10 w-10 text-fuchsia-300" />
-          <h1 className="mt-4 text-2xl font-black">RÃ©cap indisponible</h1>
+          <h1 className="mt-4 text-2xl font-black">Récap indisponible</h1>
           <p className="mt-3 text-sm leading-6 text-white/45">{message}</p>
           <button
             type="button"
             onClick={() => router.push("/")}
             className="mt-6 min-h-12 rounded-2xl border border-fuchsia-300/15 bg-fuchsia-500/10 px-5 text-sm font-black text-fuchsia-100"
           >
-            Retour Ã  lâ€™accueil
+            Retour �  l’accueil
           </button>
         </div>
       </main>
@@ -232,27 +232,27 @@ export default function PartyResultPage() {
           <div className="relative text-center">
             <span className="mx-auto inline-flex items-center gap-2 rounded-full border border-fuchsia-300/15 bg-fuchsia-500/[0.08] px-3 py-1.5 text-[10px] font-black uppercase tracking-[.18em] text-fuchsia-200">
               <PartyPopper className="h-3.5 w-3.5" />
-              SoirÃ©e terminÃ©e
+              Soirée terminée
             </span>
 
             <h1 className="mt-4 font-[family:var(--font-exo-2)] text-3xl font-black tracking-tight sm:text-5xl">
-              Classement de la soirÃ©e
+              Classement de la soirée
             </h1>
 
             <p className="mt-2 text-sm font-bold text-white/35">
-              {result.code} Â·{" "}
+              {result.code} ·{" "}
               {new Date(result.endedAt).toLocaleDateString("fr-FR", {
                 day: "2-digit",
                 month: "long",
                 year: "numeric",
               })}
-              {result.host?.name ? ` Â· organisÃ©e par ${result.host.name}` : ""}
+              {result.host?.name ? ` · organisée par ${result.host.name}` : ""}
             </p>
 
             <div className="mx-auto mt-6 grid max-w-3xl grid-cols-2 gap-2 sm:grid-cols-4">
               {[
                 {
-                  label: "DurÃ©e",
+                  label: "Durée",
                   value: formatDuration(result.durationMs),
                   Icon: Flame,
                   accent: "text-orange-200",
@@ -270,7 +270,7 @@ export default function PartyResultPage() {
                   accent: "text-fuchsia-200",
                 },
                 {
-                  label: "Titres jouÃ©s",
+                  label: "Titres joués",
                   value: result.songsPlayed,
                   Icon: Music2,
                   accent: "text-cyan-200",
@@ -300,7 +300,7 @@ export default function PartyResultPage() {
                 Le podium
               </p>
               <h2 className="mt-2 font-[family:var(--font-exo-2)] text-2xl font-black sm:text-3xl">
-                Les rois de la soirÃ©e
+                Les rois de la soirée
               </h2>
             </div>
 
@@ -385,7 +385,7 @@ export default function PartyResultPage() {
                 </h2>
               </div>
               <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[9px] font-black text-white/35">
-                {result.ranking.length} classÃ©s
+                {result.ranking.length} classés
               </span>
             </div>
 
@@ -428,7 +428,7 @@ export default function PartyResultPage() {
                           ) : null}
                         </p>
                         <p className="mt-0.5 text-[9px] font-bold text-white/28">
-                          {row.votesReceived} votes reÃ§us Â· {row.songsAdded} titres
+                          {row.votesReceived} votes reçus · {row.songsAdded} titres
                         </p>
                       </div>
                     </div>
@@ -443,10 +443,10 @@ export default function PartyResultPage() {
 
           <section className="rounded-[28px] border border-white/[0.08] bg-[#0b0813]/78 p-4 backdrop-blur-xl sm:p-5">
             <p className="text-[9px] font-black uppercase tracking-[.18em] text-orange-300">
-              Morceaux de la soirÃ©e
+              Morceaux de la soirée
             </p>
             <h2 className="mt-1 font-[family:var(--font-exo-2)] text-xl font-black">
-              Les plus votÃ©s
+              Les plus votés
             </h2>
 
             {bestSong ? (
@@ -466,7 +466,7 @@ export default function PartyResultPage() {
                   <div className="min-w-0">
                     <span className="inline-flex items-center gap-1 rounded-full border border-orange-300/15 bg-orange-500/10 px-2 py-1 text-[8px] font-black uppercase tracking-[.12em] text-orange-200">
                       <Flame className="h-3 w-3" />
-                      Banger de la soirÃ©e
+                      Banger de la soirée
                     </span>
                     <p className="mt-2 line-clamp-2 text-sm font-black">
                       {bestSong.title}
@@ -525,7 +525,7 @@ export default function PartyResultPage() {
             onClick={() => router.push("/")}
             className="min-h-12 w-full rounded-2xl border border-white/10 bg-white/[0.04] px-5 text-sm font-black text-white/55 transition hover:bg-white/[0.08] sm:w-auto"
           >
-            Retour Ã  lâ€™accueil
+            Retour �  l’accueil
           </button>
         </section>
       </div>

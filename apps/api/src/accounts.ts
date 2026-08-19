@@ -391,7 +391,7 @@ export function createAccountsStore(filePath: string) {
                   const role = entry.role === "host" ? "host" : "participant";
 
                   // Legacy entries were already counted immediately in older builds.
-                  // Mark them as counted so the migration never awards the same soirÃ©e twice.
+                  // Mark them as counted so the migration never awards the same soirée twice.
                   const participationCounted =
                     entry.participationCounted === undefined
                       ? true
@@ -871,7 +871,7 @@ export function createAccountsStore(filePath: string) {
         account = {
           id: randomUUID(),
           email,
-          // Compte crÃ©Ã© via Google : mot de passe alÃ©atoire inutilisable.
+          // Compte créé via Google : mot de passe aléatoire inutilisable.
           // L'utilisateur pourra utiliser Google pour ses connexions.
           passwordHash: hashPassword(randomBytes(32).toString("base64url")),
           googleSubject: subject,
@@ -1577,7 +1577,7 @@ export function createAccountsStore(filePath: string) {
         rank: index + 1,
         accountId: row.accountId,
         participantId: row.participantId,
-        name: row.name || account?.name || (row.isEphemeral ? "InvitÃ©" : "Compte MixParty"),
+        name: row.name || account?.name || (row.isEphemeral ? "Invité" : "Compte MixParty"),
         avatar: row.avatar || account?.avatar,
         isEphemeral: Boolean(row.isEphemeral),
         partyScore: Math.max(0, Number(row.partyScore || 0)),
@@ -2166,8 +2166,8 @@ export function createAccountsStore(filePath: string) {
 
     account.stats = createDefaultStats();
 
-    // Remet Ã  zÃ©ro les donnÃ©es qui alimentent les stats afin que les prochains
-    // tests puissent recompter proprement sans toucher Ã  l'identitÃ© ni aux badges.
+    // Remet �  zéro les données qui alimentent les stats afin que les prochains
+    // tests puissent recompter proprement sans toucher �  l'identité ni aux badges.
     account.history = [];
     account.progress = {
       playedSongKeys: [],
@@ -2300,9 +2300,9 @@ export function createAccountsStore(filePath: string) {
       entry.lastSeenAt = now;
       evaluateSongTimingBadges(account, partyCode, now);
     } else if (badgeId === "oiseau-de-nuit") {
-      // Simule un nouvel ajout aprÃ¨s plus de 3 h sans ajout.
-      // On avance uniquement l'instant simulÃ© afin que mÃªme un vrai morceau
-      // ajoutÃ© rÃ©cemment ne masque pas le scÃ©nario Admin.
+      // Simule un nouvel ajout après plus de 3 h sans ajout.
+      // On avance uniquement l'instant simulé afin que même un vrai morceau
+      // ajouté récemment ne masque pas le scénario Admin.
       const simulatedAddedAt = now + OISEAU_DE_NUIT_GAP_MS + 60_000;
       evaluateSongTimingBadges(account, partyCode, simulatedAddedAt);
     }
