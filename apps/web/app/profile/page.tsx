@@ -1698,11 +1698,27 @@ export default function ProfilePage() {
                   const rank = Number(entry.finalRank || 0);
                   const isWinner = rank === 1;
                   const isPodium = rank > 1 && rank <= 3;
+                  const hasRecap = Boolean(
+                    entry.endedAt ||
+                      entry.resultCounted ||
+                      rank > 0 ||
+                      typeof entry.partyScore === "number",
+                  );
 
                   return (
-                    <article
+                    <Link
                       key={`${entry.partyCode}-${entry.joinedAt}-${index}`}
-                      className={`group relative overflow-hidden rounded-[22px] border p-4 transition duration-300 hover:-translate-y-0.5 ${
+                      href={
+                        hasRecap
+                          ? `/party/${encodeURIComponent(entry.partyCode)}/result`
+                          : `/party/${encodeURIComponent(entry.partyCode)}`
+                      }
+                      aria-label={
+                        hasRecap
+                          ? `Voir le récap de la soirée ${entry.partyCode}`
+                          : `Retourner à la soirée ${entry.partyCode}`
+                      }
+                      className={`group relative block overflow-hidden rounded-[22px] border p-4 transition duration-300 hover:-translate-y-0.5 ${
                         isWinner
                           ? "border-amber-300/20 bg-gradient-to-r from-amber-500/[0.10] via-orange-500/[0.04] to-black/10"
                           : isPodium
@@ -1825,8 +1841,21 @@ export default function ProfilePage() {
                             </div>
                           ) : null}
                         </div>
+
+                        <div className="mt-1 flex items-center justify-end sm:col-span-2">
+                          <span
+                            className={`inline-flex items-center gap-1.5 text-[9px] font-black uppercase tracking-[.12em] transition ${
+                              hasRecap
+                                ? "text-fuchsia-200/70 group-hover:text-fuchsia-100"
+                                : "text-emerald-200/55 group-hover:text-emerald-100"
+                            }`}
+                          >
+                            {hasRecap ? "Voir le récap" : "Reprendre la soirée"}
+                            <span className="transition-transform duration-300 group-hover:translate-x-1">→</span>
+                          </span>
+                        </div>
                       </div>
-                    </article>
+                    </Link>
                   );
                 })}
 
