@@ -284,6 +284,16 @@ export default function PartyPage() {
 
   const [search, setSearch] = useState("");
   const [results, setResults] = useState<any[]>([]);
+  const [artistSuggestions, setArtistSuggestions] = useState<Array<{
+    id: string;
+    name: string;
+    imageUrl?: string;
+    source: "MUSICBRAIN" | "MUSICBRAINZ";
+    songCount?: number;
+    score?: number;
+    country?: string;
+  }>>([]);
+  const [artistSuggestionsLoading, setArtistSuggestionsLoading] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -1502,13 +1512,17 @@ export default function PartyPage() {
     });
   }
 
-  async function searchYoutube() {
-    if (!search.trim() || searching) return;
+  async function searchYoutube(queryOverride?: string) {
+    const query = String(queryOverride ?? search).trim();
+    if (!query || searching) return;
+
+    if (query !== search) {
+      setSearch(query);
+    }
 
     setSearching(true);
 
     try {
-      const query = search.trim();
       const [response, insightResponse] = await Promise.all([
         fetch(`${getApiBaseUrl()}/search/youtube?q=${encodeURIComponent(query)}&partyCode=${encodeURIComponent(code)}&actor=${encodeURIComponent(participantId || playerName || "guest")}`),
         fetch(`${getApiBaseUrl()}/partybrain/intelligence/insights/search?q=${encodeURIComponent(query)}`),
@@ -1525,7 +1539,7 @@ export default function PartyPage() {
       setResults(
         pool.map((video) => ({
           ...video,
-          sourceQuery: search.trim(),
+          sourceQuery: query,
           suggestionPool: pool,
         }))
       );
@@ -1533,6 +1547,45 @@ export default function PartyPage() {
       setSearching(false);
     }
   }
+
+
+  useEffect(() => {
+    if (activeMobileTab !== "add" || karaokeMode) return;
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setArtistSuggestionsLoading(true);
+      try {
+        const query = search.trim();
+        const response = await fetch(
+          `${getApiBaseUrl()}/search/artists?q=${encodeURIComponent(query)}&limit=10`,
+          { signal: controller.signal },
+        );
+
+        const data = await response.json();
+        if (!response.ok || !Array.isArray(data)) {
+          setArtistSuggestions([]);
+          return;
+        }
+
+        setArtistSuggestions(data);
+      } catch (error: any) {
+        if (error?.name !== "AbortError") {
+          console.error("Suggestions artistes indisponibles", error);
+          setArtistSuggestions([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setArtistSuggestionsLoading(false);
+        }
+      }
+    }, search.trim() ? 320 : 80);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [activeMobileTab, karaokeMode, search]);
 
   async function addYoutubeSong(video: any, additionSource: "manual_search" | "partybrain_suggestion" = "manual_search") {
     if (addingVideoId) return;
@@ -4291,7 +4344,320 @@ const canRemove =
               )}
             </section>
 
-            <section className={`${activeMobileTab === "add" ? "block" : "hidden"} premium-glass-card rounded-[24px] border border-white/10 bg-white/[0.045] p-3 backdrop-blur-xl sm:p-6 md:block md:rounded-[30px]`}>
+                        {/* =====================================================
+                MOBILE — RECHERCHE MUSIQUE V1
+                Suggestions artistes = MusicBrain/MusicBrainz, 0 quota YouTube.
+                YouTube n'est interrogé qu'au lancement d'une vraie recherche
+                si MusicBrain ne possède pas déjà assez de résultats.
+               ===================================================== */}
+            <section
+              className={`${activeMobileTab === "add" ? "block" : "hidden"} space-y-3 md:hidden`}
+              aria-label="Rechercher une musique"
+            >
+              {/* Mini lecture en cours */}
+              {party.currentSong ? (
+                <button
+                  type="button"
+                  onClick={() => switchMobileTab("playback")}
+                  className="flex w-full items-center gap-3 rounded-[20px] border border-white/[0.08] bg-[linear-gradient(135deg,rgba(26,15,39,.92),rgba(10,9,18,.96))] p-2.5 text-left shadow-[0_12px_34px_rgba(0,0,0,.22)]"
+                >
+                  <img
+                    src={getSongArtwork(party.currentSong)}
+                    alt=""
+                    className="h-12 w-12 shrink-0 rounded-[13px] border border-white/[0.08] object-cover"
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12px] font-black text-white">
+                      {party.currentSong.title}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[9px] font-semibold text-white/38">
+                      {party.currentSong.artistName || party.currentSong.addedBy}
+                    </span>
+                  </span>
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-fuchsia-300/20 bg-fuchsia-500/[0.10] text-fuchsia-200">
+                    {tvPlayback.state === 1 ? (
+                      <Pause className="h-4 w-4 fill-current" />
+                    ) : (
+                      <Play className="ml-0.5 h-4 w-4 fill-current" />
+                    )}
+                  </span>
+                </button>
+              ) : null}
+
+              {/* Recherche */}
+              <div className="rounded-[24px] border border-white/[0.08] bg-[radial-gradient(circle_at_100%_0%,rgba(236,72,153,.10),transparent_34%),linear-gradient(145deg,rgba(17,11,29,.96),rgba(8,7,14,.98))] p-3.5 shadow-[0_16px_44px_rgba(0,0,0,.26)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[8px] font-black uppercase tracking-[.17em] text-fuchsia-300">
+                      Ajouter un morceau
+                    </p>
+                    <h2 className="mt-0.5 font-[family:var(--font-exo-2)] text-lg font-black text-white">
+                      Trouve le son parfait
+                    </h2>
+                  </div>
+                  <span className="rounded-full border border-emerald-300/10 bg-emerald-500/[0.05] px-2.5 py-1 text-[7px] font-black text-emerald-300">
+                    MusicBrain
+                  </span>
+                </div>
+
+                <div className="relative mt-3">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-white/30" />
+                  <input
+                    value={search}
+                    onChange={(event) => setSearch(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        void searchYoutube();
+                      }
+                    }}
+                    placeholder="Rechercher un titre ou un artiste"
+                    autoComplete="off"
+                    className="h-12 w-full rounded-[17px] border border-white/[0.09] bg-black/25 pl-11 pr-12 text-[13px] font-semibold text-white outline-none placeholder:text-white/25 focus:border-fuchsia-300/35"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void searchYoutube()}
+                    disabled={!search.trim() || searching}
+                    className="absolute right-1.5 top-1/2 grid h-9 w-9 -translate-y-1/2 place-items-center rounded-[13px] border border-fuchsia-300/15 bg-fuchsia-500/[0.10] text-fuchsia-200 disabled:opacity-30"
+                    aria-label="Rechercher"
+                  >
+                    <Search className={`h-4 w-4 ${searching ? "animate-pulse" : ""}`} />
+                  </button>
+                </div>
+
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <p className="text-[7px] font-semibold leading-3 text-white/28">
+                    Les suggestions d’artistes n’utilisent aucun quota YouTube.
+                  </p>
+                  {search.trim() ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearch("");
+                        setResults([]);
+                        setSearchInsight(null);
+                      }}
+                      className="shrink-0 text-[7px] font-black text-white/35"
+                    >
+                      Effacer
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Catégories rapides */}
+              <div className="no-scrollbar flex gap-2 overflow-x-auto pb-0.5">
+                {[
+                  { label: "🔥 Hits", query: "hits france" },
+                  { label: "Rap FR", query: "rap français" },
+                  { label: "Années 2000", query: "hits années 2000" },
+                  { label: "Afro", query: "afro hits" },
+                  { label: "Pop", query: "pop hits" },
+                ].map((category, index) => (
+                  <button
+                    key={category.label}
+                    type="button"
+                    onClick={() => void searchYoutube(category.query)}
+                    className={`shrink-0 rounded-full border px-4 py-2.5 text-[10px] font-black ${
+                      index === 0
+                        ? "border-orange-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.15),rgba(249,115,22,.12))] text-orange-100"
+                        : "border-white/[0.08] bg-white/[0.035] text-white/58"
+                    }`}
+                  >
+                    {category.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* PartyBrain suggestions */}
+              {suggestions.length > 0 ? (
+                <div className="overflow-hidden rounded-[25px] border border-fuchsia-300/[0.16] bg-[radial-gradient(circle_at_0%_50%,rgba(168,85,247,.16),transparent_38%),linear-gradient(135deg,rgba(28,14,43,.94),rgba(11,9,20,.97))] p-3.5 shadow-[0_14px_42px_rgba(0,0,0,.24)]">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] border border-fuchsia-300/20 bg-fuchsia-500/[0.10] text-fuchsia-200">
+                      <Bot className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-[family:var(--font-exo-2)] text-sm font-black text-white">
+                          PartyBrain
+                        </h3>
+                        <span className="rounded-full border border-fuchsia-300/15 bg-fuchsia-500/[0.10] px-2 py-0.5 text-[6px] font-black uppercase tracking-[.12em] text-fuchsia-200">
+                          AI
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-[8px] leading-3 text-white/34">
+                        Selon l’ambiance actuelle.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-2">
+                    {suggestions.slice(0, 3).map((video) => (
+                      <div
+                        key={`mobile-search-partybrain-${video.id}`}
+                        className="flex items-center gap-2.5 rounded-[16px] border border-white/[0.06] bg-black/15 p-2"
+                      >
+                        <img
+                          src={video.thumbnail}
+                          alt=""
+                          className="h-10 w-10 shrink-0 rounded-[11px] object-cover"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[10px] font-black text-white">
+                            {video.title}
+                          </p>
+                          <p className="mt-0.5 truncate text-[7.5px] font-semibold text-white/32">
+                            {video.artistName || video.channelTitle || "MixParty"}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void addYoutubeSong(video, "partybrain_suggestion")}
+                          disabled={addingVideoId === video.id}
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-orange-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.14),rgba(249,115,22,.12))] text-orange-100 disabled:opacity-40"
+                          aria-label={`Ajouter ${video.title}`}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Suggestions d'artistes — MusicBrain uniquement */}
+              <div className="rounded-[24px] border border-white/[0.07] bg-[#0a0912]/86 p-3.5">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-[family:var(--font-exo-2)] text-sm font-black text-white">
+                      {search.trim()
+                        ? `Artistes pour « ${search.trim()} »`
+                        : "Suggestions d’artistes"}
+                    </p>
+                    <p className="mt-0.5 text-[7px] font-semibold text-emerald-300/55">
+                      MusicBrain + MusicBrainz · 0 quota YouTube
+                    </p>
+                  </div>
+                  {artistSuggestionsLoading ? (
+                    <span className="text-[7px] font-black text-white/25">
+                      Recherche…
+                    </span>
+                  ) : null}
+                </div>
+
+                {artistSuggestions.length > 0 ? (
+                  <div className="no-scrollbar mt-3 flex gap-3 overflow-x-auto pb-1">
+                    {artistSuggestions.map((artist, index) => (
+                      <button
+                        key={artist.id}
+                        type="button"
+                        onClick={() => void searchYoutube(artist.name)}
+                        className="w-[70px] shrink-0 text-center"
+                      >
+                        <span className="relative mx-auto grid h-[58px] w-[58px] place-items-center overflow-hidden rounded-full border border-fuchsia-300/25 bg-[linear-gradient(145deg,rgba(124,58,237,.30),rgba(236,72,153,.20),rgba(249,115,22,.18))] shadow-[0_0_18px_rgba(217,70,239,.08)]">
+                          {artist.imageUrl ? (
+                            <img
+                              src={artist.imageUrl}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <span className="font-[family:var(--font-exo-2)] text-lg font-black text-white/80">
+                              {artist.name.slice(0, 1).toUpperCase()}
+                            </span>
+                          )}
+                          {index < 3 && !search.trim() ? (
+                            <span className="absolute bottom-0 right-0 grid h-4 w-4 place-items-center rounded-full border border-[#0a0912] bg-fuchsia-500 text-[5px] font-black text-white">
+                              {index + 1}
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="mt-1.5 block truncate text-[8px] font-black text-white/65">
+                          {artist.name}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-[16px] border border-dashed border-white/[0.08] bg-black/15 px-3 py-4 text-center">
+                    <p className="text-[9px] font-bold text-white/32">
+                      {artistSuggestionsLoading
+                        ? "MusicBrain cherche les artistes…"
+                        : search.trim()
+                          ? "Aucun artiste correspondant dans MusicBrain."
+                          : "Les artistes populaires apparaîtront ici."}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Résultats */}
+              {searching ? (
+                <div className="rounded-[22px] border border-white/[0.07] bg-white/[0.025] px-4 py-5 text-center">
+                  <Search className="mx-auto h-5 w-5 text-fuchsia-300" />
+                  <p className="mt-2 text-[10px] font-black text-white/45">
+                    Recherche des meilleurs résultats…
+                  </p>
+                </div>
+              ) : results.length > 0 ? (
+                <div className="rounded-[24px] border border-white/[0.07] bg-[#0a0912]/88 p-3">
+                  <div className="mb-2.5 flex items-center justify-between">
+                    <h3 className="font-[family:var(--font-exo-2)] text-sm font-black text-white">
+                      Résultats
+                    </h3>
+                    <span className="text-[7px] font-black text-white/24">
+                      {results.length} morceau{results.length > 1 ? "x" : ""}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {results.map((video) => (
+                      <div
+                        key={`mobile-search-result-${video.id}`}
+                        className="flex items-center gap-2.5 rounded-[17px] border border-white/[0.06] bg-white/[0.025] p-2"
+                      >
+                        <img
+                          src={video.thumbnail}
+                          alt=""
+                          className="h-12 w-12 shrink-0 rounded-[12px] object-cover"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[11px] font-black text-white">
+                            {video.title}
+                          </p>
+                          <p className="mt-0.5 truncate text-[8px] font-semibold text-white/34">
+                            {video.artistName || video.channelTitle || "Artiste"}
+                          </p>
+                        </div>
+                        {video.durationSeconds ? (
+                          <span className="shrink-0 text-[7.5px] font-black tabular-nums text-white/30">
+                            {formatPlaybackTime(video.durationSeconds)}
+                          </span>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void addYoutubeSong(video)}
+                          disabled={addingVideoId === video.id}
+                          className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full border border-pink-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.13),rgba(249,115,22,.09))] px-3 text-[8px] font-black text-white disabled:opacity-40"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          {addingVideoId === video.id ? "Ajout…" : "Ajouter"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="flex items-start gap-2.5 rounded-[18px] border border-violet-300/[0.08] bg-violet-500/[0.035] px-3 py-3">
+                <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-300" />
+                <p className="text-[8px] leading-4 text-white/35">
+                  Les recherches d’artistes sont servies par MusicBrain. YouTube reste seulement le secours ciblé pour trouver un morceau absent du catalogue connu.
+                </p>
+              </div>
+            </section>
+
+<section className="hidden premium-glass-card rounded-[24px] border border-white/10 bg-white/[0.045] p-3 backdrop-blur-xl sm:p-6 md:block md:rounded-[30px]">
 
               <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
