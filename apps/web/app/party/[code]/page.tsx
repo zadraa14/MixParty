@@ -1901,9 +1901,9 @@ async function removeSong(index: number, song: Song) {
           autoplay: 1,
           enablejsapi: 1,
           playsinline: 1,
-          controls: 0,
-          fs: 0,
-          disablekb: 1,
+          controls: 1,
+          fs: 1,
+          disablekb: 0,
           rel: 0,
           origin: window.location.origin,
         },
@@ -1917,11 +1917,13 @@ async function removeSong(index: number, song: Song) {
 
             const iframe = event.target?.getIframe?.();
             if (iframe) {
-              // Le lecteur reste audio-only dans l'interface MixParty :
-              // on ne donne pas au navigateur Android les permissions PiP / plein écran
-              // qui peuvent afficher ses propres boutons vidéo par-dessus la console.
-              iframe.setAttribute("allow", "autoplay; encrypted-media");
-              iframe.removeAttribute("allowfullscreen");
+              // Quand la vidéo YouTube est visible, on laisse les contrôles natifs YouTube
+              // entièrement accessibles et on ne place aucun overlay MixParty au-dessus.
+              iframe.setAttribute(
+                "allow",
+                "autoplay; encrypted-media; picture-in-picture; fullscreen",
+              );
+              iframe.setAttribute("allowfullscreen", "true");
               iframe.setAttribute("referrerpolicy", "strict-origin-when-cross-origin");
             }
 
@@ -3105,9 +3107,9 @@ async function removeSong(index: number, song: Song) {
 
       <div className="v54-mobile-content relative z-10 mx-auto w-full min-w-0 max-w-[1600px] overflow-x-hidden px-4 py-4 pb-28 sm:px-6 sm:py-5 md:pb-5 lg:px-8 xl:px-10">
 
-        <header className="v54-mobile-header mb-4 flex items-center justify-between rounded-[22px] border border-white/10 bg-black/25 px-3 py-3 backdrop-blur-xl md:hidden">
+        <header className="v54-mobile-header mb-3 flex items-center justify-between rounded-[20px] border border-white/10 bg-black/25 px-3 py-2.5 backdrop-blur-xl md:hidden">
           <div className="flex min-w-0 items-center gap-2.5">
-            <img src="/branding/icon.png" alt="MixParty" className="h-11 w-11 shrink-0 object-contain" />
+            <img src="/branding/icon.png" alt="MixParty" className="h-10 w-10 shrink-0 object-contain" />
             <div className="min-w-0">
               <p className="-skew-x-6 font-[family:var(--font-exo-2)] text-lg font-black tracking-[0.12em]">
                 <span className="text-white">MIX</span><span className="bg-gradient-to-r from-purple-400 via-pink-400 to-orange-400 bg-clip-text text-transparent">PARTY</span>
@@ -3208,7 +3210,266 @@ async function removeSong(index: number, song: Song) {
 
           <div className="desktop-main-column space-y-6">
 
-            <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} v53-player-shell premium-glass-card md:block`}>
+            {/* =====================================================
+                MOBILE — LECTURE V1
+                Player YouTube visible + aucune couche MixParty par-dessus.
+                Tout le moteur de lecture existant est conservé.
+               ===================================================== */}
+            <section
+              className={`${activeMobileTab === "playback" ? "block" : "hidden"} md:hidden`}
+              aria-label="Lecture en cours"
+            >
+              {party.currentSong ? (
+                <div className="space-y-3">
+                  {/* PLAYER YOUTUBE — volontairement nu : aucun overlay au-dessus */}
+                  <div className="overflow-hidden rounded-[22px] border border-white/[0.09] bg-black shadow-[0_18px_55px_rgba(0,0,0,.38)]">
+                    <div className="aspect-video w-full bg-black">
+                      {isPlaybackController ? (
+                        <div
+                          ref={(element) => {
+                            if (typeof window !== "undefined" && window.innerWidth < 768) {
+                              setPlayerHostElement(element);
+                            }
+                          }}
+                          className="mixparty-youtube-host mixparty-youtube-host--clip-visible h-full w-full overflow-hidden bg-black"
+                        />
+                      ) : (
+                        <div className="grid h-full w-full place-items-center bg-black px-5 text-center">
+                          <div>
+                            <Music4 className="mx-auto h-7 w-7 text-fuchsia-300" />
+                            <p className="mt-2 text-sm font-black text-white">
+                              Lecture pilotée par le DJ
+                            </p>
+                            <p className="mt-1 text-xs text-white/40">
+                              Le clip YouTube reste visible sur l’appareil qui contrôle la lecture.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* TITRE + VOTES */}
+                  <div className="overflow-hidden rounded-[22px] border border-white/[0.08] bg-[linear-gradient(135deg,rgba(31,15,47,.86),rgba(12,10,22,.94)_58%,rgba(51,19,30,.78))] p-4 shadow-[0_14px_45px_rgba(0,0,0,.28)]">
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={getSongArtwork(party.currentSong)}
+                        alt=""
+                        className="h-16 w-16 shrink-0 rounded-[16px] border border-white/10 object-cover shadow-[0_10px_26px_rgba(0,0,0,.28)]"
+                      />
+
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-1 inline-flex items-center gap-1.5 rounded-full border border-fuchsia-300/15 bg-fuchsia-500/10 px-2 py-1 text-[8px] font-black uppercase tracking-[.11em] text-fuchsia-200">
+                          <span className="h-1.5 w-1.5 rounded-full bg-fuchsia-400" />
+                          En cours
+                        </div>
+                        <h1 className="truncate font-[family:var(--font-exo-2)] text-lg font-black text-white">
+                          {party.currentSong.title}
+                        </h1>
+                        <p className="truncate text-xs font-semibold text-white/40">
+                          {party.currentSong.artistName || party.currentSong.addedBy}
+                        </p>
+                      </div>
+
+                      <div className="shrink-0 rounded-[18px] border border-orange-300/15 bg-orange-500/[0.08] px-3 py-2 text-center">
+                        <ArrowBigUp className="mx-auto h-4 w-4 text-orange-300" />
+                        <strong className="mt-0.5 block font-[family:var(--font-exo-2)] text-xl font-black text-white">
+                          {party.currentSong.votes || 0}
+                        </strong>
+                        <span className="block text-[7px] font-black uppercase tracking-[.1em] text-white/30">
+                          votes
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-white/[0.06] pt-3">
+                      <div className="min-w-0">
+                        <p className="text-[8px] font-black uppercase tracking-[.13em] text-white/25">
+                          Ajouté par
+                        </p>
+                        <div className="mt-1 flex items-center gap-2">
+                          {(() => {
+                            const owner =
+                              party.participants.find(
+                                (participant) =>
+                                  participant.id === party.currentSong?.addedById,
+                              ) ||
+                              party.participants.find(
+                                (participant) =>
+                                  participant.name === party.currentSong?.addedBy,
+                              );
+
+                            return (
+                              <img
+                                src={
+                                  owner?.avatar ||
+                                  defaultAvatarForParticipant(
+                                    party.currentSong?.addedById ||
+                                      party.currentSong?.addedBy ||
+                                      party.currentSong?.videoId ||
+                                      "mixparty",
+                                  )
+                                }
+                                alt=""
+                                className="h-7 w-7 rounded-full border border-white/10 object-cover"
+                              />
+                            );
+                          })()}
+                          <span className="truncate text-xs font-black text-white/65">
+                            {party.currentSong.addedBy || "Invité"}
+                          </span>
+                        </div>
+                      </div>
+
+                      {isPlaybackController ? (
+                        <button
+                          type="button"
+                          onClick={nextSong}
+                          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-fuchsia-300/15 bg-fuchsia-500/10 px-3 py-2 text-[9px] font-black text-fuchsia-100"
+                        >
+                          <SkipForward className="h-3.5 w-3.5" />
+                          Suivant
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+
+                  {/* PROCHAINES MUSIQUES */}
+                  <div className="rounded-[22px] border border-white/[0.08] bg-[#0b0914]/88 p-3 shadow-[0_14px_45px_rgba(0,0,0,.22)]">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[8px] font-black uppercase tracking-[.14em] text-violet-300">
+                          À venir
+                        </p>
+                        <h2 className="mt-0.5 font-[family:var(--font-exo-2)] text-base font-black text-white">
+                          Prochaines musiques
+                        </h2>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => switchMobileTab("queue")}
+                        className="shrink-0 rounded-full border border-violet-300/15 bg-violet-500/10 px-3 py-2 text-[9px] font-black text-violet-100"
+                      >
+                        Voir toute la file →
+                      </button>
+                    </div>
+
+                    {queue.length ? (
+                      <div className="space-y-2">
+                        {queue.slice(0, 4).map((song, index) => {
+                          const owner =
+                            party.participants.find(
+                              (participant) => participant.id === song.addedById,
+                            ) ||
+                            party.participants.find(
+                              (participant) => participant.name === song.addedBy,
+                            );
+
+                          const ownerAvatar =
+                            owner?.avatar ||
+                            defaultAvatarForParticipant(
+                              song.addedById ||
+                                song.addedBy ||
+                                song.videoId ||
+                                `queue-${index}`,
+                            );
+
+                          return (
+                            <button
+                              key={`mobile-playback-next-${song.videoId}-${song.addedAt}`}
+                              type="button"
+                              onClick={() => switchMobileTab("queue")}
+                              className="flex w-full items-center gap-2.5 rounded-[17px] border border-white/[0.065] bg-white/[0.025] p-2 text-left active:bg-white/[0.05]"
+                            >
+                              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-fuchsia-300/10 bg-fuchsia-500/[0.07] text-[10px] font-black text-fuchsia-200">
+                                {index + 1}
+                              </span>
+
+                              <img
+                                src={song.thumbnail || getSongArtwork(song)}
+                                alt=""
+                                className="h-11 w-11 shrink-0 rounded-[12px] border border-white/[0.07] object-cover"
+                              />
+
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-[12px] font-black text-white">
+                                  {song.title}
+                                </span>
+                                <span className="mt-0.5 block truncate text-[9px] font-semibold text-white/34">
+                                  {song.artistName || "Artiste MixParty"}
+                                </span>
+                              </span>
+
+                              <span className="flex shrink-0 items-center gap-1.5">
+                                <img
+                                  src={ownerAvatar}
+                                  alt={`Ajouté par ${song.addedBy || "un invité"}`}
+                                  className="h-7 w-7 rounded-full border border-white/10 object-cover"
+                                />
+                                <span className="min-w-[34px] rounded-full border border-orange-300/12 bg-orange-500/[0.07] px-2 py-1 text-center text-[9px] font-black text-orange-100">
+                                  {song.votes || 0}
+                                </span>
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="rounded-[17px] border border-dashed border-white/10 bg-black/15 px-4 py-5 text-center">
+                        <ListMusic className="mx-auto h-5 w-5 text-white/25" />
+                        <p className="mt-2 text-xs font-black text-white/45">
+                          La file est vide
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => switchMobileTab("add")}
+                          className="mt-3 rounded-xl border border-fuchsia-300/15 bg-fuchsia-500/10 px-3 py-2 text-[9px] font-black text-fuchsia-100"
+                        >
+                          Ajouter une musique
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {youtubeError !== null ? (
+                    <div className="rounded-2xl border border-red-400/15 bg-red-500/[0.06] px-3 py-2 text-xs text-red-200">
+                      Erreur YouTube {youtubeError}
+                    </div>
+                  ) : null}
+
+                  {resumeRequired && isPlaybackController ? (
+                    <button
+                      type="button"
+                      onClick={resumePlayback}
+                      className="flex w-full items-center justify-center gap-2 rounded-2xl border border-fuchsia-300/20 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-orange-500 px-4 py-3 text-sm font-black text-white"
+                    >
+                      <Play className="h-4 w-4 fill-current" />
+                      Reprendre la lecture
+                    </button>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="rounded-[24px] border border-white/[0.08] bg-[#0b0914]/90 px-5 py-10 text-center shadow-[0_18px_55px_rgba(0,0,0,.28)]">
+                  <img src="/branding/icon.png" alt="" className="mx-auto h-14 w-14 object-contain" />
+                  <h1 className="mt-4 font-[family:var(--font-exo-2)] text-xl font-black">
+                    Prêt à lancer la soirée ?
+                  </h1>
+                  <p className="mx-auto mt-2 max-w-[280px] text-sm leading-6 text-white/40">
+                    Ajoute des morceaux à la file et lance la première musique.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => switchMobileTab(queue.length ? "queue" : "add")}
+                    className="mt-5 rounded-2xl border border-fuchsia-300/20 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-orange-500 px-5 py-3 text-sm font-black text-white"
+                  >
+                    {queue.length ? "Voir la file" : "Ajouter une musique"}
+                  </button>
+                </div>
+              )}
+            </section>
+
+            <section className="hidden v53-player-shell premium-glass-card md:block">
               <div className="v53-player-header">
                 <div className="v53-player-live">
                   <span className="v53-player-live__dot" />
@@ -3246,7 +3507,11 @@ async function removeSong(index: number, song: Song) {
                     >
                       {isPlaybackController && (
                         <div
-                          ref={setPlayerHostElement}
+                          ref={(element) => {
+                            if (typeof window === "undefined" || window.innerWidth >= 768) {
+                              setPlayerHostElement(element);
+                            }
+                          }}
                           className={`mixparty-youtube-host absolute inset-0 h-full w-full min-w-0 max-w-full overflow-hidden ${party.showYoutubeClip ? "mixparty-youtube-host--clip-visible" : "mixparty-youtube-host--audio-only"}`}
                         />
                       )}
