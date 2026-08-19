@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
@@ -557,7 +557,7 @@ export default function PartySharePage() {
                 <div className="mb-2 text-[11px] font-black uppercase tracking-[0.3em] text-amber-300">Grand gagnant</div>
                 <div className="text-3xl font-black sm:text-4xl">{winner?.name || "Champion"}</div>
                 <div className="mt-2 text-sm text-white/65 sm:text-base">
-                  {winner?.votesReceived || 0} votes · {winner?.songsAdded || 0} titre(s) ajouté(s)
+                  {winner?.votesReceived || 0} vote{Number(winner?.votesReceived || 0) > 1 ? "s" : ""} · {winner?.songsAdded || 0} titre(s) ajouté(s)
                 </div>
               </div>
               <div className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-r from-fuchsia-500 via-violet-500 to-orange-400 text-4xl shadow-[0_20px_60px_rgba(217,70,239,0.35)]">
@@ -601,7 +601,7 @@ export default function PartySharePage() {
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-lg font-black text-white">{row.name || `Participant ${rank}`}</div>
                       <div className="truncate text-sm text-white/55">
-                        {row.votesReceived || 0} votes · {row.songsAdded || 0} titre(s) · {row.songsWithVotes || 0} titre(s) voté(s)
+                        {row.votesReceived || 0} vote{Number(row.votesReceived || 0) > 1 ? "s" : ""} · {row.songsAdded || 0} titre(s) · {row.songsWithVotes || 0} titre(s) voté(s)
                       </div>
                     </div>
                     <div className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-black text-fuchsia-100">
@@ -644,7 +644,7 @@ export default function PartySharePage() {
                       <div className="mt-4 rounded-[18px] border border-white/10 bg-white/[0.05] p-3">
                         <div className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">Champion</div>
                         <div className="mt-1 text-xl font-black">{winner?.name || "Champion"}</div>
-                        <div className="mt-1 text-xs text-white/60">{winner?.votesReceived || 0} votes</div>
+                        <div className="mt-1 text-xs text-white/60">{winner?.votesReceived || 0} vote{Number(winner?.votesReceived || 0) > 1 ? "s" : ""}</div>
                       </div>
                       <div className="mt-4 space-y-2">
                         {topThree.map((row, index) => (
@@ -685,7 +685,7 @@ export default function PartySharePage() {
                       <div className="mt-4 rounded-[18px] border border-white/10 bg-white/[0.05] p-3">
                         <div className="text-[10px] font-black uppercase tracking-[0.22em] text-amber-300">Grand gagnant</div>
                         <div className="mt-1 text-xl font-black">{winner?.name || "Champion"}</div>
-                        <div className="mt-1 text-xs text-white/60">{winner?.votesReceived || 0} votes · {result.uniqueParticipants || 0} participants</div>
+                        <div className="mt-1 text-xs text-white/60">{winner?.votesReceived || 0} vote{Number(winner?.votesReceived || 0) > 1 ? "s" : ""} · {result.uniqueParticipants || 0} participants</div>
                       </div>
                       <div className="mt-4 space-y-2">
                         {topThree.map((row, index) => (

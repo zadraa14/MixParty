@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -385,7 +385,7 @@ export default function PartyResultPage() {
                 </h2>
               </div>
               <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[9px] font-black text-white/35">
-                {result.ranking.length} classés
+                {result.ranking.length} classé{result.ranking.length > 1 ? "s" : ""}
               </span>
             </div>
 
