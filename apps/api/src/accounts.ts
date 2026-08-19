@@ -1,4 +1,4 @@
-import fs from "fs";
+﻿import fs from "fs";
 import path from "path";
 import {
   createHash,
@@ -391,7 +391,7 @@ export function createAccountsStore(filePath: string) {
                   const role = entry.role === "host" ? "host" : "participant";
 
                   // Legacy entries were already counted immediately in older builds.
-                  // Mark them as counted so the migration never awards the same soirée twice.
+                  // Mark them as counted so the migration never awards the same soirÃ©e twice.
                   const participationCounted =
                     entry.participationCounted === undefined
                       ? true
@@ -871,7 +871,7 @@ export function createAccountsStore(filePath: string) {
         account = {
           id: randomUUID(),
           email,
-          // Compte créé via Google : mot de passe aléatoire inutilisable.
+          // Compte crÃ©Ã© via Google : mot de passe alÃ©atoire inutilisable.
           // L'utilisateur pourra utiliser Google pour ses connexions.
           passwordHash: hashPassword(randomBytes(32).toString("base64url")),
           googleSubject: subject,
@@ -1577,7 +1577,7 @@ export function createAccountsStore(filePath: string) {
         rank: index + 1,
         accountId: row.accountId,
         participantId: row.participantId,
-        name: row.name || account?.name || (row.isEphemeral ? "Invité" : "Compte MixParty"),
+        name: row.name || account?.name || (row.isEphemeral ? "InvitÃ©" : "Compte MixParty"),
         avatar: row.avatar || account?.avatar,
         isEphemeral: Boolean(row.isEphemeral),
         partyScore: Math.max(0, Number(row.partyScore || 0)),
@@ -1709,6 +1709,12 @@ export function createAccountsStore(filePath: string) {
     return buildPublicPartyResult(snapshot, account.id);
   }
 
+  function getPublicPartyResult(partyCodeValue: unknown) {
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    const snapshot = database.partyResults.find((item) => item.code === partyCode);
+    if (!snapshot) throw new Error("PARTY_RESULT_NOT_FOUND");
+    return buildPublicPartyResult(snapshot);
+  }
   function adminSimulateQualityBadge(
     accountId: string,
     partyCodeValue: unknown,
@@ -2160,8 +2166,8 @@ export function createAccountsStore(filePath: string) {
 
     account.stats = createDefaultStats();
 
-    // Remet à zéro les données qui alimentent les stats afin que les prochains
-    // tests puissent recompter proprement sans toucher à l'identité ni aux badges.
+    // Remet Ã  zÃ©ro les donnÃ©es qui alimentent les stats afin que les prochains
+    // tests puissent recompter proprement sans toucher Ã  l'identitÃ© ni aux badges.
     account.history = [];
     account.progress = {
       playedSongKeys: [],
@@ -2294,9 +2300,9 @@ export function createAccountsStore(filePath: string) {
       entry.lastSeenAt = now;
       evaluateSongTimingBadges(account, partyCode, now);
     } else if (badgeId === "oiseau-de-nuit") {
-      // Simule un nouvel ajout après plus de 3 h sans ajout.
-      // On avance uniquement l'instant simulé afin que même un vrai morceau
-      // ajouté récemment ne masque pas le scénario Admin.
+      // Simule un nouvel ajout aprÃ¨s plus de 3 h sans ajout.
+      // On avance uniquement l'instant simulÃ© afin que mÃªme un vrai morceau
+      // ajoutÃ© rÃ©cemment ne masque pas le scÃ©nario Admin.
       const simulatedAddedAt = now + OISEAU_DE_NUIT_GAP_MS + 60_000;
       evaluateSongTimingBadges(account, partyCode, simulatedAddedAt);
     }
@@ -2377,6 +2383,7 @@ export function createAccountsStore(filePath: string) {
     recordFinalPartyRanking,
     recordPartyResultSnapshot,
     getPartyResultForToken,
+    getPublicPartyResult,
     adminSimulateQualityBadge,
     adminSimulateRankingResult,
     adminSimulateBonPublic,
@@ -2393,3 +2400,4 @@ export function createAccountsStore(filePath: string) {
     logout,
   };
 }
+
