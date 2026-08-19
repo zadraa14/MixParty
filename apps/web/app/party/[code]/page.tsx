@@ -294,6 +294,7 @@ export default function PartyPage() {
     country?: string;
   }>>([]);
   const [artistSuggestionsLoading, setArtistSuggestionsLoading] = useState(false);
+  const [activeSearchCategory, setActiveSearchCategory] = useState<string | null>(null);
   const [shareUrl, setShareUrl] = useState("");
   const [copied, setCopied] = useState(false);
   const [searching, setSearching] = useState(false);
@@ -1512,14 +1513,19 @@ export default function PartyPage() {
     });
   }
 
-  async function searchYoutube(queryOverride?: string) {
+  async function searchYoutube(
+    queryOverride?: string,
+    options?: { updateInput?: boolean; categoryLabel?: string | null },
+  ) {
     const query = String(queryOverride ?? search).trim();
     if (!query || searching) return;
 
-    if (query !== search) {
+    const updateInput = options?.updateInput !== false;
+    if (updateInput && query !== search) {
       setSearch(query);
     }
 
+    setActiveSearchCategory(options?.categoryLabel || null);
     setSearching(true);
 
     try {
@@ -4404,7 +4410,10 @@ const canRemove =
                   <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-white/30" />
                   <input
                     value={search}
-                    onChange={(event) => setSearch(event.target.value)}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      setActiveSearchCategory(null);
+                    }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
                         void searchYoutube();
@@ -4423,6 +4432,65 @@ const canRemove =
                   >
                     <Search className={`h-4 w-4 ${searching ? "animate-pulse" : ""}`} />
                   </button>
+
+                  {search.trim().length >= 1 ? (
+                    <div className="absolute left-0 right-0 top-[54px] z-40 overflow-hidden rounded-[18px] border border-fuchsia-300/[0.14] bg-[#0b0914]/[0.985] shadow-[0_18px_50px_rgba(0,0,0,.52)] backdrop-blur-xl">
+                      <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-2">
+                        <span className="text-[7px] font-black uppercase tracking-[.13em] text-fuchsia-300">
+                          Artistes
+                        </span>
+                        <span className="text-[6.5px] font-bold text-emerald-300/55">
+                          MusicBrain · 0 quota YouTube
+                        </span>
+                      </div>
+
+                      {artistSuggestionsLoading ? (
+                        <div className="px-3 py-3 text-[9px] font-bold text-white/35">
+                          Recherche d’artistes…
+                        </div>
+                      ) : artistSuggestions.length > 0 ? (
+                        <div className="max-h-[250px] overflow-y-auto p-1.5">
+                          {artistSuggestions.slice(0, 8).map((artist) => (
+                            <button
+                              key={`artist-autocomplete-${artist.id}`}
+                              type="button"
+                              onClick={() => void searchYoutube(artist.name)}
+                              className="flex w-full items-center gap-2.5 rounded-[13px] px-2 py-2 text-left active:bg-white/[0.06]"
+                            >
+                              <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border border-fuchsia-300/20 bg-[linear-gradient(145deg,rgba(124,58,237,.28),rgba(236,72,153,.18))]">
+                                {artist.imageUrl ? (
+                                  <img
+                                    src={artist.imageUrl}
+                                    alt=""
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <span className="font-[family:var(--font-exo-2)] text-sm font-black text-white/80">
+                                    {artist.name.slice(0, 1).toUpperCase()}
+                                  </span>
+                                )}
+                              </span>
+
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-[11px] font-black text-white">
+                                  {artist.name}
+                                </span>
+                                <span className="mt-0.5 block text-[7px] font-semibold text-white/28">
+                                  Voir les morceaux
+                                </span>
+                              </span>
+
+                              <span className="text-[14px] text-white/20">›</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="px-3 py-3 text-[9px] font-bold text-white/30">
+                          Aucun artiste commençant par « {search.trim()} »
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="mt-2 flex items-center justify-between gap-2">
@@ -4436,6 +4504,7 @@ const canRemove =
                         setSearch("");
                         setResults([]);
                         setSearchInsight(null);
+                        setActiveSearchCategory(null);
                       }}
                       className="shrink-0 text-[7px] font-black text-white/35"
                     >
@@ -4457,7 +4526,12 @@ const canRemove =
                   <button
                     key={category.label}
                     type="button"
-                    onClick={() => void searchYoutube(category.query)}
+                    onClick={() =>
+                      void searchYoutube(category.query, {
+                        updateInput: false,
+                        categoryLabel: category.label.replace("🔥 ", ""),
+                      })
+                    }
                     className={`shrink-0 rounded-full border px-4 py-2.5 text-[10px] font-black ${
                       index === 0
                         ? "border-orange-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.15),rgba(249,115,22,.12))] text-orange-100"
@@ -4469,127 +4543,102 @@ const canRemove =
                 ))}
               </div>
 
-              {/* PartyBrain suggestions */}
-              {suggestions.length > 0 ? (
-                <div className="overflow-hidden rounded-[25px] border border-fuchsia-300/[0.16] bg-[radial-gradient(circle_at_0%_50%,rgba(168,85,247,.16),transparent_38%),linear-gradient(135deg,rgba(28,14,43,.94),rgba(11,9,20,.97))] p-3.5 shadow-[0_14px_42px_rgba(0,0,0,.24)]">
-                  <div className="flex items-center gap-3">
-                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] border border-fuchsia-300/20 bg-fuchsia-500/[0.10] text-fuchsia-200">
-                      <Bot className="h-5 w-5" />
-                    </span>
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-[family:var(--font-exo-2)] text-sm font-black text-white">
-                          PartyBrain
-                        </h3>
-                        <span className="rounded-full border border-fuchsia-300/15 bg-fuchsia-500/[0.10] px-2 py-0.5 text-[6px] font-black uppercase tracking-[.12em] text-fuchsia-200">
-                          AI
-                        </span>
-                      </div>
-                      <p className="mt-0.5 text-[8px] leading-3 text-white/34">
-                        Selon l’ambiance actuelle.
-                      </p>
-                    </div>
-                  </div>
+              {/* Suggestions d'artistes */}
+              {search.trim().length === 0 ? (
+                <div className="rounded-[24px] border border-white/[0.07] bg-[#0a0912]/86 p-3.5">
+                  {(() => {
+                    const categoryArtists = activeSearchCategory
+                      ? Array.from(
+                          new Map(
+                            results
+                              .filter((video) => String(video?.artistName || "").trim())
+                              .map((video) => [
+                                String(video.artistName).trim().toLowerCase(),
+                                {
+                                  id: `category:${String(video.artistName).trim().toLowerCase()}`,
+                                  name: String(video.artistName).trim(),
+                                  imageUrl: video.thumbnail,
+                                  source: "MUSICBRAIN" as const,
+                                },
+                              ]),
+                          ).values(),
+                        ).slice(0, 10)
+                      : [];
 
-                  <div className="mt-3 space-y-2">
-                    {suggestions.slice(0, 3).map((video) => (
-                      <div
-                        key={`mobile-search-partybrain-${video.id}`}
-                        className="flex items-center gap-2.5 rounded-[16px] border border-white/[0.06] bg-black/15 p-2"
-                      >
-                        <img
-                          src={video.thumbnail}
-                          alt=""
-                          className="h-10 w-10 shrink-0 rounded-[11px] object-cover"
-                        />
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[10px] font-black text-white">
-                            {video.title}
-                          </p>
-                          <p className="mt-0.5 truncate text-[7.5px] font-semibold text-white/32">
-                            {video.artistName || video.channelTitle || "MixParty"}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => void addYoutubeSong(video, "partybrain_suggestion")}
-                          disabled={addingVideoId === video.id}
-                          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-orange-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.14),rgba(249,115,22,.12))] text-orange-100 disabled:opacity-40"
-                          aria-label={`Ajouter ${video.title}`}
-                        >
-                          <Plus className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
+                    const displayedArtists =
+                      activeSearchCategory && categoryArtists.length > 0
+                        ? categoryArtists
+                        : artistSuggestions;
 
-              {/* Suggestions d'artistes — MusicBrain uniquement */}
-              <div className="rounded-[24px] border border-white/[0.07] bg-[#0a0912]/86 p-3.5">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="font-[family:var(--font-exo-2)] text-sm font-black text-white">
-                      {search.trim()
-                        ? `Artistes pour « ${search.trim()} »`
-                        : "Suggestions d’artistes"}
-                    </p>
-                    <p className="mt-0.5 text-[7px] font-semibold text-emerald-300/55">
-                      MusicBrain + MusicBrainz · 0 quota YouTube
-                    </p>
-                  </div>
-                  {artistSuggestionsLoading ? (
-                    <span className="text-[7px] font-black text-white/25">
-                      Recherche…
-                    </span>
-                  ) : null}
-                </div>
-
-                {artistSuggestions.length > 0 ? (
-                  <div className="no-scrollbar mt-3 flex gap-3 overflow-x-auto pb-1">
-                    {artistSuggestions.map((artist, index) => (
-                      <button
-                        key={artist.id}
-                        type="button"
-                        onClick={() => void searchYoutube(artist.name)}
-                        className="w-[70px] shrink-0 text-center"
-                      >
-                        <span className="relative mx-auto grid h-[58px] w-[58px] place-items-center overflow-hidden rounded-full border border-fuchsia-300/25 bg-[linear-gradient(145deg,rgba(124,58,237,.30),rgba(236,72,153,.20),rgba(249,115,22,.18))] shadow-[0_0_18px_rgba(217,70,239,.08)]">
-                          {artist.imageUrl ? (
-                            <img
-                              src={artist.imageUrl}
-                              alt=""
-                              className="h-full w-full object-cover"
-                            />
-                          ) : (
-                            <span className="font-[family:var(--font-exo-2)] text-lg font-black text-white/80">
-                              {artist.name.slice(0, 1).toUpperCase()}
-                            </span>
-                          )}
-                          {index < 3 && !search.trim() ? (
-                            <span className="absolute bottom-0 right-0 grid h-4 w-4 place-items-center rounded-full border border-[#0a0912] bg-fuchsia-500 text-[5px] font-black text-white">
-                              {index + 1}
+                    return (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="font-[family:var(--font-exo-2)] text-sm font-black text-white">
+                              {activeSearchCategory
+                                ? `Artistes · ${activeSearchCategory}`
+                                : "Suggestions d’artistes"}
+                            </p>
+                            <p className="mt-0.5 text-[7px] font-semibold text-emerald-300/55">
+                              {activeSearchCategory
+                                ? "Artistes présents dans cette sélection"
+                                : "MusicBrain + MusicBrainz · 0 quota YouTube"}
+                            </p>
+                          </div>
+                          {artistSuggestionsLoading && !activeSearchCategory ? (
+                            <span className="text-[7px] font-black text-white/25">
+                              Recherche…
                             </span>
                           ) : null}
-                        </span>
-                        <span className="mt-1.5 block truncate text-[8px] font-black text-white/65">
-                          {artist.name}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-3 rounded-[16px] border border-dashed border-white/[0.08] bg-black/15 px-3 py-4 text-center">
-                    <p className="text-[9px] font-bold text-white/32">
-                      {artistSuggestionsLoading
-                        ? "MusicBrain cherche les artistes…"
-                        : search.trim()
-                          ? "Aucun artiste correspondant dans MusicBrain."
-                          : "Les artistes populaires apparaîtront ici."}
-                    </p>
-                  </div>
-                )}
-              </div>
+                        </div>
+
+                        {displayedArtists.length > 0 ? (
+                          <div className="no-scrollbar mt-3 flex gap-3 overflow-x-auto pb-1">
+                            {displayedArtists.map((artist, index) => (
+                              <button
+                                key={artist.id}
+                                type="button"
+                                onClick={() => void searchYoutube(artist.name)}
+                                className="w-[70px] shrink-0 text-center"
+                              >
+                                <span className="relative mx-auto grid h-[58px] w-[58px] place-items-center overflow-hidden rounded-full border border-fuchsia-300/25 bg-[linear-gradient(145deg,rgba(124,58,237,.30),rgba(236,72,153,.20),rgba(249,115,22,.18))] shadow-[0_0_18px_rgba(217,70,239,.08)]">
+                                  {artist.imageUrl ? (
+                                    <img
+                                      src={artist.imageUrl}
+                                      alt=""
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : (
+                                    <span className="font-[family:var(--font-exo-2)] text-lg font-black text-white/80">
+                                      {artist.name.slice(0, 1).toUpperCase()}
+                                    </span>
+                                  )}
+                                  {index < 3 && !activeSearchCategory ? (
+                                    <span className="absolute bottom-0 right-0 grid h-4 w-4 place-items-center rounded-full border border-[#0a0912] bg-fuchsia-500 text-[5px] font-black text-white">
+                                      {index + 1}
+                                    </span>
+                                  ) : null}
+                                </span>
+                                <span className="mt-1.5 block truncate text-[8px] font-black text-white/65">
+                                  {artist.name}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-3 rounded-[16px] border border-dashed border-white/[0.08] bg-black/15 px-3 py-4 text-center">
+                            <p className="text-[9px] font-bold text-white/32">
+                              {artistSuggestionsLoading
+                                ? "MusicBrain cherche les artistes…"
+                                : "Les artistes apparaîtront ici."}
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              ) : null}
 
               {/* Résultats */}
               {searching ? (
@@ -4648,6 +4697,63 @@ const canRemove =
                   </div>
                 </div>
               ) : null}
+
+              {/* PartyBrain suggestions */}
+              {suggestions.length > 0 ? (
+                <div className="overflow-hidden rounded-[22px] border border-fuchsia-300/[0.12] bg-[radial-gradient(circle_at_0%_50%,rgba(168,85,247,.16),transparent_38%),linear-gradient(135deg,rgba(28,14,43,.94),rgba(11,9,20,.97))] p-3 shadow-[0_12px_32px_rgba(0,0,0,.20)]">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] border border-fuchsia-300/20 bg-fuchsia-500/[0.10] text-fuchsia-200">
+                      <Bot className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-[family:var(--font-exo-2)] text-sm font-black text-white">
+                          PartyBrain
+                        </h3>
+                        <span className="rounded-full border border-fuchsia-300/15 bg-fuchsia-500/[0.10] px-2 py-0.5 text-[6px] font-black uppercase tracking-[.12em] text-fuchsia-200">
+                          AI
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-[8px] leading-3 text-white/34">
+                        Selon l’ambiance actuelle.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="no-scrollbar mt-2.5 flex gap-2 overflow-x-auto pb-0.5">
+                    {suggestions.slice(0, 3).map((video) => (
+                      <div
+                        key={`mobile-search-partybrain-${video.id}`}
+                        className="flex min-w-[210px] items-center gap-2 rounded-[14px] border border-white/[0.06] bg-black/15 p-2"
+                      >
+                        <img
+                          src={video.thumbnail}
+                          alt=""
+                          className="h-10 w-10 shrink-0 rounded-[11px] object-cover"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[10px] font-black text-white">
+                            {video.title}
+                          </p>
+                          <p className="mt-0.5 truncate text-[7.5px] font-semibold text-white/32">
+                            {video.artistName || video.channelTitle || "MixParty"}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void addYoutubeSong(video, "partybrain_suggestion")}
+                          disabled={addingVideoId === video.id}
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-orange-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.14),rgba(249,115,22,.12))] text-orange-100 disabled:opacity-40"
+                          aria-label={`Ajouter ${video.title}`}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
 
               <div className="flex items-start gap-2.5 rounded-[18px] border border-violet-300/[0.08] bg-violet-500/[0.035] px-3 py-3">
                 <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-300" />
