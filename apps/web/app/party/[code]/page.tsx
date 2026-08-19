@@ -4282,7 +4282,13 @@ async function removeSong(index: number, song: Song) {
                         Boolean(creatorToken) ||
                         Boolean(song.addedById && participantId && song.addedById === participantId);
                       const hasVoted = Boolean(
-                        participantId && Array.isArray(song.voters) && song.voters.includes(participantId),
+                        playerName &&
+                          Array.isArray(song.voters) &&
+                          song.voters.some(
+                            (voter) =>
+                              String(voter || "").trim().toLowerCase() ===
+                              playerName.trim().toLowerCase(),
+                          ),
                       );
                       const isRecent = Date.now() - Number(song.addedAt || 0) < 10 * 60 * 1000;
                       const isTop = queueIndex === 0 && Number(song.votes || 0) > 0;
@@ -4333,21 +4339,19 @@ async function removeSong(index: number, song: Song) {
                             <button
                               type="button"
                               onClick={() => vote(originalIndex)}
-                              className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""} inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-transparent p-0 transition-all active:scale-[.94] ${
-                                hasVoted
-                                  ? "border-pink-300/80 bg-pink-500/12 text-pink-300 shadow-[0_0_22px_rgba(236,72,153,.28)]"
-                                  : "border-white/18 text-white/48 hover:border-pink-300/45 hover:text-pink-200"
+                              className={`inline-flex h-11 w-11 shrink-0 items-center justify-center bg-transparent p-0 transition-all duration-200 active:scale-[.86] ${
+                                voteBurst === `${song.videoId}-${song.addedAt}` ? "scale-110" : ""
                               }`}
                               aria-label={hasVoted ? `Retirer mon vote pour ${song.title}` : `J'aime ${song.title}`}
                               aria-pressed={hasVoted}
                             >
                               <Heart
-                                className={`h-[18px] w-[18px] shrink-0 transition-all ${
+                                className={`h-8 w-8 shrink-0 transition-all duration-200 ${
                                   hasVoted
-                                    ? "fill-current scale-110"
-                                    : "fill-transparent"
+                                    ? "scale-110 fill-pink-500 text-pink-300 drop-shadow-[0_0_10px_rgba(236,72,153,.95)]"
+                                    : "fill-transparent text-white/50 hover:text-pink-300"
                                 }`}
-                                strokeWidth={hasVoted ? 2.4 : 2}
+                                strokeWidth={hasVoted ? 2.2 : 1.9}
                               />
                             </button>
                             {canRemove ? (
