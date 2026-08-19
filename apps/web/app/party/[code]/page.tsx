@@ -1579,7 +1579,44 @@ sourceQuery: video.sourceQuery || search.trim(),
 
     const updated = await response.json();
 
-      setParty(updated);
+      if (!response.ok || updated?.error) {
+        console.error(updated?.error || "Impossible d’ajouter la musique");
+        return;
+      }
+
+      // Comportement historique MixParty :
+      // si aucune musique n'est encore en lecture, la première musique ajoutée
+      // devient immédiatement la musique courante via la route DJ existante.
+      // On ne touche pas au moteur YouTube : on déclenche uniquement /next,
+      // exactement comme le bouton "Suivant / Lancer le DJ".
+      const shouldStartFirstSong =
+        !party?.currentSong &&
+        Array.isArray(updated?.songs) &&
+        updated.songs.some((song: Song) => !song.played);
+
+      if (shouldStartFirstSong) {
+        try {
+          const startResponse = await fetch(
+            `${getApiBaseUrl()}/party/${code}/next`,
+            { method: "POST" },
+          );
+
+          const startedParty = await startResponse.json();
+
+          if (startResponse.ok && !startedParty?.error) {
+            setParty(startedParty);
+            switchMobileTab("playback");
+          } else {
+            setParty(updated);
+          }
+        } catch (startError) {
+          console.error("Démarrage automatique de la première musique impossible", startError);
+          setParty(updated);
+        }
+      } else {
+        setParty(updated);
+      }
+
       setResults((current) => current.filter((item) => item.id !== video.id));
       setSuggestions((current) => current.filter((item) => item.id !== video.id));
     } finally {
@@ -3460,10 +3497,20 @@ async function removeSong(index: number, song: Song) {
                   </p>
                   <button
                     type="button"
-                    onClick={() => switchMobileTab(queue.length ? "queue" : "add")}
+                    onClick={() => {
+                      if (queue.length && isPlaybackController) {
+                        void nextSong();
+                        return;
+                      }
+                      switchMobileTab(queue.length ? "queue" : "add");
+                    }}
                     className="mt-5 rounded-2xl border border-fuchsia-300/20 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-orange-500 px-5 py-3 text-sm font-black text-white"
                   >
-                    {queue.length ? "Voir la file" : "Ajouter une musique"}
+                    {queue.length && isPlaybackController
+                      ? "Lancer la soirée"
+                      : queue.length
+                        ? "Voir la file"
+                        : "Ajouter une musique"}
                   </button>
                 </div>
               )}
