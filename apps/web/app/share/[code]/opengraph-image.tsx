@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import sharp from "sharp";
 
 export const alt = "Récap premium de soirée MixParty";
 export const size = { width: 1200, height: 630 };
@@ -87,21 +88,78 @@ async function getPublicResult(code: string): Promise<PartyResult | null> {
   }
 }
 
+
+async function prepareAvatar(src?: string): Promise<ArrayBuffer | undefined> {
+  const value = String(src || "").trim();
+  if (!value) return undefined;
+
+  try {
+    let input: Buffer;
+
+    if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(value)) {
+      const commaIndex = value.indexOf(",");
+      if (commaIndex < 0) return undefined;
+      input = Buffer.from(value.slice(commaIndex + 1), "base64");
+    } else {
+      const url = /^https?:\/\//i.test(value)
+        ? value
+        : value.startsWith("/")
+          ? `${SITE_URL}${value}`
+          : "";
+
+      if (!url) return undefined;
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3500);
+
+      try {
+        const response = await fetch(url, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!response.ok) return undefined;
+        input = Buffer.from(await response.arrayBuffer());
+      } finally {
+        clearTimeout(timeout);
+      }
+    }
+
+    if (!input.length || input.length > 8 * 1024 * 1024) return undefined;
+
+    const png = await sharp(input)
+      .rotate()
+      .resize(256, 256, {
+        fit: "cover",
+        position: "centre",
+        withoutEnlargement: false,
+      })
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+
+    return Uint8Array.from(png).buffer;
+  } catch {
+    // Un avatar ne doit jamais pouvoir faire tomber l'image Open Graph.
+    return undefined;
+  }
+}
+
 function Avatar({
   name,
-  src,
+  image,
   sizeValue = 88,
   fontSize = 30,
 }: {
   name?: string;
-  src?: string;
+  image?: ArrayBuffer;
   sizeValue?: number;
   fontSize?: number;
 }) {
-  if (src && /^https?:\/\//i.test(src)) {
+  if (image) {
     return (
       <img
-        src={src}
+        // @ts-expect-error Satori accepte ArrayBuffer pour img src.
+        src={image}
         width={sizeValue}
         height={sizeValue}
         alt=""
@@ -290,6 +348,12 @@ export default async function Image({
   const podium = ranking.slice(0, 3);
   const topSong = Array.isArray(result.topSongs) ? result.topSongs[0] : null;
 
+  const podiumAvatarImages = await Promise.all(
+    podium.map((row) => prepareAvatar(row.avatar)),
+  );
+  const winnerAvatarImage =
+    podiumAvatarImages[0] || (await prepareAvatar(result.host?.avatar));
+
   const winnerName = winner?.name || "Champion";
   const winnerVotes = Math.max(0, Number(winner?.votesReceived || 0));
   const winnerScore = Math.max(
@@ -465,7 +529,7 @@ export default async function Image({
               >
                 <Avatar
                   name={winnerName}
-                  src={winner?.avatar}
+                  image={winnerAvatarImage}
                   sizeValue={82}
                   fontSize={28}
                 />
@@ -618,7 +682,7 @@ export default async function Image({
                         <div style={{ display: "flex", marginLeft: 10 }}>
                           <Avatar
                             name={row.name}
-                            src={row.avatar}
+                            image={podiumAvatarImages[index]}
                             sizeValue={34}
                             fontSize={12}
                           />
