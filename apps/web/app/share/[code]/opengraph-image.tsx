@@ -215,9 +215,9 @@ function Brand() {
         <div
           style={{
             display: "flex",
-            fontSize: 31,
+            fontSize: 32,
             fontWeight: 900,
-            letterSpacing: -1,
+            letterSpacing: -0.8,
           }}
         >
           MixParty
@@ -249,7 +249,6 @@ function fallbackImage(code: string) {
           display: "flex",
           padding: 28,
           color: "white",
-          fontFamily: "Arial",
           background:
             "radial-gradient(circle at 10% 8%,rgba(124,58,237,.60),transparent 34%),radial-gradient(circle at 90% 10%,rgba(236,72,153,.42),transparent 30%),radial-gradient(circle at 88% 95%,rgba(249,115,22,.24),transparent 30%),#07020d",
         }}
@@ -291,9 +290,9 @@ function fallbackImage(code: string) {
               style={{
                 display: "flex",
                 marginTop: 22,
-                fontSize: 64,
+                fontSize: 66,
                 fontWeight: 900,
-                letterSpacing: -2,
+                letterSpacing: -2.4,
               }}
             >
               Classement final
@@ -372,7 +371,6 @@ export default async function Image({
           display: "flex",
           padding: 24,
           color: "white",
-          fontFamily: "Arial",
           background:
             "radial-gradient(circle at 8% 8%,rgba(124,58,237,.62),transparent 33%),radial-gradient(circle at 92% 6%,rgba(236,72,153,.40),transparent 28%),radial-gradient(circle at 92% 95%,rgba(249,115,22,.25),transparent 29%),linear-gradient(135deg,#0d041d 0%,#07020d 48%,#24091e 100%)",
         }}
@@ -449,9 +447,9 @@ export default async function Image({
                 style={{
                   display: "flex",
                   color: "#fbbf24",
-                  fontSize: 13,
+                  fontSize: 12,
                   fontWeight: 900,
-                  letterSpacing: 3,
+                  letterSpacing: 3.4,
                 }}
               >
                 LE GRAND GAGNANT
@@ -460,10 +458,10 @@ export default async function Image({
                 style={{
                   display: "flex",
                   marginTop: 7,
-                  fontSize: 49,
-                  lineHeight: 1,
+                  fontSize: 51,
+                  lineHeight: 0.98,
                   fontWeight: 900,
-                  letterSpacing: -1.8,
+                  letterSpacing: -2.1,
                 }}
               >
                 {`${winnerName} remporte la soirée`}
@@ -546,8 +544,9 @@ export default async function Image({
                   <div
                     style={{
                       display: "flex",
-                      fontSize: 31,
+                      fontSize: 32,
                       fontWeight: 900,
+                      letterSpacing: -0.7,
                     }}
                   >
                     {winnerName}
@@ -594,9 +593,9 @@ export default async function Image({
                       display: "flex",
                       marginTop: 4,
                       color: "#fde68a",
-                      fontSize: 11,
+                      fontSize: 10,
                       fontWeight: 900,
-                      letterSpacing: 2,
+                      letterSpacing: 2.4,
                     }}
                   >
                     PARTYSCORE
