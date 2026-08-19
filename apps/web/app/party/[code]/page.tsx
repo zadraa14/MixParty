@@ -3258,9 +3258,9 @@ async function removeSong(index: number, song: Song) {
               aria-label="Lecture en cours"
             >
               {party.currentSong ? (
-                <div className="space-y-3">
+                <div className="space-y-2.5">
                   {/* PLAYER YOUTUBE — volontairement nu : aucun overlay au-dessus */}
-                  <div className="overflow-hidden rounded-[22px] border border-white/[0.09] bg-black shadow-[0_18px_55px_rgba(0,0,0,.38)]">
+                  <div className="mx-auto w-[88%] max-w-[390px] overflow-hidden rounded-[20px] border border-white/[0.09] bg-black shadow-[0_16px_44px_rgba(0,0,0,.34)]">
                     <div className="relative aspect-video w-full overflow-hidden bg-black">
                       {isPlaybackController ? (
                         <div
@@ -4692,7 +4692,7 @@ const canRemove =
 
             </section>
 
-            <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} premium-glass-card overflow-hidden rounded-[22px] border border-cyan-400/15 bg-cyan-500/[0.045] p-3 backdrop-blur-xl md:block md:rounded-[26px] md:p-4`} className="hidden md:block">
+            <section className="hidden premium-glass-card overflow-hidden rounded-[22px] border border-cyan-400/15 bg-cyan-500/[0.045] p-3 backdrop-blur-xl md:block md:rounded-[26px] md:p-4">
               <button
                 type="button"
                 onClick={togglePartyBrainAutoRelay}
@@ -4752,11 +4752,11 @@ const canRemove =
               )}
             </section>
 
-            <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} premium-glass-card overflow-hidden rounded-[22px] border p-3 backdrop-blur-xl transition md:block md:rounded-[26px] md:p-4 ${
+            <section className={`hidden premium-glass-card overflow-hidden rounded-[22px] border p-3 backdrop-blur-xl transition md:block md:rounded-[26px] md:p-4 ${
               djModeActive
                 ? "border-emerald-400/25 bg-emerald-500/[0.08]"
                 : "border-white/10 bg-white/[0.035]"
-            }`} className="hidden md:block">
+            }`}>
               <button
                 type="button"
                 onClick={djModeActive ? deactivateDjMode : activateDjMode}
