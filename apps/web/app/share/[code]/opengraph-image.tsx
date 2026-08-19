@@ -36,15 +36,6 @@ const SITE_URL = (
 
 const BRAND_ICON = `${SITE_URL}/branding/icon.png`;
 
-function normalizeAvatarUrl(value?: string) {
-  const src = String(value || "").trim();
-  if (!src) return "";
-  if (/^data:image\//i.test(src)) return src;
-  if (/^https?:\/\//i.test(src)) return src;
-  if (src.startsWith("/")) return `${SITE_URL}${src}`;
-  return "";
-}
-
 function formatDuration(ms: number) {
   const totalMinutes = Math.max(1, Math.round(Number(ms || 0) / 60000));
   if (totalMinutes < 60) return `${totalMinutes} min`;
@@ -107,12 +98,10 @@ function Avatar({
   sizeValue?: number;
   fontSize?: number;
 }) {
-  const avatarUrl = normalizeAvatarUrl(src);
-
-  if (avatarUrl) {
+  if (src && /^https?:\/\//i.test(src)) {
     return (
       <img
-        src={avatarUrl}
+        src={src}
         width={sizeValue}
         height={sizeValue}
         alt=""
