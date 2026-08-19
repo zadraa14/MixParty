@@ -4281,6 +4281,9 @@ async function removeSong(index: number, song: Song) {
                       const canRemove =
                         Boolean(creatorToken) ||
                         Boolean(song.addedById && participantId && song.addedById === participantId);
+                      const hasVoted = Boolean(
+                        participantId && Array.isArray(song.voters) && song.voters.includes(participantId),
+                      );
                       const isRecent = Date.now() - Number(song.addedAt || 0) < 10 * 60 * 1000;
                       const isTop = queueIndex === 0 && Number(song.votes || 0) > 0;
 
@@ -4330,18 +4333,25 @@ async function removeSong(index: number, song: Song) {
                             <button
                               type="button"
                               onClick={() => vote(originalIndex)}
-                              className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""} grid h-9 w-9 place-items-center rounded-full border border-pink-300/35 bg-[linear-gradient(145deg,rgba(236,72,153,.10),rgba(249,115,22,.07))] text-white shadow-[0_0_16px_rgba(236,72,153,.10)] active:scale-[.95]`}
-                              aria-label={`Voter pour ${song.title}`}
+                              className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""} grid h-9 w-9 place-items-center rounded-full border transition active:scale-[.95] ${
+                                hasVoted
+                                  ? "border-pink-300/55 bg-[linear-gradient(145deg,rgba(236,72,153,.34),rgba(249,115,22,.20))] text-pink-100 shadow-[0_0_20px_rgba(236,72,153,.24)]"
+                                  : "border-pink-300/35 bg-[linear-gradient(145deg,rgba(236,72,153,.10),rgba(249,115,22,.07))] text-white shadow-[0_0_16px_rgba(236,72,153,.10)]"
+                              }`}
+                              aria-label={hasVoted ? `Retirer mon vote pour ${song.title}` : `J'aime ${song.title}`}
+                              aria-pressed={hasVoted}
                             >
-                              <ArrowBigUp className="h-4 w-4" />
+                              <Heart className={`h-4 w-4 ${hasVoted ? "fill-current" : ""}`} />
                             </button>
                             {canRemove ? (
                               <button
                                 type="button"
                                 onClick={() => removeSong(originalIndex, song)}
-                                className="text-[7px] font-black uppercase tracking-[.06em] text-red-300/55"
+                                className="inline-flex items-center gap-1 text-[7px] font-black uppercase tracking-[.055em] text-red-300/65 transition hover:text-red-200"
+                                aria-label={`Supprimer ${song.title} de la file`}
                               >
-                                Retirer
+                                <Trash2 className="h-2.5 w-2.5" />
+                                <span>Supprimer</span>
                               </button>
                             ) : null}
                           </div>
