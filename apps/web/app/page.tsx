@@ -1022,22 +1022,45 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={resumeLastParty}
-                  className="mt-3 flex w-full items-center gap-3 rounded-[22px] border border-emerald-300/15 bg-emerald-400/[0.06] px-4 py-3.5 text-left backdrop-blur-xl transition hover:border-emerald-300/30 hover:bg-emerald-400/[0.09]"
+                  className="group mt-4 flex w-full items-center gap-4 rounded-[24px] border border-emerald-300/20 bg-[linear-gradient(120deg,rgba(16,185,129,.09),rgba(255,255,255,.035),rgba(34,211,238,.06))] px-5 py-4 text-left shadow-[0_16px_40px_rgba(0,0,0,.18)] backdrop-blur-xl transition duration-300 hover:-translate-y-0.5 hover:border-emerald-300/35 hover:bg-emerald-400/[0.10]"
                 >
-                  <span className="relative flex h-3 w-3 shrink-0">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-45" />
-                    <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.85)]" />
+                  <span className="relative grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-emerald-300/20 bg-emerald-400/10 text-emerald-200">
+                    <span className="absolute right-1 top-1 flex h-2.5 w-2.5">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-45" />
+                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.9)]" />
+                    </span>
+                    <RotateCcw className="h-5 w-5 transition-transform duration-300 group-hover:-rotate-45" />
                   </span>
-                  <RotateCcw className="h-4 w-4 shrink-0 text-emerald-200" />
+
                   <span className="min-w-0 flex-1">
-                    <strong className="block text-sm font-black text-white">Reprendre la soirée</strong>
-                    <span className="block truncate text-xs font-semibold text-white/40">
-                      {lastParty.code} • {lastParty.role === "dj" ? "Organisateur" : "Invité"}
+                    <span className="block text-[10px] font-black uppercase tracking-[0.16em] text-emerald-300/70">
+                      Soirée en cours
+                    </span>
+                    <strong className="mt-0.5 block text-base font-black text-white">
+                      Reprendre la soirée
+                    </strong>
+                    <span className="mt-0.5 block truncate text-xs font-semibold text-white/40">
+                      Code {lastParty.code} • {lastParty.role === "dj" ? "Organisateur" : "Invité"}
                     </span>
                   </span>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-white/35" />
+
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.04]">
+                    <ArrowRight className="h-4 w-4 text-white/55 transition-transform duration-300 group-hover:translate-x-1" />
+                  </span>
                 </button>
-              ) : null}
+              ) : (
+                <div className="mt-4 flex w-full items-center gap-4 rounded-[24px] border border-white/[0.07] bg-white/[0.025] px-5 py-4 text-left opacity-60 backdrop-blur-xl">
+                  <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl border border-white/10 bg-white/[0.035] text-white/35">
+                    <RotateCcw className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <strong className="block text-sm font-black text-white/70">Reprendre la soirée</strong>
+                    <span className="mt-0.5 block text-xs font-semibold text-white/30">
+                      Ta dernière soirée active apparaîtra ici
+                    </span>
+                  </span>
+                </div>
+              )}
 
               <div className="mt-6 flex flex-wrap justify-center gap-x-5 gap-y-2 text-xs font-bold text-white/38 lg:justify-start">
                 <span className="flex items-center gap-1.5"><Check className="h-3.5 w-3.5 text-emerald-400" />Profil éphémère possible</span>
