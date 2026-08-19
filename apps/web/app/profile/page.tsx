@@ -34,7 +34,6 @@ import {
   ChevronDown,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import MixPartyBackground from "../../components/MixPartyBackground";
 
 const NAME_KEY = "playerName";
@@ -510,8 +509,7 @@ async function compressProfilePhoto(file: File): Promise<string> {
 }
 
 export default function ProfilePage() {
-  const searchParams = useSearchParams();
-  const embedded = searchParams.get("embedded") === "1";
+  const [embedded, setEmbedded] = useState(false);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const galleryInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -552,6 +550,10 @@ export default function ProfilePage() {
 
 
   useEffect(() => {
+    setEmbedded(
+      new URLSearchParams(window.location.search).get("embedded") === "1",
+    );
+
     const savedName = localStorage.getItem(NAME_KEY)?.trim() || "";
     const savedPhoto = localStorage.getItem(PHOTO_KEY) || "";
     let savedParticipantId = localStorage.getItem(PARTICIPANT_ID_KEY) || "";
@@ -1115,17 +1117,6 @@ export default function ProfilePage() {
   const profileHistory = allProfileHistory.slice(0, historyVisibleCount);
   const hasMoreHistory = historyVisibleCount < allProfileHistory.length;
 
-
-  function openPartyRecap(partyCode: string) {
-    const href = `/party/${encodeURIComponent(partyCode)}/result`;
-
-    if (embedded && window.top && window.top !== window) {
-      window.top.location.assign(href);
-      return;
-    }
-
-    window.location.assign(href);
-  }
 
   return (
     <main className="relative isolate min-h-screen overflow-hidden bg-[#070711] font-[family:var(--font-geist-sans)] text-white">
@@ -1711,20 +1702,7 @@ export default function ProfilePage() {
                   return (
                     <article
                       key={`${entry.partyCode}-${entry.joinedAt}-${index}`}
-                      onClick={() => {
-                        if (entry.endedAt) openPartyRecap(entry.partyCode);
-                      }}
-                      role={entry.endedAt ? "button" : undefined}
-                      tabIndex={entry.endedAt ? 0 : undefined}
-                      onKeyDown={(event) => {
-                        if (entry.endedAt && (event.key === "Enter" || event.key === " ")) {
-                          event.preventDefault();
-                          openPartyRecap(entry.partyCode);
-                        }
-                      }}
                       className={`group relative overflow-hidden rounded-[22px] border p-4 transition duration-300 hover:-translate-y-0.5 ${
-                        entry.endedAt ? "cursor-pointer" : ""
-                      } ${
                         isWinner
                           ? "border-amber-300/20 bg-gradient-to-r from-amber-500/[0.10] via-orange-500/[0.04] to-black/10"
                           : isPodium
@@ -1845,18 +1823,6 @@ export default function ProfilePage() {
                                 {entry.partyScore}
                               </p>
                             </div>
-                          ) : null}
-                          {entry.endedAt ? (
-                            <button
-                              type="button"
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                openPartyRecap(entry.partyCode);
-                              }}
-                              className="min-h-[52px] rounded-2xl border border-violet-300/15 bg-violet-500/[0.07] px-3 py-2 text-[10px] font-black text-violet-100 transition hover:border-fuchsia-300/20 hover:bg-fuchsia-500/[0.09]"
-                            >
-                              Voir le récap →
-                            </button>
                           ) : null}
                         </div>
                       </div>
