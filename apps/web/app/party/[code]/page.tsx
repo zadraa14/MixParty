@@ -35,6 +35,7 @@ import {
   Sparkles,
   Search,
   Shuffle,
+  SkipBack,
   SkipForward,
   TrendingUp,
   UserPlus,
