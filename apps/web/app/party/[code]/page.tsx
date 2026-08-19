@@ -3604,14 +3604,22 @@ async function removeSong(index: number, song: Song) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setMobileQrOpen(true)}
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] border border-fuchsia-300/20 bg-[linear-gradient(145deg,rgba(124,58,237,.18),rgba(236,72,153,.12),rgba(249,115,22,.10))] text-fuchsia-100 shadow-[0_0_20px_rgba(236,72,153,.10)] transition active:scale-[.94]"
-              aria-label="Afficher le QR code de la soirée"
-            >
-              <QrCode className="h-[18px] w-[18px]" />
-            </button>
+            <div className="flex items-center gap-1.5">
+              <span className="hidden min-[390px]:inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-fuchsia-300/15 bg-fuchsia-500/[0.07] px-2.5 py-1 text-[8px] font-black uppercase tracking-[.12em] text-fuchsia-200/85 shadow-[0_0_14px_rgba(236,72,153,.08)]">
+                Inviter
+                <span className="translate-x-[1px] text-[11px] leading-none text-fuchsia-300 animate-pulse">→</span>
+              </span>
+
+              <button
+                type="button"
+                onClick={() => setMobileQrOpen(true)}
+                className="relative grid h-10 w-10 shrink-0 place-items-center rounded-[14px] border border-fuchsia-300/20 bg-[linear-gradient(145deg,rgba(124,58,237,.18),rgba(236,72,153,.12),rgba(249,115,22,.10))] text-fuchsia-100 shadow-[0_0_20px_rgba(236,72,153,.10)] transition active:scale-[.94]"
+                aria-label="Afficher le QR code de la soirée"
+              >
+                <QrCode className="h-[18px] w-[18px]" />
+                <span className="pointer-events-none absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-fuchsia-400/90 shadow-[0_0_10px_rgba(244,114,182,.75)] animate-pulse" />
+              </button>
+            </div>
 
             <button
               type="button"
