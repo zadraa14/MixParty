@@ -5198,6 +5198,7 @@ const canRemove =
                   { label: "🌍 Afro", query: "afro hits" },
                   { label: "✨ Pop", query: "pop hits" },
                   { label: "🕺 Dance", query: "dance party hits" },
+                  { label: "🌿 Reggae", query: "reggae hits" },
                   { label: "🇫🇷 Français", query: "chansons françaises populaires" },
                 ].map((category, index) => {
                   const normalizedCategoryLabel = category.label.replace(/^[^A-Za-zÀ-ÿ0-9]+\s*/u, "");

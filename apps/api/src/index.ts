@@ -5331,7 +5331,7 @@ type SearchCacheEntry = {
   engineVersion?: number;
 };
 
-const YOUTUBE_SEARCH_ENGINE_VERSION = 5;
+const YOUTUBE_SEARCH_ENGINE_VERSION = 6;
 const YOUTUBE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const YOUTUBE_CACHE_MAX_ENTRIES = 2000;
 const youtubeCacheFilePath = path.resolve(persistentDataDir, "youtube-search-cache.json");
@@ -5960,18 +5960,160 @@ function containsWholePhraseTokens(haystack: string, needle: string) {
   return false;
 }
 
-function isDiscoveryCategoryQuery(query: string) {
-  const normalized = normalizeMusicQuery(query);
+type SearchCategoryProfile = {
+  key: string;
+  query: string;
+  youtubeQuery: string;
+  artistSeeds: string[];
+  titleKeywords: string[];
+};
 
-  return new Set([
-    "hits france",
-    "rap francais",
-    "hits annees 2000",
-    "afro hits",
-    "pop hits",
-    "dance party hits",
-    "chansons francaises populaires",
-  ]).has(normalized);
+const SEARCH_CATEGORY_PROFILES: SearchCategoryProfile[] = [
+  {
+    key: "hits",
+    query: "hits france",
+    youtubeQuery: "hits france official audio",
+    artistSeeds: ["gims", "aya nakamura", "ninho", "dadju", "jul", "tiakola", "sdm", "gazo", "vianney", "louane"],
+    titleKeywords: [],
+  },
+  {
+    key: "rap-fr",
+    query: "rap francais",
+    youtubeQuery: "rap francais official audio",
+    artistSeeds: ["ninho", "jul", "sch", "gazo", "sdm", "tiakola", "booba", "damso", "naps", "koba lad", "werenoi"],
+    titleKeywords: ["rap", "drill"],
+  },
+  {
+    key: "2000",
+    query: "hits annees 2000",
+    youtubeQuery: "2000s hits official audio",
+    artistSeeds: ["rihanna", "lady gaga", "black eyed peas", "britney spears", "nelly furtado", "usher", "beyonce", "shakira", "akon", "sean paul"],
+    titleKeywords: [],
+  },
+  {
+    key: "afro",
+    query: "afro hits",
+    youtubeQuery: "afro hits official audio",
+    artistSeeds: ["burna boy", "wizkid", "tems", "davido", "rema", "aya nakamura", "dadju", "tayc", "ckay", "asake"],
+    titleKeywords: ["afro", "amapiano"],
+  },
+  {
+    key: "pop",
+    query: "pop hits",
+    youtubeQuery: "pop hits official audio",
+    artistSeeds: ["dua lipa", "the weeknd", "bruno mars", "rihanna", "beyonce", "lady gaga", "katy perry", "ariana grande", "ed sheeran", "justin timberlake"],
+    titleKeywords: ["pop"],
+  },
+  {
+    key: "dance",
+    query: "dance party hits",
+    youtubeQuery: "dance music official audio",
+    artistSeeds: ["david guetta", "calvin harris", "avicii", "martin garrix", "tiesto", "dua lipa", "robin schulz", "meduza", "kygo", "swedish house mafia"],
+    titleKeywords: ["dance", "house", "electro", "edm"],
+  },
+  {
+    key: "francais",
+    query: "chansons francaises populaires",
+    youtubeQuery: "chanson francaise populaire official audio",
+    artistSeeds: ["gims", "stromae", "vianney", "louane", "kendji girac", "claudio capéo", "amir", "slimane", "vitaa", "christophe mae"],
+    titleKeywords: [],
+  },
+  {
+    key: "reggae",
+    query: "reggae hits",
+    youtubeQuery: "reggae official audio",
+    artistSeeds: ["bob marley", "sean paul", "shaggy", "ub40", "damian marley", "alpha blondy", "tiken jah fakoly", "gentleman", "protoje", "chronixx"],
+    titleKeywords: ["reggae", "roots", "dancehall"],
+  },
+];
+
+function searchCategoryProfileForQuery(query: string) {
+  const normalized = normalizeMusicQuery(query);
+  return SEARCH_CATEGORY_PROFILES.find(
+    (profile) => normalizeMusicQuery(profile.query) === normalized,
+  ) || null;
+}
+
+function isDiscoveryCategoryQuery(query: string) {
+  return Boolean(searchCategoryProfileForQuery(query));
+}
+
+function categoryKnownResults(profile: SearchCategoryProfile) {
+  const seedKeys = profile.artistSeeds.map(normalizeMusicQuery).filter(Boolean);
+
+  return Object.values(musicBrain.songs)
+    .filter((song) => !isCompilationLikeMusicContent(song))
+    .filter((song) => !isSearchJunkArtistName(song.artistName))
+    .filter((song) => {
+      const artist = normalizeMusicQuery(song.artistName || "");
+      return seedKeys.some(
+        (seed) =>
+          artist === seed ||
+          containsWholePhraseTokens(artist, seed) ||
+          containsWholePhraseTokens(seed, artist),
+      );
+    })
+    .map((song): YoutubeSearchResult => ({
+      id: song.videoId,
+      title: song.title,
+      rawTitle: song.rawTitle,
+      thumbnail: song.thumbnail,
+      channelTitle: song.channelTitle,
+      durationSeconds: song.durationSeconds,
+      artistName: song.artistName,
+      featuredArtistNames: song.featuredArtistNames,
+      albumName: song.albumName,
+      metadataSource: song.metadataSource,
+      metadataConfidence: song.metadataConfidence,
+    }))
+    .sort((a, b) => {
+      const songA = musicBrain.songs[a.id];
+      const songB = musicBrain.songs[b.id];
+      const popularityA =
+        Number(songA?.playedCount || 0) * 8 +
+        Number(songA?.addedCount || 0) * 6 +
+        Number(songA?.voteCount || 0) * 5 +
+        Number(songA?.searchCount || 0) * 2;
+      const popularityB =
+        Number(songB?.playedCount || 0) * 8 +
+        Number(songB?.addedCount || 0) * 6 +
+        Number(songB?.voteCount || 0) * 5 +
+        Number(songB?.searchCount || 0) * 2;
+      return popularityB - popularityA;
+    })
+    .slice(0, 24);
+}
+
+function scoreCategoryResult(result: YoutubeSearchResult, profile: SearchCategoryProfile) {
+  let score = scoreMusicResult(result, profile.query);
+  const artist = normalizeMusicQuery(result.artistName || "");
+  const title = normalizeMusicQuery(`${result.rawTitle || ""} ${result.title || ""}`);
+  const channel = normalizeMusicQuery(result.channelTitle || "");
+
+  const seedMatch = profile.artistSeeds.some((seedName) => {
+    const seed = normalizeMusicQuery(seedName);
+    return (
+      artist === seed ||
+      containsWholePhraseTokens(artist, seed) ||
+      containsWholePhraseTokens(channel, seed)
+    );
+  });
+
+  if (seedMatch) score += 320;
+
+  const keywordMatch = profile.titleKeywords.some((keyword) =>
+    containsWholePhraseTokens(title, normalizeMusicQuery(keyword)),
+  );
+  if (keywordMatch) score += 55;
+
+  // Les chaînes/enfants génériques n'ont rien à faire dans les catégories de soirée.
+  if (/(kids?|kidz|children|nursery|bounce patrol|bluey|baby dance|tune kids)/i.test(
+    `${result.channelTitle || ""} ${result.artistName || ""} ${result.title || ""}`,
+  )) {
+    score -= 900;
+  }
+
+  return score;
 }
 
 function musicBrainResultsForQuery(query: string) {
@@ -6212,13 +6354,17 @@ function rankMusicBrainDirectResults(
 }
 
 async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResult[]> {
-  // Les catégories ("Dance", "Hits", etc.) sont des recherches de découverte,
-  // pas des noms d'artistes. Elles repartent d'une recherche propre afin d'éviter
-  // qu'une ancienne donnée MusicBrain mal classée monopolise les résultats.
-  const known = isDiscoveryCategoryQuery(query)
-    ? []
+  const categoryProfile = searchCategoryProfileForQuery(query);
+
+  // Une catégorie MixParty combine :
+  // 1) les morceaux déjà connus de vrais artistes du style (0 quota YouTube),
+  // 2) une recherche YouTube ciblée pour renouveler le catalogue.
+  const known = categoryProfile
+    ? categoryKnownResults(categoryProfile)
     : musicBrainResultsForQuery(query);
-  const directDecision = musicBrainDirectSearchDecision(query, known);
+  const directDecision = categoryProfile
+    ? { useMusicBrainOnly: false, reason: null, strongMatchIds: new Set<string>() }
+    : musicBrainDirectSearchDecision(query, known);
 
   // Deux cas seulement permettent d'éviter complètement YouTube :
   // 1) recherche large d'un artiste avec plus de 20 titres déj�  connus ;
@@ -6255,7 +6401,8 @@ async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResu
     `�  MusicBrain "${query}" : ${known.length} résultat(s) local(aux), complément YouTube pour garantir le catalogue complet.`
   );
 
-  const primary = await requestYoutubeMusic(query, "user");
+  const effectiveYoutubeQuery = categoryProfile?.youtubeQuery || query;
+  const primary = await requestYoutubeMusic(effectiveYoutubeQuery, "user");
   let combined = [...known, ...primary];
 
   const firstPass = deduplicateMusicResults(combined);
@@ -6272,7 +6419,9 @@ async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResu
     (compactQueryTokenCount > 0 && compactQueryTokenCount <= 5 && officialCount < 6);
 
   if (needsOfficialFallback) {
-    const fallbackQuery = `${query} official audio`;
+    const fallbackQuery = categoryProfile
+      ? `${categoryProfile.youtubeQuery} topic`
+      : `${query} official audio`;
     const fallback = await requestYoutubeMusic(fallbackQuery, "user");
     combined = [...combined, ...fallback];
   }
@@ -6283,7 +6432,17 @@ async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResu
         !isCompilationLikeMusicContent(result) &&
         !isSearchJunkArtistName(result.artistName),
     )
-    .sort((a, b) => scoreMusicResult(b, query) - scoreMusicResult(a, query))
+    .filter((result) => {
+      if (!categoryProfile) return true;
+      return !/(kids?|kidz|children|nursery|bounce patrol|bluey|baby dance|tune kids)/i.test(
+        `${result.channelTitle || ""} ${result.artistName || ""} ${result.title || ""}`,
+      );
+    })
+    .sort((a, b) =>
+      categoryProfile
+        ? scoreCategoryResult(b, categoryProfile) - scoreCategoryResult(a, categoryProfile)
+        : scoreMusicResult(b, query) - scoreMusicResult(a, query),
+    )
     .slice(0, 40);
 }
 
