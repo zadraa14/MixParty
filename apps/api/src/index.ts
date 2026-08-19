@@ -1660,7 +1660,53 @@ function musicBrainLearningDecision(params: {
   };
 }
 
+function isCompilationLikeMusicContent(value: {
+  title?: string;
+  rawTitle?: string;
+  channelTitle?: string;
+  durationSeconds?: number;
+}) {
+  const titleText = `${value.rawTitle || ""} ${value.title || ""}`
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  const duration = Number(value.durationSeconds || 0);
+
+  // Classements / compilations éditoriales : "Top 100 musique France",
+  // "Top 50 années 80", "100 meilleurs hits", etc.
+  if (
+    /\btop\s*\d{1,3}\b/i.test(titleText) ||
+    /\b(?:top|best)\s+(?:des?|du|de la|meilleurs?|meilleures?)\b/i.test(titleText) ||
+    /\b\d{2,3}\s+(?:hits?|chansons?|musiques?|titres?|songs?|tracks?)\b/i.test(titleText) ||
+    /\b(?:playlist|compilation)\b/i.test(titleText)
+  ) {
+    return true;
+  }
+
+  // Les "mix" très longs sont des enchaînements, pas un morceau individuel.
+  if (
+    duration >= 12 * 60 &&
+    /\b(?:mix|megamix|dj set|party mix|non[- ]?stop|encha[iî]nement)\b/i.test(titleText)
+  ) {
+    return true;
+  }
+
+  // Vidéos anormalement longues explicitement présentées comme sélection musicale.
+  if (
+    duration >= 20 * 60 &&
+    /\b(?:ann[eé]es?\s*(?:60|70|80|90|2000|2010)|hits?|musiques?|chansons?|playlist)\b/i.test(titleText)
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 function shouldLearnSearchResult(result: YoutubeSearchResult, query: string) {
+  if (isCompilationLikeMusicContent(result)) {
+    return { learn: false, reason: "compilation_ou_classement" };
+  }
+
   return musicBrainLearningDecision({
     artistName: result.artistName,
     channelTitle: result.channelTitle,
@@ -2107,6 +2153,10 @@ function isPartyBrainRelaySafeSong(song: MusicBrainSong) {
   }
 
   if (/(reaction|reacts?|interview|podcast|documentary|documentaire|making of|behind the scenes|shorts?|#shorts)/i.test(combined)) {
+    return false;
+  }
+
+  if (isCompilationLikeMusicContent(song)) {
     return false;
   }
 
@@ -6083,9 +6133,10 @@ async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResu
   // MusicBrain économise du quota, mais ne doit jamais masquer une musique trouvable
   // sur YouTube.
   if (directDecision.useMusicBrainOnly) {
+    const safeKnown = known.filter((result) => !isCompilationLikeMusicContent(result));
     const results = rankMusicBrainDirectResults(
       query,
-      known,
+      safeKnown,
       directDecision.strongMatchIds
     );
 
@@ -6131,6 +6182,7 @@ async function smartYoutubeMusicSearch(query: string): Promise<YoutubeSearchResu
   }
 
   return deduplicateMusicResults(combined)
+    .filter((result) => !isCompilationLikeMusicContent(result))
     .sort((a, b) => scoreMusicResult(b, query) - scoreMusicResult(a, query))
     .slice(0, 40);
 }
@@ -6224,6 +6276,10 @@ function academyResultIsTrusted(result: YoutubeSearchResult, expectedArtist: str
     return false;
   }
   if (/(reaction|reacts?|interview|podcast|documentary|documentaire|making of|behind the scenes|shorts?|#shorts)/i.test(combined)) {
+    return false;
+  }
+
+  if (isCompilationLikeMusicContent(result)) {
     return false;
   }
 
@@ -13466,6 +13522,10 @@ app.get("/search/youtube", async (req, res) => {
 
   const exactCache = youtubeSearchCache.get(normalizedQuery);
   if (exactCache) {
+    const safeCachedResults = exactCache.results.filter(
+      (result) => !isCompilationLikeMusicContent(result),
+    );
+
     youtubeSearchStats.exactCacheHits += 1;
     youtubeSearchStats.quotaSaved += 1;
     logYoutubeSearchDiagnostic({
@@ -13473,11 +13533,11 @@ app.get("/search/youtube", async (req, res) => {
       normalizedQuery,
       source: "CACHE",
       durationMs: Date.now() - startedAt,
-      resultCount: exactCache.results.length,
+      resultCount: safeCachedResults.length,
     });
-    recordMusicBrainSearch(query, exactCache.results);
+    recordMusicBrainSearch(query, safeCachedResults);
     res.setHeader("X-MixParty-Cache", "HIT");
-    return res.json(exactCache.results);
+    return res.json(safeCachedResults);
   }
 
   // Pas de cache approximatif ici : deux recherches proches peuvent viser
@@ -13488,6 +13548,10 @@ app.get("/search/youtube", async (req, res) => {
     ([key]) => key.replace(/\s+/g, "") === compactKey
   );
   if (alias) {
+    const safeAliasResults = alias[1].results.filter(
+      (result) => !isCompilationLikeMusicContent(result),
+    );
+
     youtubeSearchStats.aliasCacheHits += 1;
     youtubeSearchStats.quotaSaved += 1;
     logYoutubeSearchDiagnostic({
@@ -13495,12 +13559,12 @@ app.get("/search/youtube", async (req, res) => {
       normalizedQuery,
       source: "ALIAS_CACHE",
       durationMs: Date.now() - startedAt,
-      resultCount: alias[1].results.length,
+      resultCount: safeAliasResults.length,
       matchedQuery: alias[1].query,
     });
-    recordMusicBrainSearch(query, alias[1].results);
+    recordMusicBrainSearch(query, safeAliasResults);
     res.setHeader("X-MixParty-Cache", "ALIAS-HIT");
-    return res.json(alias[1].results);
+    return res.json(safeAliasResults);
   }
 
   let inFlight = youtubeSearchesInFlight.get(normalizedQuery);
