@@ -2859,14 +2859,18 @@ function registerPartyParticipant(party: Party, participantIdValue: unknown) {
 }
 
 function buildFinalPartyRanking(party: Party) {
-  const qualifiedAccountIds = new Set(
-    accountsStore.partyQualifiedAccountIds(party.code),
-  );
+  // Classement final visible = tous les participants de la soirée.
+  // La règle des 30 minutes reste utilisée séparément
+  // pour les stats/badges permanents.
 
   const scores = new Map<
     string,
     {
       accountId: string;
+      participantId?: string;
+      name?: string;
+      avatar?: string;
+      isEphemeral?: boolean;
       votesReceived: number;
       songsWithVotes: number;
       songsAdded: number;
@@ -2874,9 +2878,39 @@ function buildFinalPartyRanking(party: Party) {
     }
   >();
 
-  for (const accountId of qualifiedAccountIds) {
-    scores.set(accountId, {
-      accountId,
+  for (const participant of party.participants) {
+    const participantId = String(participant.id || "").trim();
+    if (!participantId) continue;
+
+    const realAccountId = String(participant.accountId || "").trim();
+    const identityKey = realAccountId || `guest:${participantId}`;
+
+    if (!scores.has(identityKey)) {
+      scores.set(identityKey, {
+        accountId: identityKey,
+        participantId,
+        name:
+          String(participant.name || "").trim() ||
+          (realAccountId ? "Compte MixParty" : "Invité"),
+        avatar: participant.avatar,
+        isEphemeral: !realAccountId,
+        votesReceived: 0,
+        songsWithVotes: 0,
+        songsAdded: 0,
+        partyScore: 0,
+      });
+    }
+  }
+
+  // Garde aussi les comptes permanents qui ont participé
+  // mais se sont déconnectés avant la fin.
+  for (const accountId of accountsStore.partyAccountIds(party.code)) {
+    const key = String(accountId || "").trim();
+    if (!key || scores.has(key)) continue;
+
+    scores.set(key, {
+      accountId: key,
+      isEphemeral: false,
       votesReceived: 0,
       songsWithVotes: 0,
       songsAdded: 0,
@@ -2885,21 +2919,46 @@ function buildFinalPartyRanking(party: Party) {
   }
 
   for (const song of party.songs) {
-    const accountId = String(song.addedByAccountId || "").trim();
-    if (!accountId || !qualifiedAccountIds.has(accountId)) continue;
+    const realAccountId = String(song.addedByAccountId || "").trim();
+    const participantId = String(song.addedById || "").trim();
 
-    const row = scores.get(accountId);
+    const identityKey =
+      realAccountId || (participantId ? `guest:${participantId}` : "");
+
+    if (!identityKey) continue;
+
+    let row = scores.get(identityKey);
+
+    // Participant éventuellement nettoyé de la présence,
+    // mais dont les morceaux sont encore enregistrés.
+    if (!row && participantId) {
+      row = {
+        accountId: identityKey,
+        participantId,
+        name: String(song.addedBy || "").trim() || "Invité",
+        isEphemeral: !realAccountId,
+        votesReceived: 0,
+        songsWithVotes: 0,
+        songsAdded: 0,
+        partyScore: 0,
+      };
+
+      scores.set(identityKey, row);
+    }
+
     if (!row) continue;
 
     const votes = Math.max(0, Number(song.votes || 0));
+
     row.votesReceived += votes;
     row.songsAdded += 1;
-    if (votes > 0) row.songsWithVotes += 1;
+
+    if (votes > 0) {
+      row.songsWithVotes += 1;
+    }
   }
 
   for (const row of scores.values()) {
-    // PartyScore V1 : total des votes reÃ§us pendant la soirÃ©e.
-    // Les autres valeurs servent uniquement de dÃ©partage.
     row.partyScore = row.votesReceived;
   }
 
@@ -2908,7 +2967,9 @@ function buildFinalPartyRanking(party: Party) {
       b.partyScore - a.partyScore ||
       b.songsWithVotes - a.songsWithVotes ||
       b.songsAdded - a.songsAdded ||
-      a.accountId.localeCompare(b.accountId),
+      String(a.name || a.accountId).localeCompare(
+        String(b.name || b.accountId),
+      ),
   );
 }
 
