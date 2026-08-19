@@ -1681,7 +1681,24 @@ function isCompilationLikeMusicContent(value: {
     /\b\d{2,3}\s+(?:hits?|chansons?|musiques?|titres?|songs?|tracks?)\b/i.test(titleText) ||
     /\b\d{2,3}\s+(?:des?\s+)?(?:meilleurs?|meilleures?)\s+(?:hits?|chansons?|musiques?|titres?|songs?|tracks?)\b/i.test(titleText) ||
     /\b(?:les?\s+)?\d{2,3}\s+(?:plus\s+grands?|incontournables?|classiques?)\s+(?:hits?|chansons?|musiques?|titres?)\b/i.test(titleText) ||
-    /\b(?:playlist|compilation|megamix|non[- ]?stop|dj set)\b/i.test(titleText)
+    /\b(?:playlist|compilation|megamix|non[- ]?stop|dj set|openformat|open format)\b/i.test(titleText) ||
+
+    // Sélections éditoriales YouTube du type :
+    // "Best dance songs 2024", "Party songs 2026",
+    // "Dance party songs ~ Throwback 2010's songs", etc.
+    /\bbest\s+(?:dance|party|summer|club|throwback|pop|rap|afro)?\s*songs?\b/i.test(titleText) ||
+    /\bparty\s+songs?\s+(?:19|20)\d{2}\b/i.test(titleText) ||
+    /\bdance\s+party\s+songs?\b/i.test(titleText) ||
+    /\bsongs?\s+(?:to|that)\s+(?:make\s+you\s+)?dance\b/i.test(titleText) ||
+    /\bthrowback\b.*\bsongs?\b/i.test(titleText) ||
+    /\bsummer\s+songs?\b/i.test(titleText) ||
+    /\bparty\s+classics?\b/i.test(titleText) ||
+    /\bfavorite\s+.*\bdance\s+along\s+videos?\b/i.test(titleText) ||
+    /\bsongs?\s+from\s+.+\bthe\s+album\b/i.test(titleText) ||
+
+    // Durées éditoriales affichées directement dans le titre :
+    // "30 Minutes of...", "2 Hours of..."
+    /\b\d{1,3}\s*(?:minutes?|mins?|hours?|hrs?)\s+(?:of|de|d['’]?)\b/i.test(titleText)
   ) {
     return true;
   }
@@ -1689,7 +1706,7 @@ function isCompilationLikeMusicContent(value: {
   // Les "mix" très longs sont des enchaînements, pas un morceau individuel.
   if (
     duration >= 12 * 60 &&
-    /\b(?:mix|megamix|dj set|party mix|non[- ]?stop|encha[iî]nement)\b/i.test(titleText)
+    /\b(?:mix|megamix|dj set|live set|party mix|non[- ]?stop|encha[iî]nement|hits?|songs?|musiques?|chansons?|classics?|throwback)\b/i.test(titleText)
   ) {
     return true;
   }
@@ -5307,7 +5324,7 @@ type SearchCacheEntry = {
   engineVersion?: number;
 };
 
-const YOUTUBE_SEARCH_ENGINE_VERSION = 3;
+const YOUTUBE_SEARCH_ENGINE_VERSION = 4;
 const YOUTUBE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const YOUTUBE_CACHE_MAX_ENTRIES = 2000;
 const youtubeCacheFilePath = path.resolve(persistentDataDir, "youtube-search-cache.json");
