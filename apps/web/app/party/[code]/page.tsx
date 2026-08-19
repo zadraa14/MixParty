@@ -21,6 +21,7 @@ import {
   Trash2,
   Expand,
   Headphones,
+  Heart,
   Gauge,
   ListMusic,
   MessageCircle,
@@ -3287,49 +3288,52 @@ async function removeSong(index: number, song: Song) {
                     </div>
                   </div>
 
-                  {/* TITRE + VOTES + COMMANDES DJ */}
-                  <div className="overflow-hidden rounded-[22px] border border-white/[0.08] bg-[linear-gradient(135deg,rgba(31,15,47,.88),rgba(12,10,22,.96)_58%,rgba(51,19,30,.80))] p-3.5 shadow-[0_14px_45px_rgba(0,0,0,.28)]">
-                    <div className="flex items-center gap-3">
+                  {/* TITRE + VOTES + COMMANDES DJ — PREMIUM MOBILE */}
+                  <div className="relative overflow-hidden rounded-[28px] border border-fuchsia-300/[0.12] bg-[radial-gradient(circle_at_100%_100%,rgba(249,115,22,.11),transparent_34%),radial-gradient(circle_at_0%_0%,rgba(168,85,247,.14),transparent_38%),linear-gradient(145deg,rgba(24,15,38,.96),rgba(9,8,17,.97)_56%,rgba(33,13,24,.94))] p-4 shadow-[0_20px_55px_rgba(0,0,0,.34),0_0_28px_rgba(217,70,239,.055)]">
+                    <div className="pointer-events-none absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-fuchsia-300/35 to-transparent" />
+
+                    <div className="flex items-center gap-3.5">
                       <img
                         src={getSongArtwork(party.currentSong)}
                         alt=""
-                        className="h-[58px] w-[58px] shrink-0 rounded-[15px] border border-white/10 object-cover shadow-[0_10px_26px_rgba(0,0,0,.28)]"
+                        className="h-[66px] w-[66px] shrink-0 rounded-[19px] border border-white/[0.10] object-cover shadow-[0_12px_30px_rgba(0,0,0,.32)]"
                       />
 
                       <div className="min-w-0 flex-1">
-                        <div className="mb-1 inline-flex items-center gap-1.5 rounded-full border border-fuchsia-300/15 bg-fuchsia-500/10 px-2 py-0.5 text-[7px] font-black uppercase tracking-[.11em] text-fuchsia-200">
-                          <span className="h-1.5 w-1.5 rounded-full bg-fuchsia-400" />
+                        <div className="mb-1.5 inline-flex items-center gap-1.5 rounded-full border border-fuchsia-300/20 bg-fuchsia-500/[0.10] px-2.5 py-1 text-[7px] font-black uppercase tracking-[.13em] text-fuchsia-200">
+                          <span className="h-1.5 w-1.5 rounded-full bg-fuchsia-400 shadow-[0_0_8px_rgba(244,114,182,.75)]" />
                           En cours
                         </div>
                         <h1 className="truncate font-[family:var(--font-exo-2)] text-[17px] font-black leading-tight text-white">
                           {party.currentSong.title}
                         </h1>
-                        <p className="mt-0.5 truncate text-[11px] font-semibold text-white/40">
+                        <p className="mt-1 truncate text-[11px] font-semibold text-white/42">
                           {party.currentSong.artistName || party.currentSong.addedBy}
                         </p>
                       </div>
 
-                      <div className="shrink-0 rounded-[16px] border border-orange-300/15 bg-orange-500/[0.08] px-2.5 py-2 text-center">
-                        <ArrowBigUp className="mx-auto h-3.5 w-3.5 text-orange-300" />
-                        <strong className="mt-0.5 block font-[family:var(--font-exo-2)] text-lg font-black leading-none text-white">
+                      {/* Vote = coeur, plus évident */}
+                      <div className="flex h-[54px] min-w-[58px] shrink-0 items-center justify-center gap-1.5 rounded-full border border-pink-300/30 bg-[linear-gradient(135deg,rgba(236,72,153,.24),rgba(249,115,22,.13))] px-3 shadow-[0_0_20px_rgba(236,72,153,.10)]">
+                        <Heart className="h-[19px] w-[19px] text-pink-300" />
+                        <strong className="font-[family:var(--font-exo-2)] text-[18px] font-black leading-none text-white">
                           {party.currentSong.votes || 0}
                         </strong>
-                        <span className="mt-1 block text-[6px] font-black uppercase tracking-[.1em] text-white/30">
-                          votes
-                        </span>
                       </div>
                     </div>
 
-                    {/* Commandes : uniquement le DJ contrôle la lecture */}
-                    <div className="mt-3 grid grid-cols-[1fr_1.15fr_1fr] gap-2 border-t border-white/[0.06] pt-3">
+                    {/* Fine ligne lumineuse de séparation */}
+                    <div className="my-3 h-px bg-gradient-to-r from-transparent via-white/[0.08] to-transparent" />
+
+                    {/* Commandes DJ plus douces / moins carrées */}
+                    <div className="grid grid-cols-[1fr_1.05fr_1fr] items-center gap-3">
                       <button
                         type="button"
                         onClick={() => void previousSong()}
                         disabled={!isPlaybackController}
-                        className="flex h-11 items-center justify-center gap-1.5 rounded-[14px] border border-white/[0.08] bg-white/[0.035] text-white/72 disabled:cursor-not-allowed disabled:opacity-25"
+                        className="flex h-[48px] items-center justify-center gap-2 rounded-full border border-violet-300/[0.14] bg-[linear-gradient(145deg,rgba(124,58,237,.10),rgba(255,255,255,.025))] text-white/78 shadow-[inset_0_1px_0_rgba(255,255,255,.04)] transition active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-25"
                         aria-label="Musique précédente"
                       >
-                        <SkipBack className="h-4 w-4 fill-current" />
+                        <SkipBack className="h-[17px] w-[17px] fill-current" />
                         <span className="text-[8px] font-black">Préc.</span>
                       </button>
 
@@ -3344,32 +3348,29 @@ async function removeSong(index: number, song: Song) {
                           }
                         }}
                         disabled={!isPlaybackController}
-                        className="flex h-11 items-center justify-center gap-2 rounded-[14px] border border-fuchsia-300/20 bg-gradient-to-r from-violet-600/85 via-fuchsia-600/85 to-orange-500/80 text-white shadow-[0_0_22px_rgba(236,72,153,.12)] disabled:cursor-not-allowed disabled:opacity-25"
+                        className="mx-auto flex h-[58px] w-[58px] items-center justify-center rounded-full border border-pink-200/35 bg-[linear-gradient(145deg,#7c3aed,#e11dbe_52%,#fb7185_76%,#f97316)] text-white shadow-[0_0_0_5px_rgba(217,70,239,.08),0_0_26px_rgba(236,72,153,.22)] transition active:scale-[.97] disabled:cursor-not-allowed disabled:opacity-25"
                         aria-label={tvPlayback.state === 1 ? "Mettre en pause" : "Lire"}
                       >
                         {tvPlayback.state === 1 ? (
-                          <Pause className="h-4 w-4 fill-current" />
+                          <Pause className="h-5 w-5 fill-current" />
                         ) : (
-                          <Play className="ml-0.5 h-4 w-4 fill-current" />
+                          <Play className="ml-0.5 h-5 w-5 fill-current" />
                         )}
-                        <span className="text-[9px] font-black">
-                          {tvPlayback.state === 1 ? "Pause" : "Lecture"}
-                        </span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => void nextSong()}
                         disabled={!isPlaybackController}
-                        className="flex h-11 items-center justify-center gap-1.5 rounded-[14px] border border-white/[0.08] bg-white/[0.035] text-white/72 disabled:cursor-not-allowed disabled:opacity-25"
+                        className="flex h-[48px] items-center justify-center gap-2 rounded-full border border-pink-300/[0.14] bg-[linear-gradient(145deg,rgba(236,72,153,.08),rgba(249,115,22,.045))] text-white/78 shadow-[inset_0_1px_0_rgba(255,255,255,.04)] transition active:scale-[.98] disabled:cursor-not-allowed disabled:opacity-25"
                         aria-label="Musique suivante"
                       >
                         <span className="text-[8px] font-black">Suiv.</span>
-                        <SkipForward className="h-4 w-4 fill-current" />
+                        <SkipForward className="h-[17px] w-[17px] fill-current" />
                       </button>
                     </div>
 
-                    <div className="mt-2 flex items-center justify-between gap-3">
+                    <div className="mt-3 flex items-center justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-2">
                         {(() => {
                           const owner =
@@ -3394,25 +3395,25 @@ async function removeSong(index: number, song: Song) {
                                 )
                               }
                               alt=""
-                              className="h-6 w-6 rounded-full border border-white/10 object-cover"
+                              className="h-7 w-7 rounded-full border border-white/10 object-cover shadow-[0_4px_12px_rgba(0,0,0,.28)]"
                             />
                           );
                         })()}
-                        <span className="truncate text-[8px] font-bold text-white/35">
+                        <span className="truncate text-[8px] font-bold text-white/38">
                           Ajouté par {party.currentSong.addedBy || "Invité"}
                         </span>
                       </div>
 
                       {!isPlaybackController ? (
-                        <span className="shrink-0 text-[7px] font-black uppercase tracking-[.08em] text-white/22">
-                          contrôlé par le DJ
+                        <span className="shrink-0 rounded-full border border-white/[0.06] bg-white/[0.025] px-2 py-1 text-[6.5px] font-black uppercase tracking-[.08em] text-white/25">
+                          DJ uniquement
                         </span>
                       ) : null}
                     </div>
                   </div>
 
                   {/* PROCHAINES MUSIQUES */}
-                  <div className="rounded-[22px] border border-white/[0.08] bg-[#0b0914]/88 p-3 shadow-[0_14px_45px_rgba(0,0,0,.22)]">
+                  <div className="relative overflow-hidden rounded-[28px] border border-violet-300/[0.10] bg-[radial-gradient(circle_at_100%_0%,rgba(124,58,237,.11),transparent_36%),linear-gradient(145deg,rgba(12,9,24,.96),rgba(7,7,14,.98))] p-3.5 shadow-[0_18px_50px_rgba(0,0,0,.30)]">
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-[8px] font-black uppercase tracking-[.14em] text-violet-300">
@@ -3426,14 +3427,14 @@ async function removeSong(index: number, song: Song) {
                       <button
                         type="button"
                         onClick={() => switchMobileTab("queue")}
-                        className="shrink-0 rounded-full border border-violet-300/15 bg-violet-500/10 px-3 py-2 text-[9px] font-black text-violet-100"
+                        className="shrink-0 rounded-full border border-violet-300/20 bg-violet-500/[0.10] px-3.5 py-2.5 text-[8.5px] font-black text-violet-100 shadow-[0_0_18px_rgba(124,58,237,.08)] active:scale-[.98]"
                       >
                         Voir toute la file →
                       </button>
                     </div>
 
                     {queue.length ? (
-                      <div className="space-y-2">
+                      <div className="space-y-2.5">
                         {queue.slice(0, 3).map((song, index) => {
                           const owner =
                             party.participants.find(
@@ -3457,16 +3458,16 @@ async function removeSong(index: number, song: Song) {
                               key={`mobile-playback-next-${song.videoId}-${song.addedAt}`}
                               type="button"
                               onClick={() => switchMobileTab("queue")}
-                              className="flex w-full items-center gap-2.5 rounded-[17px] border border-white/[0.065] bg-white/[0.025] p-2 text-left active:bg-white/[0.05]"
+                              className="flex w-full items-center gap-2.5 rounded-[20px] border border-white/[0.07] bg-[linear-gradient(135deg,rgba(255,255,255,.035),rgba(255,255,255,.018))] p-2.5 text-left shadow-[inset_0_1px_0_rgba(255,255,255,.025)] transition active:scale-[.99] active:bg-white/[0.05]"
                             >
-                              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-fuchsia-300/10 bg-fuchsia-500/[0.07] text-[10px] font-black text-fuchsia-200">
+                              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-fuchsia-300/15 bg-fuchsia-500/[0.08] text-[10px] font-black text-fuchsia-200">
                                 {index + 1}
                               </span>
 
                               <img
                                 src={song.thumbnail || getSongArtwork(song)}
                                 alt=""
-                                className="h-11 w-11 shrink-0 rounded-[12px] border border-white/[0.07] object-cover"
+                                className="h-12 w-12 shrink-0 rounded-[15px] border border-white/[0.08] object-cover shadow-[0_8px_18px_rgba(0,0,0,.24)]"
                               />
 
                               <span className="min-w-0 flex-1">
@@ -3484,7 +3485,8 @@ async function removeSong(index: number, song: Song) {
                                   alt={`Ajouté par ${song.addedBy || "un invité"}`}
                                   className="h-7 w-7 rounded-full border border-white/10 object-cover"
                                 />
-                                <span className="min-w-[34px] rounded-full border border-orange-300/12 bg-orange-500/[0.07] px-2 py-1 text-center text-[9px] font-black text-orange-100">
+                                <span className="inline-flex min-w-[48px] items-center justify-center gap-1.5 rounded-full border border-pink-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.18),rgba(249,115,22,.10))] px-2.5 py-1.5 text-[9px] font-black text-white shadow-[0_0_14px_rgba(236,72,153,.07)]">
+                                  <Heart className="h-3.5 w-3.5 text-pink-300" />
                                   {song.votes || 0}
                                 </span>
                               </span>
