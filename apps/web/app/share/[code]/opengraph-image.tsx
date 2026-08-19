@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 
+export const runtime = "edge";
 export const alt = "Récap de soirée MixParty";
 export const size = {
   width: 1200,
@@ -19,6 +20,12 @@ type PartyResult = {
     name?: string;
     votesReceived?: number;
     partyScore?: number;
+    songsAdded?: number;
+  }>;
+  topSongs?: Array<{
+    title?: string;
+    artistName?: string;
+    votes?: number;
   }>;
   host?: { name?: string } | null;
 };
@@ -31,6 +38,31 @@ function formatDuration(ms: number) {
   const h = Math.floor(totalMinutes / 60);
   const m = totalMinutes % 60;
   return m ? `${h} h ${m}` : `${h} h`;
+}
+
+function formatDate(timestamp: number) {
+  try {
+    return new Intl.DateTimeFormat("fr-FR", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).format(new Date(timestamp || Date.now()));
+  } catch {
+    return "";
+  }
+}
+
+function plural(value: number, singular: string, pluralWord?: string) {
+  return `${value} ${value > 1 ? pluralWord || `${singular}s` : singular}`;
+}
+
+function getInitials(name: string) {
+  const clean = String(name || "").trim();
+  if (!clean) return "MP";
+
+  const parts = clean.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return `${parts[0][0] || ""}${parts[1][0] || ""}`.toUpperCase();
 }
 
 async function getPublicResult(code: string): Promise<PartyResult | null> {
@@ -56,45 +88,70 @@ function fallbackImage(code: string) {
           width: "100%",
           height: "100%",
           display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
-          padding: "72px",
-          color: "white",
+          padding: 40,
           background:
-            "radial-gradient(circle at 15% 10%, rgba(139,92,246,.55), transparent 32%), radial-gradient(circle at 90% 15%, rgba(236,72,153,.40), transparent 30%), linear-gradient(135deg,#090313,#18072d 55%,#38102a)",
+            "radial-gradient(circle at 15% 10%, rgba(139,92,246,.55), transparent 32%), radial-gradient(circle at 90% 15%, rgba(236,72,153,.40), transparent 30%), radial-gradient(circle at 90% 90%, rgba(249,115,22,.20), transparent 30%), linear-gradient(135deg,#100726,#090313 55%,#2a0d26)",
+          color: "white",
           fontFamily: "Arial",
         }}
       >
-        <div style={{ display: "flex", fontSize: 62, fontWeight: 900 }}>MixParty</div>
         <div
           style={{
+            width: "100%",
+            height: "100%",
             display: "flex",
-            marginTop: 18,
-            fontSize: 26,
-            letterSpacing: 6,
-            color: "#f0abfc",
-            fontWeight: 800,
+            flexDirection: "column",
+            justifyContent: "space-between",
+            borderRadius: 32,
+            border: "1px solid rgba(255,255,255,0.12)",
+            background: "rgba(7,4,17,.78)",
+            padding: 44,
           }}
         >
-          RÉCAP DE SOIRÉE
-        </div>
-        <div style={{ display: "flex", marginTop: 50, fontSize: 74, fontWeight: 900 }}>
-          Classement final
-        </div>
-        <div style={{ display: "flex", marginTop: 24, fontSize: 30, color: "#d1d5db" }}>
-          Soirée {code}
-        </div>
-        <div
-          style={{
-            marginTop: 58,
-            display: "flex",
-            alignItems: "center",
-            gap: 18,
-            fontSize: 26,
-            color: "#e5e7eb",
-          }}
-        >
-          mixpartyapp.fr/share/{code}
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                alignSelf: "flex-start",
+                padding: "8px 16px",
+                borderRadius: 999,
+                fontSize: 16,
+                fontWeight: 800,
+                letterSpacing: 2,
+                textTransform: "uppercase",
+                color: "#f0abfc",
+                background: "rgba(217,70,239,.12)",
+                border: "1px solid rgba(217,70,239,.28)",
+              }}
+            >
+              Partage MixParty
+            </div>
+
+            <div style={{ marginTop: 28, display: "flex", flexDirection: "column" }}>
+              <div style={{ fontSize: 62, fontWeight: 900, lineHeight: 1.05 }}>
+                Classement de la soirée
+              </div>
+              <div style={{ marginTop: 14, fontSize: 24, color: "#d1d5db" }}>
+                Code {code}
+              </div>
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-end",
+            }}
+          >
+            <div style={{ fontSize: 24, color: "#e5e7eb" }}>
+              mixpartyapp.fr/share/{code}
+            </div>
+            <div style={{ fontSize: 18, color: "#a1a1aa" }}>
+              Récap prêt à partager
+            </div>
+          </div>
         </div>
       </div>
     ),
@@ -115,8 +172,15 @@ export default async function Image({
 
   const ranking = Array.isArray(result.ranking) ? result.ranking : [];
   const winner = ranking[0];
-  const podium = ranking.slice(0, 3);
+  const second = ranking[1];
+  const third = ranking[2];
+  const topSong = Array.isArray(result.topSongs) ? result.topSongs[0] : null;
   const hostName = result.host?.name || "MixParty";
+  const winnerName = winner?.name || "Champion";
+  const winnerVotes = Math.max(0, Number(winner?.votesReceived || 0));
+  const winnerScore = Math.max(0, Number(winner?.partyScore || winner?.votesReceived || 0));
+  const winnerSongs = Math.max(0, Number(winner?.songsAdded || 0));
+  const partyDate = formatDate(result.endedAt);
 
   return new ImageResponse(
     (
@@ -125,10 +189,10 @@ export default async function Image({
           width: "100%",
           height: "100%",
           display: "flex",
-          padding: "54px",
-          color: "white",
+          padding: 28,
           background:
-            "radial-gradient(circle at 10% 10%, rgba(139,92,246,.55), transparent 32%), radial-gradient(circle at 92% 12%, rgba(236,72,153,.42), transparent 28%), radial-gradient(circle at 88% 92%, rgba(249,115,22,.28), transparent 28%), #080211",
+            "radial-gradient(circle at 12% 8%, rgba(139,92,246,.55), transparent 32%), radial-gradient(circle at 85% 10%, rgba(236,72,153,.42), transparent 28%), radial-gradient(circle at 88% 88%, rgba(249,115,22,.22), transparent 26%), linear-gradient(135deg,#1b0e37 0%, #090313 48%, #2a0d26 100%)",
+          color: "white",
           fontFamily: "Arial",
         }}
       >
@@ -138,191 +202,430 @@ export default async function Image({
             height: "100%",
             display: "flex",
             flexDirection: "column",
-            border: "1px solid rgba(255,255,255,.13)",
-            borderRadius: 34,
-            padding: "44px 48px",
-            background: "rgba(7,4,17,.62)",
+            borderRadius: 30,
+            border: "1px solid rgba(255,255,255,.12)",
+            background: "rgba(7,4,17,.78)",
+            padding: 32,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <div style={{ display: "flex", fontSize: 47, fontWeight: 900 }}>MixParty</div>
+          {/* HEADER */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+            }}
+          >
+            <div style={{ display: "flex", flexDirection: "column", maxWidth: 760 }}>
               <div
                 style={{
                   display: "flex",
-                  marginTop: 6,
-                  fontSize: 19,
-                  letterSpacing: 5,
-                  color: "#f0abfc",
+                  alignItems: "center",
+                  alignSelf: "flex-start",
+                  padding: "8px 16px",
+                  borderRadius: 999,
+                  fontSize: 14,
                   fontWeight: 800,
+                  letterSpacing: 2,
+                  textTransform: "uppercase",
+                  color: "#f5d0fe",
+                  background: "rgba(217,70,239,.12)",
+                  border: "1px solid rgba(217,70,239,.28)",
                 }}
               >
-                CLASSEMENT FINAL
+                Partage MixParty
+              </div>
+
+              <div style={{ marginTop: 18, fontSize: 58, fontWeight: 900, lineHeight: 1.02 }}>
+                {winnerName} remporte la soirée
+              </div>
+
+              <div style={{ marginTop: 12, fontSize: 22, color: "#d1d5db" }}>
+                {code} • {partyDate} • organisée par {hostName}
               </div>
             </div>
 
             <div
               style={{
                 display: "flex",
-                border: "1px solid rgba(255,255,255,.13)",
-                borderRadius: 999,
-                padding: "13px 22px",
-                fontSize: 20,
-                fontWeight: 800,
-                background: "rgba(255,255,255,.06)",
+                flexDirection: "column",
+                alignItems: "flex-end",
+                gap: 12,
               }}
             >
-              {result.code}
+              <div
+                style={{
+                  display: "flex",
+                  padding: "12px 20px",
+                  borderRadius: 999,
+                  fontSize: 20,
+                  fontWeight: 900,
+                  letterSpacing: 1,
+                  color: "#ffffff",
+                  background: "rgba(255,255,255,.06)",
+                  border: "1px solid rgba(255,255,255,.12)",
+                }}
+              >
+                {code}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  fontSize: 16,
+                  color: "#f0abfc",
+                  fontWeight: 700,
+                }}
+              >
+                mixpartyapp.fr/share/{code}
+              </div>
             </div>
           </div>
 
-          <div style={{ marginTop: 32, display: "flex", gap: 28, flex: 1 }}>
+          {/* MAIN */}
+          <div
+            style={{
+              marginTop: 24,
+              display: "flex",
+              gap: 22,
+              flex: 1,
+            }}
+          >
+            {/* LEFT COLUMN */}
             <div
               style={{
-                flex: 1.1,
+                flex: 1.3,
                 display: "flex",
                 flexDirection: "column",
-                border: "1px solid rgba(255,255,255,.10)",
-                borderRadius: 30,
-                padding: "30px",
-                background: "rgba(255,255,255,.045)",
+                gap: 18,
               }}
             >
+              {/* WINNER CARD */}
               <div
                 style={{
                   display: "flex",
-                  fontSize: 18,
-                  letterSpacing: 3,
-                  color: "#fbbf24",
-                  fontWeight: 900,
+                  flexDirection: "column",
+                  borderRadius: 26,
+                  border: "1px solid rgba(255,255,255,.10)",
+                  background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02))",
+                  padding: 24,
                 }}
               >
-                GRAND GAGNANT
-              </div>
-
-              <div style={{ marginTop: 16, display: "flex", alignItems: "center", gap: 18 }}>
                 <div
                   style={{
-                    width: 76,
-                    height: 76,
                     display: "flex",
+                    justifyContent: "space-between",
                     alignItems: "center",
-                    justifyContent: "center",
-                    borderRadius: 999,
-                    fontSize: 42,
-                    background: "linear-gradient(135deg,#d946ef,#8b5cf6,#fb923c)",
+                    gap: 20,
                   }}
                 >
-                  🏆
-                </div>
-
-                <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                  <div style={{ display: "flex", fontSize: 48, fontWeight: 900 }}>
-                    {winner?.name || "Champion"}
-                  </div>
-                  <div style={{ display: "flex", marginTop: 8, fontSize: 23, color: "#d1d5db" }}>
-                    {Number(winner?.votesReceived || 0)} vote
-                    {Number(winner?.votesReceived || 0) > 1 ? "s" : ""} ·{" "}
-                    {Number(winner?.partyScore || winner?.votesReceived || 0)} pts
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ marginTop: 30, display: "flex", flexDirection: "column", gap: 12 }}>
-                {podium.map((row, index) => (
-                  <div
-                    key={`${row.name || index}`}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      padding: "13px 16px",
-                      borderRadius: 18,
-                      background: "rgba(255,255,255,.055)",
-                      border: "1px solid rgba(255,255,255,.08)",
-                    }}
-                  >
+                  <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
                     <div
                       style={{
-                        width: 38,
-                        height: 38,
+                        width: 92,
+                        height: 92,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        borderRadius: 12,
-                        marginRight: 14,
+                        borderRadius: 999,
+                        fontSize: 34,
                         fontWeight: 900,
-                        color: index === 0 ? "#1d1100" : "#ffffff",
-                        background:
-                          index === 0
-                            ? "#fbbf24"
-                            : index === 1
-                              ? "#9ca3af"
-                              : "#fb7185",
+                        color: "#ffffff",
+                        background: "linear-gradient(135deg,#d946ef 0%,#8b5cf6 50%,#fb923c 100%)",
+                        border: "2px solid rgba(255,255,255,.15)",
                       }}
                     >
-                      #{index + 1}
+                      {getInitials(winnerName)}
                     </div>
-                    <div style={{ display: "flex", flex: 1, fontSize: 24, fontWeight: 800 }}>
-                      {row.name || `Participant ${index + 1}`}
-                    </div>
-                    <div style={{ display: "flex", fontSize: 20, color: "#fde68a", fontWeight: 800 }}>
-                      {Number(row.votesReceived || 0)} vote
-                      {Number(row.votesReceived || 0) > 1 ? "s" : ""}
+
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      <div
+                        style={{
+                          fontSize: 16,
+                          letterSpacing: 3,
+                          textTransform: "uppercase",
+                          color: "#fbbf24",
+                          fontWeight: 900,
+                        }}
+                      >
+                        Grand gagnant
+                      </div>
+
+                      <div style={{ marginTop: 10, fontSize: 52, fontWeight: 900, lineHeight: 1 }}>
+                        {winnerName}
+                      </div>
+
+                      <div style={{ marginTop: 10, display: "flex", gap: 16, fontSize: 22, color: "#d1d5db" }}>
+                        <div>{plural(winnerVotes, "vote")}</div>
+                        <div>•</div>
+                        <div>{plural(winnerSongs, "titre")}</div>
+                        <div>•</div>
+                        <div>{plural(winnerScore, "pt")}</div>
+                      </div>
                     </div>
                   </div>
-                ))}
+
+                  <div
+                    style={{
+                      width: 78,
+                      height: 78,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderRadius: 999,
+                      fontSize: 34,
+                      fontWeight: 900,
+                      color: "#2a1500",
+                      background: "linear-gradient(135deg,#fbbf24,#fde68a)",
+                    }}
+                  >
+                    #1
+                  </div>
+                </div>
+              </div>
+
+              {/* PODIUM */}
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  flex: 1,
+                  borderRadius: 26,
+                  border: "1px solid rgba(255,255,255,.10)",
+                  background: "rgba(255,255,255,.03)",
+                  padding: 24,
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: 14,
+                    letterSpacing: 3,
+                    textTransform: "uppercase",
+                    color: "#c4b5fd",
+                    fontWeight: 900,
+                  }}
+                >
+                  Le podium
+                </div>
+
+                <div style={{ marginTop: 10, fontSize: 32, fontWeight: 900 }}>
+                  Les rois de la soirée
+                </div>
+
+                <div style={{ marginTop: 18, display: "flex", flexDirection: "column", gap: 14 }}>
+                  {[winner, second, third]
+                    .filter(Boolean)
+                    .map((row, index) => {
+                      const isWinner = index === 0;
+                      const rowVotes = Math.max(0, Number(row?.votesReceived || 0));
+                      const rowScore = Math.max(0, Number(row?.partyScore || row?.votesReceived || 0));
+
+                      return (
+                        <div
+                          key={`${row?.name || index}`}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 14,
+                            padding: "16px 18px",
+                            borderRadius: 18,
+                            border: "1px solid rgba(255,255,255,.08)",
+                            background: isWinner
+                              ? "linear-gradient(90deg, rgba(251,191,36,.15), rgba(217,70,239,.08))"
+                              : "rgba(255,255,255,.04)",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 42,
+                              height: 42,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              borderRadius: 14,
+                              fontSize: 18,
+                              fontWeight: 900,
+                              color: isWinner ? "#241200" : "#ffffff",
+                              background: isWinner
+                                ? "#fbbf24"
+                                : index === 1
+                                  ? "#94a3b8"
+                                  : "#fb7185",
+                            }}
+                          >
+                            #{index + 1}
+                          </div>
+
+                          <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 24, fontWeight: 800 }}>
+                              {row?.name || `Participant ${index + 1}`}
+                            </div>
+                            <div style={{ marginTop: 4, fontSize: 16, color: "#cbd5e1" }}>
+                              {plural(rowVotes, "vote")} • {plural(rowScore, "pt")}
+                            </div>
+                          </div>
+
+                          <div
+                            style={{
+                              display: "flex",
+                              padding: "8px 14px",
+                              borderRadius: 999,
+                              fontSize: 18,
+                              fontWeight: 900,
+                              color: "#fde68a",
+                              background: "rgba(255,255,255,.05)",
+                              border: "1px solid rgba(255,255,255,.08)",
+                            }}
+                          >
+                            {rowScore} pts
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
               </div>
             </div>
 
+            {/* RIGHT COLUMN */}
             <div
               style={{
                 width: 360,
                 display: "flex",
                 flexDirection: "column",
-                gap: 14,
+                gap: 18,
               }}
             >
-              {[
-                ["PARTICIPANTS", String(result.uniqueParticipants || 0)],
-                ["VOTES", String(result.totalVotes || 0)],
-                ["TITRES JOUÉS", String(result.songsPlayed || 0)],
-                ["DURÉE", formatDuration(result.durationMs || 0)],
-              ].map(([label, value]) => (
+              <div style={{ display: "flex", gap: 14 }}>
+                {[
+                  ["Participants", String(result.uniqueParticipants || 0)],
+                  ["Votes", String(result.totalVotes || 0)],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "center",
+                      borderRadius: 22,
+                      border: "1px solid rgba(255,255,255,.10)",
+                      background: "rgba(255,255,255,.04)",
+                      padding: "18px 18px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 13,
+                        letterSpacing: 2.5,
+                        textTransform: "uppercase",
+                        color: "#c4b5fd",
+                        fontWeight: 900,
+                      }}
+                    >
+                      {label}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 36, fontWeight: 900 }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ display: "flex", gap: 14 }}>
+                {[
+                  ["Titres joués", String(result.songsPlayed || 0)],
+                  ["Durée", formatDuration(result.durationMs || 0)],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "center",
+                      borderRadius: 22,
+                      border: "1px solid rgba(255,255,255,.10)",
+                      background: "rgba(255,255,255,.04)",
+                      padding: "18px 18px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 13,
+                        letterSpacing: 2.5,
+                        textTransform: "uppercase",
+                        color: "#c4b5fd",
+                        fontWeight: 900,
+                      }}
+                    >
+                      {label}
+                    </div>
+                    <div style={{ marginTop: 8, fontSize: 36, fontWeight: 900 }}>{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  flex: 1,
+                  borderRadius: 26,
+                  border: "1px solid rgba(255,255,255,.10)",
+                  background: "linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,.02))",
+                  padding: 22,
+                }}
+              >
                 <div
-                  key={label}
                   style={{
-                    flex: 1,
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "center",
-                    border: "1px solid rgba(255,255,255,.10)",
-                    borderRadius: 24,
-                    padding: "18px 22px",
-                    background: "rgba(255,255,255,.045)",
+                    fontSize: 14,
+                    letterSpacing: 3,
+                    textTransform: "uppercase",
+                    color: "#fbbf24",
+                    fontWeight: 900,
                   }}
                 >
-                  <div style={{ display: "flex", fontSize: 14, letterSpacing: 2.5, color: "#c4b5fd", fontWeight: 800 }}>
-                    {label}
-                  </div>
-                  <div style={{ display: "flex", marginTop: 7, fontSize: 32, fontWeight: 900 }}>{value}</div>
+                  Morceau star
                 </div>
-              ))}
-            </div>
-          </div>
 
-          <div
-            style={{
-              marginTop: 24,
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              color: "#cbd5e1",
-              fontSize: 18,
-            }}
-          >
-            <div style={{ display: "flex" }}>organisée par {hostName}</div>
-            <div style={{ display: "flex", color: "#ffffff", fontWeight: 800 }}>
-              mixpartyapp.fr/share/{result.code}
+                <div style={{ marginTop: 10, fontSize: 28, fontWeight: 900, lineHeight: 1.15 }}>
+                  {topSong?.title || "Le top morceau de la soirée"}
+                </div>
+
+                <div style={{ marginTop: 8, fontSize: 18, color: "#d1d5db" }}>
+                  {topSong?.artistName || "MixParty"}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: 16,
+                    display: "flex",
+                    alignSelf: "flex-start",
+                    padding: "10px 14px",
+                    borderRadius: 999,
+                    fontSize: 18,
+                    fontWeight: 900,
+                    color: "#1f1300",
+                    background: "linear-gradient(135deg,#fbbf24,#fde68a)",
+                  }}
+                >
+                  {plural(Math.max(0, Number(topSong?.votes || 0)), "vote")}
+                </div>
+
+                <div
+                  style={{
+                    marginTop: "auto",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    fontSize: 16,
+                    color: "#cbd5e1",
+                  }}
+                >
+                  <div>Classement final prêt à partager sur les réseaux.</div>
+                  <div style={{ color: "#ffffff", fontWeight: 800 }}>
+                    mixpartyapp.fr/share/{code}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
