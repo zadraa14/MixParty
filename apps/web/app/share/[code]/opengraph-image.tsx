@@ -1,6 +1,5 @@
 import { ImageResponse } from "next/og";
 
-export const runtime = "edge";
 export const alt = "Récap de soirée MixParty";
 export const size = {
   width: 1200,
@@ -66,9 +65,10 @@ function fallbackImage(code: string) {
           fontFamily: "Arial",
         }}
       >
-        <div style={{ fontSize: 62, fontWeight: 900 }}>MixParty</div>
+        <div style={{ display: "flex", fontSize: 62, fontWeight: 900 }}>MixParty</div>
         <div
           style={{
+            display: "flex",
             marginTop: 18,
             fontSize: 26,
             letterSpacing: 6,
@@ -78,10 +78,10 @@ function fallbackImage(code: string) {
         >
           RÉCAP DE SOIRÉE
         </div>
-        <div style={{ marginTop: 50, fontSize: 74, fontWeight: 900 }}>
+        <div style={{ display: "flex", marginTop: 50, fontSize: 74, fontWeight: 900 }}>
           Classement final
         </div>
-        <div style={{ marginTop: 24, fontSize: 30, color: "#d1d5db" }}>
+        <div style={{ display: "flex", marginTop: 24, fontSize: 30, color: "#d1d5db" }}>
           Soirée {code}
         </div>
         <div
@@ -146,9 +146,10 @@ export default async function Image({
         >
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <div style={{ fontSize: 47, fontWeight: 900 }}>MixParty</div>
+              <div style={{ display: "flex", fontSize: 47, fontWeight: 900 }}>MixParty</div>
               <div
                 style={{
+                  display: "flex",
                   marginTop: 6,
                   fontSize: 19,
                   letterSpacing: 5,
@@ -189,6 +190,7 @@ export default async function Image({
             >
               <div
                 style={{
+                  display: "flex",
                   fontSize: 18,
                   letterSpacing: 3,
                   color: "#fbbf24",
@@ -215,10 +217,10 @@ export default async function Image({
                 </div>
 
                 <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                  <div style={{ fontSize: 48, fontWeight: 900 }}>
+                  <div style={{ display: "flex", fontSize: 48, fontWeight: 900 }}>
                     {winner?.name || "Champion"}
                   </div>
-                  <div style={{ marginTop: 8, fontSize: 23, color: "#d1d5db" }}>
+                  <div style={{ display: "flex", marginTop: 8, fontSize: 23, color: "#d1d5db" }}>
                     {Number(winner?.votesReceived || 0)} vote
                     {Number(winner?.votesReceived || 0) > 1 ? "s" : ""} ·{" "}
                     {Number(winner?.partyScore || winner?.votesReceived || 0)} pts
@@ -260,10 +262,10 @@ export default async function Image({
                     >
                       #{index + 1}
                     </div>
-                    <div style={{ flex: 1, fontSize: 24, fontWeight: 800 }}>
+                    <div style={{ display: "flex", flex: 1, fontSize: 24, fontWeight: 800 }}>
                       {row.name || `Participant ${index + 1}`}
                     </div>
-                    <div style={{ fontSize: 20, color: "#fde68a", fontWeight: 800 }}>
+                    <div style={{ display: "flex", fontSize: 20, color: "#fde68a", fontWeight: 800 }}>
                       {Number(row.votesReceived || 0)} vote
                       {Number(row.votesReceived || 0) > 1 ? "s" : ""}
                     </div>
@@ -299,10 +301,10 @@ export default async function Image({
                     background: "rgba(255,255,255,.045)",
                   }}
                 >
-                  <div style={{ fontSize: 14, letterSpacing: 2.5, color: "#c4b5fd", fontWeight: 800 }}>
+                  <div style={{ display: "flex", fontSize: 14, letterSpacing: 2.5, color: "#c4b5fd", fontWeight: 800 }}>
                     {label}
                   </div>
-                  <div style={{ marginTop: 7, fontSize: 32, fontWeight: 900 }}>{value}</div>
+                  <div style={{ display: "flex", marginTop: 7, fontSize: 32, fontWeight: 900 }}>{value}</div>
                 </div>
               ))}
             </div>
@@ -318,8 +320,8 @@ export default async function Image({
               fontSize: 18,
             }}
           >
-            <div>organisée par {hostName}</div>
-            <div style={{ color: "#ffffff", fontWeight: 800 }}>
+            <div style={{ display: "flex" }}>organisée par {hostName}</div>
+            <div style={{ display: "flex", color: "#ffffff", fontWeight: 800 }}>
               mixpartyapp.fr/share/{result.code}
             </div>
           </div>
