@@ -325,6 +325,7 @@ export default function PartyPage() {
   const [activeMobileTab, setActiveMobileTab] = useState<
     "playback" | "add" | "karaoke" | "queue" | "guests" | "profile"
   >("playback");
+  const [queueMobileView, setQueueMobileView] = useState<"all" | "votes" | "recent">("all");
   const [isPlaybackController, setIsPlaybackController] = useState(false);
   const [remotePlayback, setRemotePlayback] = useState({ state: 2, time: 0, receivedAt: Date.now() });
   const [youtubeError, setYoutubeError] = useState<number | null>(null);
@@ -1564,9 +1565,7 @@ export default function PartyPage() {
       try {
         const query = search.trim();
         const response = await fetch(
-          `${getApiBaseUrl()}/search/artists?q=${encodeURIComponent(query)}&limit=${
-            query.length === 1 ? 16 : 10
-          }`,
+          `${getApiBaseUrl()}/search/artists?q=${encodeURIComponent(query)}&limit=10`,
           { signal: controller.signal },
         );
 
@@ -2471,6 +2470,41 @@ async function removeSong(index: number, song: Song) {
       return a.addedAt - b.addedAt;
     });
 
+  const mobileQueue =
+    queueMobileView === "recent"
+      ? [...queue].sort((a, b) => b.addedAt - a.addedAt)
+      : queueMobileView === "votes"
+        ? [...queue].sort((a, b) => (b.votes - a.votes) || (a.addedAt - b.addedAt))
+        : queue;
+
+  const myQueuedSongIndex = participantId
+    ? queue.findIndex((song) => song.addedById === participantId)
+    : -1;
+
+  const playbackDurationSeconds = Math.max(
+    0,
+    Number(tvPlayback.duration || party.currentSong?.durationSeconds || 0),
+  );
+  const playbackTimeSeconds = Math.max(
+    0,
+    Number(isPlaybackController ? tvPlayback.time : remotePlayback.time),
+  );
+  const currentSongRemainingSeconds = party.currentSong
+    ? Math.max(0, playbackDurationSeconds - playbackTimeSeconds)
+    : 0;
+  const estimatedWaitSeconds =
+    myQueuedSongIndex >= 0
+      ? Math.round(
+          currentSongRemainingSeconds +
+            queue
+              .slice(0, myQueuedSongIndex)
+              .reduce((total, song) => total + Math.max(60, Number(song.durationSeconds || 210)), 0),
+        )
+      : 0;
+  const estimatedWaitMinutes = estimatedWaitSeconds > 0
+    ? Math.max(1, Math.round(estimatedWaitSeconds / 60))
+    : 0;
+
   const partyBrainSongs = [
     ...(party.history || []).slice(-12),
     ...(party.currentSong ? [party.currentSong] : []),
@@ -2740,10 +2774,7 @@ async function removeSong(index: number, song: Song) {
 
     // Les zones de défilement horizontal (ex. alphabet Karaoké A-Z)
     // doivent garder le geste pour elles-mêmes et ne jamais changer d'onglet.
-    if (
-      target?.closest?.('[data-mixparty-horizontal-scroll="true"]') ||
-      target?.closest?.('[data-mixparty-no-tab-swipe="true"]')
-    ) {
+    if (target?.closest?.('[data-mixparty-horizontal-scroll="true"]')) {
       mobileSwipeStartRef.current = null;
       return;
     }
@@ -2759,10 +2790,7 @@ async function removeSong(index: number, song: Song) {
       window.setTimeout(() => setKaraokeUserInteracting(false), 220);
     }
 
-    if (
-      target?.closest?.('[data-mixparty-horizontal-scroll="true"]') ||
-      target?.closest?.('[data-mixparty-no-tab-swipe="true"]')
-    ) {
+    if (target?.closest?.('[data-mixparty-horizontal-scroll="true"]')) {
       mobileSwipeStartRef.current = null;
       return;
     }
@@ -4132,7 +4160,232 @@ async function removeSong(index: number, song: Song) {
               </div>
             </section>
 
-            <section className={`${activeMobileTab === "queue" ? "block" : "hidden"} v53-queue-panel premium-glass-card md:block`}>
+            {/* =====================================================
+                MOBILE — FILE V1 PREMIUM
+                Refonte visuelle inspirée de la maquette validée.
+                Le moteur de votes / suppression / lecture reste inchangé.
+               ===================================================== */}
+            <section
+              className={`${activeMobileTab === "queue" ? "block" : "hidden"} md:hidden`}
+              aria-label="File d’attente"
+            >
+              <div className="space-y-3.5">
+                {party.currentSong ? (
+                  <div className="overflow-hidden rounded-[26px] border border-fuchsia-300/25 bg-[radial-gradient(circle_at_0%_0%,rgba(236,72,153,.14),transparent_35%),radial-gradient(circle_at_100%_100%,rgba(249,115,22,.08),transparent_34%),linear-gradient(145deg,rgba(18,12,31,.98),rgba(8,8,18,.99))] p-3.5 shadow-[0_18px_55px_rgba(0,0,0,.34),0_0_28px_rgba(236,72,153,.08)]">
+                    <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-pink-300/15 bg-black/30 px-3 py-1.5 text-[9px] font-black uppercase tracking-[.12em] text-white/85">
+                      <span className="h-2 w-2 rounded-full bg-pink-400 shadow-[0_0_12px_rgba(244,114,182,.85)]" />
+                      Lecture en cours
+                    </div>
+
+                    <div className="grid grid-cols-[94px_minmax(0,1fr)_52px] items-center gap-3">
+                      <img
+                        src={party.currentSong.thumbnail || getSongArtwork(party.currentSong)}
+                        alt=""
+                        className="h-[94px] w-[94px] rounded-[18px] border border-white/10 object-cover shadow-[0_12px_30px_rgba(0,0,0,.38)]"
+                      />
+
+                      <div className="min-w-0">
+                        <p className="truncate font-[family:var(--font-exo-2)] text-[18px] font-black text-white">
+                          {party.currentSong.title}
+                        </p>
+                        <p className="mt-1 truncate text-[12px] font-semibold text-white/46">
+                          {party.currentSong.artistName || "Artiste MixParty"}
+                        </p>
+
+                        <div className="mt-3 flex items-center gap-2">
+                          <span className="text-[10px] font-black text-white/72">
+                            {formatPlaybackTime(playbackTimeSeconds)}
+                          </span>
+                          <div className="relative h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-white/10">
+                            <div
+                              className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-pink-500 via-fuchsia-500 to-orange-400 shadow-[0_0_12px_rgba(236,72,153,.45)]"
+                              style={{
+                                width: `${playbackDurationSeconds > 0 ? Math.min(100, (playbackTimeSeconds / playbackDurationSeconds) * 100) : 0}%`,
+                              }}
+                            />
+                          </div>
+                          <span className="text-[10px] font-black text-white/72">
+                            {formatPlaybackTime(playbackDurationSeconds)}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 flex items-center gap-3 text-[10px] font-bold text-white/52">
+                          <span className="text-orange-200">🔥 {party.currentSong.votes || 0} vote{Number(party.currentSong.votes || 0) > 1 ? "s" : ""}</span>
+                          <span className="h-4 w-px bg-white/10" />
+                          <span>Ambiance {Math.min(99, Math.max(35, 55 + Number(party.currentSong.votes || 0) * 3))} 🔥</span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!isPlaybackController) return;
+                          if (tvPlayback.state === 1) playerRef.current?.pauseVideo?.();
+                          else resumePlayback();
+                        }}
+                        disabled={!isPlaybackController}
+                        className="grid h-[52px] w-[52px] place-items-center rounded-full border border-pink-300/45 bg-[linear-gradient(145deg,rgba(236,72,153,.12),rgba(249,115,22,.08))] text-white shadow-[0_0_0_4px_rgba(236,72,153,.06),0_0_24px_rgba(236,72,153,.22)] active:scale-[.97] disabled:opacity-30"
+                        aria-label={tvPlayback.state === 1 ? "Mettre en pause" : "Lire"}
+                      >
+                        {tvPlayback.state === 1 ? <Pause className="h-5 w-5 fill-current" /> : <Play className="ml-0.5 h-5 w-5 fill-current" />}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="flex items-end justify-between gap-3 px-0.5 pt-1">
+                  <div className="min-w-0">
+                    <p className="font-[family:var(--font-exo-2)] text-[20px] font-black text-white">
+                      À suivre dans la file
+                    </p>
+                  </div>
+                  <p className="shrink-0 text-[11px] font-semibold text-white/38">
+                    {queue.length} morceau{queue.length > 1 ? "x" : ""}
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-3 overflow-hidden rounded-[17px] border border-white/[0.08] bg-black/25 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,.025)]">
+                  {([
+                    ["all", "Toute la file", ListMusic],
+                    ["votes", "Les + votées", TrendingUp],
+                    ["recent", "Ajouts récents", Sparkles],
+                  ] as const).map(([id, label, Icon]) => {
+                    const active = queueMobileView === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => setQueueMobileView(id)}
+                        className={`flex min-w-0 items-center justify-center gap-1.5 rounded-[13px] px-2 py-2.5 text-[9px] font-black transition ${
+                          active
+                            ? "border border-pink-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.16),rgba(124,58,237,.13))] text-white shadow-[0_0_18px_rgba(236,72,153,.10)]"
+                            : "border border-transparent text-white/42"
+                        }`}
+                      >
+                        <Icon className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate">{label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {mobileQueue.length ? (
+                  <div className="space-y-2.5">
+                    {mobileQueue.map((song) => {
+                      const queueIndex = queue.findIndex((item) => item.addedAt === song.addedAt);
+                      const originalIndex = songs.findIndex((item) => item.addedAt === song.addedAt);
+                      const creatorToken =
+                        typeof window !== "undefined"
+                          ? localStorage.getItem(`mixparty_creator_${code}`) || ""
+                          : "";
+                      const canRemove =
+                        Boolean(creatorToken) ||
+                        Boolean(song.addedById && participantId && song.addedById === participantId);
+                      const isRecent = Date.now() - Number(song.addedAt || 0) < 10 * 60 * 1000;
+                      const isTop = queueIndex === 0 && Number(song.votes || 0) > 0;
+
+                      return (
+                        <div
+                          key={`mobile-premium-queue-${song.videoId}-${song.addedAt}`}
+                          className="grid min-w-0 grid-cols-[34px_54px_minmax(0,1fr)_56px] items-center gap-2.5 overflow-hidden rounded-[20px] border border-white/[0.075] bg-[linear-gradient(135deg,rgba(255,255,255,.042),rgba(255,255,255,.018))] p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,.025),0_10px_26px_rgba(0,0,0,.18)]"
+                        >
+                          <span className={`grid h-8 w-8 place-items-center rounded-full text-[12px] font-black ${queueIndex < 3 ? "border border-pink-300/18 bg-gradient-to-br from-fuchsia-500/20 to-orange-500/12 text-orange-200" : "bg-white/[0.045] text-white/48"}`}>
+                            {queueIndex + 1}
+                          </span>
+
+                          <img
+                            src={song.thumbnail || getSongArtwork(song)}
+                            alt=""
+                            className="h-[54px] w-[54px] rounded-[13px] border border-white/[0.08] object-cover shadow-[0_8px_18px_rgba(0,0,0,.28)]"
+                          />
+
+                          <div className="min-w-0 overflow-hidden">
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              <p className="min-w-0 flex-1 truncate text-[13px] font-black text-white">
+                                {song.title}
+                              </p>
+                              {isTop ? (
+                                <span className="shrink-0 rounded-md border border-pink-300/15 bg-pink-500/[0.08] px-1.5 py-0.5 text-[6px] font-black uppercase tracking-[.07em] text-pink-200">
+                                  Tendance 🔥
+                                </span>
+                              ) : isRecent ? (
+                                <span className="shrink-0 rounded-md border border-orange-300/15 bg-orange-500/[0.08] px-1.5 py-0.5 text-[6px] font-black uppercase tracking-[.07em] text-orange-200">
+                                  Nouveau
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-0.5 truncate text-[10px] font-semibold text-white/38">
+                              {song.artistName || "Artiste MixParty"}
+                            </p>
+                            <p className="mt-1 truncate text-[8px] font-semibold text-white/24">
+                              Ajouté par {song.addedBy || "Invité"}
+                            </p>
+                          </div>
+
+                          <div className="flex shrink-0 flex-col items-center gap-1.5">
+                            <span className="text-center text-[13px] font-black leading-none text-white">
+                              {song.votes}
+                            </span>
+                            <span className="text-[7px] font-bold text-white/34">votes</span>
+                            <button
+                              type="button"
+                              onClick={() => vote(originalIndex)}
+                              className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""} grid h-9 w-9 place-items-center rounded-full border border-pink-300/35 bg-[linear-gradient(145deg,rgba(236,72,153,.10),rgba(249,115,22,.07))] text-white shadow-[0_0_16px_rgba(236,72,153,.10)] active:scale-[.95]`}
+                              aria-label={`Voter pour ${song.title}`}
+                            >
+                              <ArrowBigUp className="h-4 w-4" />
+                            </button>
+                            {canRemove ? (
+                              <button
+                                type="button"
+                                onClick={() => removeSong(originalIndex, song)}
+                                className="text-[7px] font-black uppercase tracking-[.06em] text-red-300/55"
+                              >
+                                Retirer
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="rounded-[22px] border border-dashed border-white/10 bg-black/20 px-6 py-10 text-center">
+                    <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-purple-400/15 bg-purple-500/10">
+                      <ListMusic className="h-6 w-6 text-purple-300" />
+                    </div>
+                    <p className="mt-3 font-black">La file est vide</p>
+                    <p className="mt-1 text-sm text-white/40">Recherche un titre pour lancer la soirée.</p>
+                  </div>
+                )}
+
+                {myQueuedSongIndex >= 0 ? (
+                  <div className="relative overflow-hidden rounded-[22px] border border-fuchsia-300/20 bg-[radial-gradient(circle_at_100%_50%,rgba(249,115,22,.12),transparent_36%),linear-gradient(135deg,rgba(42,10,48,.82),rgba(12,9,23,.96))] p-4 shadow-[0_16px_46px_rgba(0,0,0,.26)]">
+                    <div className="absolute inset-y-0 right-0 w-[42%] bg-[linear-gradient(90deg,transparent,rgba(236,72,153,.06))]" aria-hidden="true" />
+                    <div className="relative flex items-center gap-3.5">
+                      <span className="grid h-14 w-14 shrink-0 place-items-center rounded-full border border-pink-300/25 bg-[conic-gradient(from_180deg,#7c3aed,#ec4899,#f97316,#7c3aed)] p-[3px] shadow-[0_0_24px_rgba(236,72,153,.18)]">
+                        <span className="grid h-full w-full place-items-center rounded-full bg-[#110b1d] text-orange-200">
+                          <Gauge className="h-6 w-6" />
+                        </span>
+                      </span>
+                      <div className="min-w-0">
+                        <p className="font-[family:var(--font-exo-2)] text-[14px] font-black text-white">
+                          Temps estimé avant ton morceau
+                        </p>
+                        <p className="mt-1 text-[12px] font-semibold text-white/58">
+                          Tu es <strong className="text-orange-300">{myQueuedSongIndex + 1}{myQueuedSongIndex === 0 ? "er" : "e"}</strong> dans la file
+                        </p>
+                        <p className="mt-0.5 text-[11px] font-semibold text-white/38">
+                          {estimatedWaitMinutes > 0 ? `Environ ${estimatedWaitMinutes} min d’attente` : "Ton morceau arrive bientôt"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </section>
+
+            <section className="v53-queue-panel premium-glass-card hidden md:block">
 
               <div className="v53-queue-header">
 
@@ -4455,12 +4708,7 @@ const canRemove =
                   </button>
 
                   {search.trim().length >= 1 ? (
-                    <div
-                      data-mixparty-no-tab-swipe="true"
-                      onTouchStart={(event) => event.stopPropagation()}
-                      onTouchEnd={(event) => event.stopPropagation()}
-                      className="absolute left-0 right-0 top-[54px] z-40 overflow-hidden rounded-[18px] border border-fuchsia-300/[0.14] bg-[#0b0914]/[0.985] shadow-[0_18px_50px_rgba(0,0,0,.52)] backdrop-blur-xl"
-                    >
+                    <div className="absolute left-0 right-0 top-[54px] z-40 overflow-hidden rounded-[18px] border border-fuchsia-300/[0.14] bg-[#0b0914]/[0.985] shadow-[0_18px_50px_rgba(0,0,0,.52)] backdrop-blur-xl">
                       <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-2">
                         <span className="text-[7px] font-black uppercase tracking-[.13em] text-fuchsia-300">
                           Artistes
@@ -4476,9 +4724,7 @@ const canRemove =
                         </div>
                       ) : artistSuggestions.length > 0 ? (
                         <div className="max-h-[250px] overflow-y-auto p-1.5">
-                          {artistSuggestions
-                            .slice(0, search.trim().length === 1 ? 12 : 8)
-                            .map((artist) => (
+                          {artistSuggestions.slice(0, 8).map((artist) => (
                             <button
                               key={`artist-autocomplete-${artist.id}`}
                               type="button"
@@ -4543,13 +4789,7 @@ const canRemove =
               </div>
 
               {/* Catégories rapides */}
-              <div
-                data-mixparty-horizontal-scroll="true"
-                data-mixparty-no-tab-swipe="true"
-                onTouchStart={(event) => event.stopPropagation()}
-                onTouchEnd={(event) => event.stopPropagation()}
-                className="no-scrollbar flex touch-pan-x gap-2 overflow-x-auto overscroll-x-contain pb-0.5"
-              >
+              <div className="no-scrollbar flex gap-2 overflow-x-auto pb-0.5">
                 {[
                   { label: "🔥 Hits", query: "hits france" },
                   { label: "Rap FR", query: "rap français" },
@@ -4641,13 +4881,7 @@ const canRemove =
                         </div>
 
                         {displayedArtists.length > 0 ? (
-                          <div
-                            data-mixparty-horizontal-scroll="true"
-                            data-mixparty-no-tab-swipe="true"
-                            onTouchStart={(event) => event.stopPropagation()}
-                            onTouchEnd={(event) => event.stopPropagation()}
-                            className="no-scrollbar mt-3 flex touch-pan-x gap-3 overflow-x-auto overscroll-x-contain pb-1"
-                          >
+                          <div className="no-scrollbar mt-3 flex gap-3 overflow-x-auto pb-1">
                             {displayedArtists.map((artist, index) => (
                               <button
                                 key={artist.id}
@@ -4774,13 +5008,7 @@ const canRemove =
                     </div>
                   </div>
 
-                  <div
-                    data-mixparty-horizontal-scroll="true"
-                    data-mixparty-no-tab-swipe="true"
-                    onTouchStart={(event) => event.stopPropagation()}
-                    onTouchEnd={(event) => event.stopPropagation()}
-                    className="no-scrollbar mt-2.5 flex touch-pan-x gap-2 overflow-x-auto overscroll-x-contain pb-0.5"
-                  >
+                  <div className="no-scrollbar mt-2.5 flex gap-2 overflow-x-auto pb-0.5">
                     {suggestions.slice(0, 3).map((video) => (
                       <div
                         key={`mobile-search-partybrain-${video.id}`}
