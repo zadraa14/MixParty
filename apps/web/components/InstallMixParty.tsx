@@ -202,10 +202,14 @@ export default function InstallMixParty() {
         .mp-pwa-modal {
           position: fixed;
           inset: 0;
-          z-index: 10000;
+          /* Toujours au-dessus de la navigation mobile MixParty et du player flottant. */
+          z-index: 2147483000;
           display: flex;
           align-items: flex-end;
           justify-content: center;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
           padding:
             max(16px, env(safe-area-inset-top))
             max(16px, env(safe-area-inset-right))
@@ -224,7 +228,17 @@ export default function InstallMixParty() {
         .mp-pwa-modal__panel {
           position: relative;
           width: min(100%, 440px);
-          overflow: hidden;
+          max-height: calc(
+            100dvh -
+            max(16px, env(safe-area-inset-top)) -
+            max(16px, env(safe-area-inset-bottom)) -
+            24px
+          );
+          overflow-x: hidden;
+          overflow-y: auto;
+          overscroll-behavior: contain;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
           border: 1px solid rgba(255,255,255,.13);
           border-radius: 30px;
           padding: 25px 20px 20px;
@@ -237,10 +251,18 @@ export default function InstallMixParty() {
           animation: mpPwaPanelIn 320ms cubic-bezier(.22,1,.36,1) both;
         }
 
+        .mp-pwa-modal__panel::-webkit-scrollbar {
+          display: none;
+        }
+
         .mp-pwa-modal__close {
-          position: absolute;
-          right: 13px;
-          top: 13px;
+          position: sticky;
+          float: right;
+          right: 0;
+          top: 0;
+          z-index: 3;
+          margin-top: -12px;
+          margin-right: -7px;
           display: grid;
           width: 38px;
           height: 38px;
@@ -367,6 +389,39 @@ export default function InstallMixParty() {
         @keyframes mpPwaPanelIn {
           from { opacity: 0; transform: translateY(24px) scale(.975); }
           to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+
+        @media (max-width: 767px) {
+          .mp-pwa-modal__panel {
+            padding-bottom: max(22px, env(safe-area-inset-bottom));
+          }
+
+          .mp-pwa-step {
+            padding: 10px 11px;
+          }
+        }
+
+        @media (max-height: 700px) {
+          .mp-pwa-modal {
+            align-items: flex-start;
+          }
+
+          .mp-pwa-modal__panel {
+            margin-block: 8px;
+          }
+
+          .mp-pwa-modal__app-icon {
+            width: 62px;
+            height: 62px;
+          }
+
+          .mp-pwa-modal__title {
+            font-size: 20px;
+          }
+
+          .mp-pwa-modal__copy {
+            margin-top: 9px;
+          }
         }
 
         @media (min-width: 768px) {
