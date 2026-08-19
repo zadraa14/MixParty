@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { QRCodeCanvas } from "qrcode.react";
 import { io } from "socket.io-client";
 import {
@@ -16,6 +16,7 @@ import {
   Check,
   Copy,
   Crown,
+  DoorClosed,
   Disc3,
   Trash2,
   Expand,
@@ -264,6 +265,7 @@ function transitionScore(from: string, to: string) {
 
 export default function PartyPage() {
   const params = useParams();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const code = params.code as string;
   const externalDisplayMode = searchParams.get("display");
@@ -315,6 +317,9 @@ export default function PartyPage() {
   const [youtubeError, setYoutubeError] = useState<number | null>(null);
   const [djModeActive, setDjModeActive] = useState(false);
   const [profileOverlayOpen, setProfileOverlayOpen] = useState(false);
+  const [isPartyCreator, setIsPartyCreator] = useState(false);
+  const [endPartyConfirmOpen, setEndPartyConfirmOpen] = useState(false);
+  const [endingParty, setEndingParty] = useState(false);
   const [partyBrainRelayUpdating, setPartyBrainRelayUpdating] = useState(false);
   const [clipDisplayUpdating, setClipDisplayUpdating] = useState(false);
   const [djModeStartedAt, setDjModeStartedAt] = useState<number | null>(null);
@@ -412,6 +417,13 @@ export default function PartyPage() {
     if (!code) return;
 
     setShareUrl(`${window.location.origin}/party/${code}`);
+  }, [code]);
+
+  useEffect(() => {
+    if (!code) return;
+    setIsPartyCreator(
+      Boolean(localStorage.getItem(`mixparty_creator_${code}`)),
+    );
   }, [code]);
 
   useEffect(() => {
@@ -975,6 +987,17 @@ export default function PartyPage() {
     });
 
     socket.on(
+      "party_ended",
+      (payload: { code?: string; result?: unknown }) => {
+        if (String(payload?.code || "").toUpperCase() !== String(code).toUpperCase()) {
+          return;
+        }
+
+        openPartyResult(payload?.result);
+      },
+    );
+
+    socket.on(
       "party_updated",
       (updatedParty) => {
         if (updatedParty.code === code) {
@@ -1084,6 +1107,76 @@ export default function PartyPage() {
 
     return () => controller.abort();
   }, [party?.currentSong?.videoId, queueSignature, historySignature]);
+
+  function storePartyResultForImmediateRecap(result: unknown) {
+    if (!result || typeof window === "undefined") return;
+    try {
+      sessionStorage.setItem(
+        `mixparty.partyResult.${code}`,
+        JSON.stringify(result),
+      );
+    } catch {
+      // Le récap restera récupérable par l'API pour les comptes permanents.
+    }
+  }
+
+  function openPartyResult(result?: unknown) {
+    if (result) storePartyResultForImmediateRecap(result);
+    localStorage.removeItem("mixparty.lastParty.v1");
+    localStorage.removeItem(`mixparty_creator_${code}`);
+    router.push(`/party/${encodeURIComponent(code)}/result`);
+  }
+
+  async function endParty() {
+    if (!isPartyCreator || endingParty) return;
+
+    const creatorToken =
+      localStorage.getItem(`mixparty_creator_${code}`) || "";
+
+    if (!creatorToken) {
+      window.alert("Le jeton DJ de cette soirée est introuvable.");
+      return;
+    }
+
+    setEndingParty(true);
+
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/party/${encodeURIComponent(code)}/end`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...mixPartyAccountAuthHeader(),
+          },
+          body: JSON.stringify({
+            creatorToken,
+            actor: participantId || playerName || "dj",
+          }),
+        },
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok || data?.error) {
+        throw new Error(
+          data?.error || "Impossible de terminer la soirée.",
+        );
+      }
+
+      setEndPartyConfirmOpen(false);
+      openPartyResult(data?.result);
+    } catch (error) {
+      console.error("Fin de soirée MixParty impossible", error);
+      window.alert(
+        error instanceof Error
+          ? error.message
+          : "Impossible de terminer la soirée.",
+      );
+    } finally {
+      setEndingParty(false);
+    }
+  }
 
   async function joinParty() {
     if (!name.trim() || joining) return;
@@ -2931,6 +3024,81 @@ async function removeSong(index: number, song: Song) {
         </div>
       ) : null}
 
+      {endPartyConfirmOpen ? (
+        <div className="fixed inset-0 z-[10020] grid place-items-center bg-[#05030c]/88 px-4 backdrop-blur-xl">
+          <div className="relative w-full max-w-lg overflow-hidden rounded-[30px] border border-rose-300/20 bg-[#0b0813]/98 p-5 shadow-[0_35px_120px_rgba(0,0,0,.65),0_0_70px_rgba(244,63,94,.12)] sm:p-7">
+            <div className="pointer-events-none absolute -right-16 -top-16 h-44 w-44 rounded-full bg-fuchsia-500/15 blur-[55px]" />
+            <div className="pointer-events-none absolute -bottom-20 -left-16 h-44 w-44 rounded-full bg-orange-500/10 blur-[60px]" />
+
+            <div className="relative">
+              <span className="grid h-14 w-14 place-items-center rounded-2xl border border-rose-300/20 bg-rose-500/10 text-rose-200">
+                <Crown className="h-7 w-7" />
+              </span>
+
+              <p className="mt-5 text-[10px] font-black uppercase tracking-[.2em] text-rose-300">
+                Fin de soirée
+              </p>
+              <h2 className="mt-2 font-[family:var(--font-exo-2)] text-2xl font-black sm:text-3xl">
+                Générer le classement final ?
+              </h2>
+              <p className="mt-3 text-sm leading-6 text-white/45">
+                La soirée {party?.code || code} sera clôturée. Les votes, podiums,
+                PartyScore et statistiques seront figés et le récap sera ajouté à
+                l’historique des comptes présents.
+              </p>
+
+              <div className="mt-5 rounded-2xl border border-white/[0.07] bg-black/20 p-4">
+                <div className="grid grid-cols-3 gap-3 text-center">
+                  <div>
+                    <p className="font-[family:var(--font-exo-2)] text-xl font-black text-white">
+                      {party?.participants?.length || 0}
+                    </p>
+                    <p className="mt-1 text-[8px] font-black uppercase tracking-[.12em] text-white/30">
+                      Présents
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-[family:var(--font-exo-2)] text-xl font-black text-fuchsia-200">
+                      {(party?.songs || []).reduce((sum, song) => sum + Math.max(0, Number(song.votes || 0)), 0)}
+                    </p>
+                    <p className="mt-1 text-[8px] font-black uppercase tracking-[.12em] text-white/30">
+                      Votes
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-[family:var(--font-exo-2)] text-xl font-black text-orange-200">
+                      {(party?.songs || []).filter((song) => song.played).length}
+                    </p>
+                    <p className="mt-1 text-[8px] font-black uppercase tracking-[.12em] text-white/30">
+                      Joués
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-6 grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setEndPartyConfirmOpen(false)}
+                  disabled={endingParty}
+                  className="min-h-12 rounded-2xl border border-white/10 bg-white/[0.04] px-4 text-sm font-black text-white/60 transition hover:bg-white/[0.08] disabled:opacity-50"
+                >
+                  Continuer la soirée
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void endParty()}
+                  disabled={endingParty}
+                  className="min-h-12 rounded-2xl border border-rose-300/20 bg-gradient-to-r from-rose-500/80 via-fuchsia-500/80 to-orange-500/80 px-4 text-sm font-black text-white shadow-[0_14px_40px_rgba(244,63,94,.18)] transition hover:-translate-y-0.5 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {endingParty ? "Génération…" : "Terminer & voir le classement"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <MixPartyBackground />
 
       <div className="pointer-events-none fixed inset-0 z-[1] bg-[linear-gradient(to_bottom,rgba(7,7,17,.03),rgba(7,7,17,.14)_54%,rgba(7,7,17,.32))]" />
@@ -4392,6 +4560,29 @@ const canRemove =
                   )}
                 </div>
               )}
+              {isPartyCreator ? (
+                <button
+                  type="button"
+                  onClick={() => setEndPartyConfirmOpen(true)}
+                  className="mt-3 flex w-full items-center gap-3 rounded-2xl border border-rose-300/20 bg-gradient-to-r from-rose-500/[0.13] via-fuchsia-500/[0.08] to-orange-500/[0.08] px-3 py-3 text-left text-rose-50 shadow-[0_14px_40px_rgba(244,63,94,.08)] transition hover:-translate-y-0.5 hover:border-rose-300/30 hover:bg-rose-500/[0.16]"
+                >
+                  <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-rose-300/15 bg-rose-500/10 text-rose-200">
+                    <DoorClosed className="h-5 w-5" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-black">
+                      Terminer la soirée
+                    </span>
+                    <span className="mt-0.5 block text-xs leading-5 text-white/45">
+                      Fige les résultats et génère le classement final.
+                    </span>
+                  </span>
+                  <span className="rounded-full border border-rose-300/15 bg-rose-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[.12em] text-rose-200">
+                    DJ
+                  </span>
+                </button>
+              ) : null}
+
             </section>
 
           </aside>

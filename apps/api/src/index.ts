@@ -7,6 +7,7 @@ import fs from "fs";
 import path from "path";
 import { createHash, randomUUID } from "crypto";
 import { createAccountsStore } from "./accounts";
+import { OAuth2Client } from "google-auth-library";
 import {
   cleanArtist as coreCleanArtist,
   cleanTitle as coreCleanTitle,
@@ -61,6 +62,11 @@ app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: "2mb" }));
 
 const accountsStore = createAccountsStore(accountsFilePath);
+
+const googleClientId = String(process.env.GOOGLE_CLIENT_ID || "").trim();
+const googleOAuthClient = googleClientId
+  ? new OAuth2Client(googleClientId)
+  : null;
 
 function configuredAdminEmails() {
   return new Set(
@@ -2771,7 +2777,7 @@ function cleanOldParties(){
       playedSongs,
     );
 
-    const winnerAccountId = finalRanking[0]?.accountId;
+    const winnerAccountId = finalRanking.find((row) => !row.isEphemeral)?.accountId;
     if (
       winnerAccountId &&
       party.rankingSnapshotCount >= 5
@@ -2853,14 +2859,20 @@ function registerPartyParticipant(party: Party, participantIdValue: unknown) {
 }
 
 function buildFinalPartyRanking(party: Party) {
-  const qualifiedAccountIds = new Set(
-    accountsStore.partyQualifiedAccountIds(party.code),
-  );
-
+  // Classement affiché = tous les participants vus dans la soirée :
+  // comptes permanents + profils éphémères.
+  //
+  // Les comptes permanents gardent leur accountId réel.
+  // Les profils éphémères reçoivent une clé interne "guest:<participantId>"
+  // uniquement pour figer le récap. Ils ne gagnent pas de stats/badges permanents.
   const scores = new Map<
     string,
     {
       accountId: string;
+      participantId?: string;
+      name?: string;
+      avatar?: string;
+      isEphemeral?: boolean;
       votesReceived: number;
       songsWithVotes: number;
       songsAdded: number;
@@ -2868,9 +2880,37 @@ function buildFinalPartyRanking(party: Party) {
     }
   >();
 
-  for (const accountId of qualifiedAccountIds) {
-    scores.set(accountId, {
-      accountId,
+  for (const participant of party.participants) {
+    const participantId = String(participant.id || "").trim();
+    if (!participantId) continue;
+
+    const realAccountId = String(participant.accountId || "").trim();
+    const identityKey = realAccountId || `guest:${participantId}`;
+
+    if (!scores.has(identityKey)) {
+      scores.set(identityKey, {
+        accountId: identityKey,
+        participantId,
+        name: String(participant.name || "").trim() || (realAccountId ? "Compte MixParty" : "Invité"),
+        avatar: participant.avatar,
+        isEphemeral: !realAccountId,
+        votesReceived: 0,
+        songsWithVotes: 0,
+        songsAdded: 0,
+        partyScore: 0,
+      });
+    }
+  }
+
+  // Si un compte permanent a participé mais n'est plus dans la liste des
+  // participants en ligne au moment de la clôture, on le garde quand même.
+  for (const accountId of accountsStore.partyAccountIds(party.code)) {
+    const key = String(accountId || "").trim();
+    if (!key || scores.has(key)) continue;
+
+    scores.set(key, {
+      accountId: key,
+      isEphemeral: false,
       votesReceived: 0,
       songsWithVotes: 0,
       songsAdded: 0,
@@ -2879,10 +2919,30 @@ function buildFinalPartyRanking(party: Party) {
   }
 
   for (const song of party.songs) {
-    const accountId = String(song.addedByAccountId || "").trim();
-    if (!accountId || !qualifiedAccountIds.has(accountId)) continue;
+    const realAccountId = String(song.addedByAccountId || "").trim();
+    const participantId = String(song.addedById || "").trim();
+    const identityKey = realAccountId || (participantId ? `guest:${participantId}` : "");
 
-    const row = scores.get(accountId);
+    if (!identityKey) continue;
+
+    let row = scores.get(identityKey);
+
+    // Sécurité pour un ancien participant qui aurait été nettoyé de la présence
+    // mais dont les morceaux sont encore dans la soirée.
+    if (!row && participantId) {
+      row = {
+        accountId: identityKey,
+        participantId,
+        name: String(song.addedBy || "").trim() || "Invité",
+        isEphemeral: !realAccountId,
+        votesReceived: 0,
+        songsWithVotes: 0,
+        songsAdded: 0,
+        partyScore: 0,
+      };
+      scores.set(identityKey, row);
+    }
+
     if (!row) continue;
 
     const votes = Math.max(0, Number(song.votes || 0));
@@ -2892,8 +2952,6 @@ function buildFinalPartyRanking(party: Party) {
   }
 
   for (const row of scores.values()) {
-    // PartyScore V1 : total des votes reçus pendant la soirée.
-    // Les autres valeurs servent uniquement de départage.
     row.partyScore = row.votesReceived;
   }
 
@@ -2902,10 +2960,9 @@ function buildFinalPartyRanking(party: Party) {
       b.partyScore - a.partyScore ||
       b.songsWithVotes - a.songsWithVotes ||
       b.songsAdded - a.songsAdded ||
-      a.accountId.localeCompare(b.accountId),
+      String(a.name || a.accountId).localeCompare(String(b.name || b.accountId)),
   );
 }
-
 
 function captureRankingSnapshot(party: Party) {
   const scores = new Map<string, number>();
@@ -3018,6 +3075,23 @@ function accountErrorResponse(error: unknown) {
   if (code === "UNAUTHORIZED") {
     return { status: 401, body: { error: "Session MixParty expirée ou invalide." } };
   }
+  if (code === "GOOGLE_ID_INVALID" || code === "GOOGLE_EMAIL_INVALID") {
+    return { status: 401, body: { error: "Le compte Google n’a pas pu être vérifié." } };
+  }
+  if (code === "GOOGLE_ACCOUNT_CONFLICT") {
+    return {
+      status: 409,
+      body: {
+        error: "Cette adresse e-mail est déjà liée à un autre compte Google.",
+      },
+    };
+  }
+  if (code === "PARTY_RESULT_NOT_FOUND") {
+    return { status: 404, body: { error: "Récap de soirée introuvable." } };
+  }
+  if (code === "PARTY_RESULT_FORBIDDEN") {
+    return { status: 403, body: { error: "Ce récap n’appartient pas à ton historique MixParty." } };
+  }
 
   console.error("MixParty Accounts:", error);
   return { status: 500, body: { error: "Une erreur MixParty est survenue." } };
@@ -3051,6 +3125,71 @@ app.post("/account/login", (req, res) => {
   }
 });
 
+app.post("/account/google", async (req, res) => {
+  if (!googleOAuthClient || !googleClientId) {
+    return res.status(503).json({
+      error: "Connexion Google non configurée sur l’API MixParty.",
+      code: "GOOGLE_NOT_CONFIGURED",
+    });
+  }
+
+  const credential = String(req.body?.credential || "").trim();
+
+  if (!credential || credential.length > 10_000) {
+    return res.status(400).json({
+      error: "Identifiant Google manquant ou invalide.",
+      code: "GOOGLE_CREDENTIAL_INVALID",
+    });
+  }
+
+  try {
+    const ticket = await googleOAuthClient.verifyIdToken({
+      idToken: credential,
+      audience: googleClientId,
+    });
+
+    const payload = ticket.getPayload();
+
+    if (
+      !payload?.sub ||
+      !payload.email ||
+      payload.email_verified !== true
+    ) {
+      return res.status(401).json({
+        error: "Le compte Google n’a pas pu être vérifié.",
+        code: "GOOGLE_ID_INVALID",
+      });
+    }
+
+    const result = accountsStore.loginWithGoogle({
+      subject: payload.sub,
+      email: payload.email,
+      emailVerified: payload.email_verified,
+      name: payload.name || payload.given_name || payload.email.split("@")[0],
+      avatar: payload.picture,
+    });
+
+    return res.json(result);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "";
+
+    if (
+      code === "GOOGLE_ID_INVALID" ||
+      code === "GOOGLE_EMAIL_INVALID" ||
+      code === "GOOGLE_ACCOUNT_CONFLICT"
+    ) {
+      const response = accountErrorResponse(error);
+      return res.status(response.status).json(response.body);
+    }
+
+    console.error("Google Sign-In MixParty:", error);
+    return res.status(401).json({
+      error: "Connexion Google refusée. Réessaie avec ton compte Google.",
+      code: "GOOGLE_TOKEN_INVALID",
+    });
+  }
+});
+
 app.get("/account/me", (req, res) => {
   const token = readBearerToken(req);
   const account = token ? accountsStore.authenticate(token) : null;
@@ -3060,6 +3199,18 @@ app.get("/account/me", (req, res) => {
   }
 
   return res.json({ account });
+});
+
+app.get("/party/:code/result", (req, res) => {
+  const token = readBearerToken(req);
+
+  try {
+    const result = accountsStore.getPartyResultForToken(token, req.params.code);
+    return res.json({ result });
+  } catch (error) {
+    const response = accountErrorResponse(error);
+    return res.status(response.status).json(response.body);
+  }
 });
 
 app.patch("/account/me", (req, res) => {
@@ -4551,9 +4702,19 @@ app.post("/party/:code/end", (req, res) => {
   accountsStore.finalizePartyParticipation(party.code, endedAt);
 
   const finalRanking = buildFinalPartyRanking(party);
+  const permanentAccountRanking = finalRanking
+    .filter((row) => !row.isEphemeral && !String(row.accountId || "").startsWith("guest:"))
+    .map((row) => ({
+      accountId: row.accountId,
+      partyScore: row.partyScore,
+      votesReceived: row.votesReceived,
+      songsWithVotes: row.songsWithVotes,
+      songsAdded: row.songsAdded,
+    }));
+
   const recordedResults = accountsStore.recordFinalPartyRanking(
     party.code,
-    finalRanking,
+    permanentAccountRanking,
   );
 
   const totalVotes = party.songs.reduce(
@@ -4569,7 +4730,7 @@ app.post("/party/:code/end", (req, res) => {
     playedSongs,
   );
 
-  const winnerAccountId = finalRanking[0]?.accountId;
+  const winnerAccountId = permanentAccountRanking[0]?.accountId;
   if (
     winnerAccountId &&
     party.rankingSnapshotCount >= 5
@@ -4589,16 +4750,42 @@ app.post("/party/:code/end", (req, res) => {
     }
   }
 
+  const partyResult = accountsStore.recordPartyResultSnapshot({
+    code: party.code,
+    startedAt: party.createdAt,
+    endedAt,
+    uniqueParticipants: party.seenParticipantIds.length,
+    totalVotes,
+    songsPlayed: party.songs.filter((song) => song.played).length,
+    totalSongs: party.songs.length,
+    ranking: finalRanking,
+    topSongs: party.songs.map((song) => ({
+      videoId: song.videoId,
+      title: song.title,
+      artistName: song.artistName,
+      thumbnail: song.thumbnail,
+      votes: song.votes,
+      addedBy: song.addedBy,
+      addedByAccountId: song.addedByAccountId,
+      played: song.played,
+    })),
+  });
+
   playbackTelemetry.delete(party.code);
   parties = parties.filter((item) => item.code !== party.code);
   saveParties();
-  io.emit("party_ended", { code: party.code });
+
+  io.to(party.code).emit("party_ended", {
+    code: party.code,
+    result: partyResult,
+  });
 
   return res.json({
     ok: true,
     code: party.code,
     ranking: finalRanking,
     recordedResults,
+    result: partyResult,
   });
 });
 
@@ -8151,7 +8338,7 @@ async function requestKaraokeSyncAlignmentUpload(
   form.append("payload", JSON.stringify(payload));
   form.append(
     "audio",
-    new Blob([audioBuffer], { type: mimeType || "application/octet-stream" }),
+    new Blob([new Uint8Array(audioBuffer)], { type: mimeType || "application/octet-stream" }),
     fileName || "source.audio"
   );
 

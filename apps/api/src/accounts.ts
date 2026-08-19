@@ -50,6 +50,7 @@ export type MixPartyAccount = {
   id: string;
   email: string;
   passwordHash: string;
+  googleSubject?: string;
   name: string;
   avatar?: string;
   createdAt: number;
@@ -100,14 +101,52 @@ type AccountSession = {
   expiresAt: number;
 };
 
+export type MixPartyPartyResultSong = {
+  videoId: string;
+  title: string;
+  artistName?: string;
+  thumbnail?: string;
+  votes: number;
+  addedBy?: string;
+  addedByAccountId?: string;
+  played: boolean;
+};
+
+export type MixPartyPartyResultRankingRow = {
+  accountId: string;
+  participantId?: string;
+  name?: string;
+  avatar?: string;
+  isEphemeral?: boolean;
+  partyScore: number;
+  votesReceived: number;
+  songsWithVotes: number;
+  songsAdded: number;
+};
+
+export type MixPartyPartyResultSnapshot = {
+  code: string;
+  startedAt: number;
+  endedAt: number;
+  durationMs: number;
+  uniqueParticipants: number;
+  totalVotes: number;
+  songsPlayed: number;
+  totalSongs: number;
+  attendeeAccountIds: string[];
+  ranking: MixPartyPartyResultRankingRow[];
+  topSongs: MixPartyPartyResultSong[];
+};
+
 type AccountsDatabase = {
   version: 1;
   updatedAt: number;
   accounts: MixPartyAccount[];
   sessions: AccountSession[];
+  partyResults: MixPartyPartyResultSnapshot[];
 };
 
-export type PublicMixPartyAccount = Omit<MixPartyAccount, "passwordHash">;
+export type PublicMixPartyAccount = Omit<MixPartyAccount, "passwordHash" | "googleSubject">;
 
 const SESSION_DURATION_MS = 90 * 24 * 60 * 60 * 1000;
 const CREATOR_BADGE_ID = "createur-mixparty";
@@ -249,6 +288,7 @@ function createEmptyDatabase(): AccountsDatabase {
     updatedAt: Date.now(),
     accounts: [],
     sessions: [],
+    partyResults: [],
   };
 }
 
@@ -287,7 +327,11 @@ function hashToken(token: string) {
 }
 
 function publicAccount(account: MixPartyAccount): PublicMixPartyAccount {
-  const { passwordHash: _passwordHash, ...safe } = account;
+  const {
+    passwordHash: _passwordHash,
+    googleSubject: _googleSubject,
+    ...safe
+  } = account;
   return safe;
 }
 
@@ -307,6 +351,10 @@ export function createAccountsStore(filePath: string) {
             id: String(raw.id),
             email,
             passwordHash: String(raw.passwordHash),
+            googleSubject:
+              typeof raw.googleSubject === "string" && raw.googleSubject.trim()
+                ? raw.googleSubject.trim()
+                : undefined,
             name,
             avatar: typeof raw.avatar === "string" && raw.avatar ? raw.avatar : undefined,
             createdAt: Number(raw.createdAt || Date.now()),
@@ -465,11 +513,76 @@ export function createAccountsStore(filePath: string) {
         })
       : [];
 
+    const partyResults: MixPartyPartyResultSnapshot[] = Array.isArray(value?.partyResults)
+      ? value.partyResults.flatMap((raw: any) => {
+          const code = String(raw?.code || "").trim().toUpperCase();
+          if (!code) return [];
+
+          const attendeeAccountIds = Array.isArray(raw.attendeeAccountIds)
+            ? [...new Set(raw.attendeeAccountIds.map(String).filter(Boolean))].slice(0, 5000)
+            : [];
+
+          const ranking = Array.isArray(raw.ranking)
+            ? raw.ranking.flatMap((row: any) => {
+                const accountId = String(row?.accountId || "").trim();
+                if (!accountId) return [];
+                return [{
+                  accountId,
+                  participantId: String(row.participantId || "").trim() || undefined,
+                  name: String(row.name || "").trim().slice(0, 80) || undefined,
+                  avatar: String(row.avatar || "").trim().slice(0, 1_500_000) || undefined,
+                  isEphemeral: Boolean(row.isEphemeral),
+                  partyScore: Math.max(0, Number(row.partyScore || 0)),
+                  votesReceived: Math.max(0, Number(row.votesReceived || 0)),
+                  songsWithVotes: Math.max(0, Number(row.songsWithVotes || 0)),
+                  songsAdded: Math.max(0, Number(row.songsAdded || 0)),
+                }];
+              }).slice(0, 1000)
+            : [];
+
+          const topSongs = Array.isArray(raw.topSongs)
+            ? raw.topSongs.flatMap((song: any) => {
+                const videoId = String(song?.videoId || "").trim();
+                const title = String(song?.title || "").trim();
+                if (!videoId || !title) return [];
+                return [{
+                  videoId,
+                  title: title.slice(0, 240),
+                  artistName: String(song.artistName || "").trim().slice(0, 160) || undefined,
+                  thumbnail: String(song.thumbnail || "").trim().slice(0, 2000) || undefined,
+                  votes: Math.max(0, Number(song.votes || 0)),
+                  addedBy: String(song.addedBy || "").trim().slice(0, 80) || undefined,
+                  addedByAccountId: String(song.addedByAccountId || "").trim() || undefined,
+                  played: Boolean(song.played),
+                }];
+              }).slice(0, 12)
+            : [];
+
+          const startedAt = Math.max(0, Number(raw.startedAt || 0));
+          const endedAt = Math.max(startedAt, Number(raw.endedAt || Date.now()));
+
+          return [{
+            code,
+            startedAt,
+            endedAt,
+            durationMs: Math.max(0, Number(raw.durationMs || endedAt - startedAt)),
+            uniqueParticipants: Math.max(0, Number(raw.uniqueParticipants || 0)),
+            totalVotes: Math.max(0, Number(raw.totalVotes || 0)),
+            songsPlayed: Math.max(0, Number(raw.songsPlayed || 0)),
+            totalSongs: Math.max(0, Number(raw.totalSongs || 0)),
+            attendeeAccountIds,
+            ranking,
+            topSongs,
+          }];
+        }).slice(-1000)
+      : [];
+
     return {
       version: 1,
       updatedAt: Date.now(),
       accounts,
       sessions,
+      partyResults,
     };
   }
 
@@ -698,6 +811,112 @@ export function createAccountsStore(filePath: string) {
     if (syncCreatorBadge(account)) {
       save();
     }
+
+    return {
+      account: publicAccount(account),
+      token: createSession(account.id),
+    };
+  }
+
+  function loginWithGoogle(input: {
+    subject: unknown;
+    email: unknown;
+    emailVerified: unknown;
+    name: unknown;
+    avatar?: unknown;
+  }) {
+    const subject = String(input.subject || "").trim();
+    const email = normalizeEmail(input.email);
+    const emailVerified = input.emailVerified === true;
+    const suppliedName = normalizeName(input.name);
+    const suppliedAvatar =
+      typeof input.avatar === "string" && input.avatar.length <= 1_500_000
+        ? input.avatar
+        : undefined;
+
+    if (!subject) throw new Error("GOOGLE_ID_INVALID");
+    if (!emailVerified || !validateEmail(email)) {
+      throw new Error("GOOGLE_EMAIL_INVALID");
+    }
+
+    let account = database.accounts.find(
+      (item) => item.googleSubject === subject,
+    );
+
+    if (!account) {
+      account = database.accounts.find((item) => item.email === email);
+
+      if (account) {
+        if (
+          account.googleSubject &&
+          account.googleSubject !== subject
+        ) {
+          throw new Error("GOOGLE_ACCOUNT_CONFLICT");
+        }
+
+        account.googleSubject = subject;
+
+        if (!account.avatar && suppliedAvatar) {
+          account.avatar = suppliedAvatar;
+        }
+
+        account.updatedAt = Date.now();
+      } else {
+        const now = Date.now();
+        const fallbackName =
+          suppliedName.length >= 2
+            ? suppliedName
+            : normalizeName(email.split("@")[0] || "MixParty");
+
+        account = {
+          id: randomUUID(),
+          email,
+          // Compte créé via Google : mot de passe aléatoire inutilisable.
+          // L'utilisateur pourra utiliser Google pour ses connexions.
+          passwordHash: hashPassword(randomBytes(32).toString("base64url")),
+          googleSubject: subject,
+          name: fallbackName.length >= 2 ? fallbackName : "MixParty",
+          avatar: suppliedAvatar,
+          createdAt: now,
+          updatedAt: now,
+          plan: "free",
+          stats: createDefaultStats(),
+          badges: [],
+          featuredBadges: [],
+          badgeUnlocks: [],
+          history: [],
+          progress: {
+            playedSongKeys: [],
+            fiveVoteSongKeys: [],
+            activePartyLastSeen: {},
+            activeMilliseconds: 0,
+            songAddedEvents: [],
+            completedSongStreak: 0,
+            votedCreatorKeysByParty: {},
+            currentWinStreak: 0,
+            bestWinStreak: 0,
+            compatibleStreak: 0,
+            partyBrainApprovedStreak: 0,
+            partyBrainQualityPoints: 0,
+            partyBrainQualitySamples: 0,
+            appreciatedSongStreak: 0,
+          },
+          customization: {},
+        };
+
+        database.accounts.push(account);
+      }
+    }
+
+    if (account.email !== email) {
+      throw new Error("GOOGLE_ACCOUNT_CONFLICT");
+    }
+
+    if (syncCreatorBadge(account)) {
+      account.updatedAt = Date.now();
+    }
+
+    save();
 
     return {
       account: publicAccount(account),
@@ -1224,6 +1443,17 @@ export function createAccountsStore(filePath: string) {
       .map((account) => account.id);
   }
 
+  function partyAccountIds(partyCodeValue: unknown): string[] {
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    if (!partyCode) return [];
+
+    return database.accounts
+      .filter((account) =>
+        account.history.some((entry) => entry.partyCode === partyCode),
+      )
+      .map((account) => String(account.id));
+  }
+
   function recordGrosseSoiree(
     partyCodeValue: unknown,
     uniqueParticipantsValue: unknown,
@@ -1331,6 +1561,152 @@ export function createAccountsStore(filePath: string) {
 
     save();
     return results;
+  }
+
+  function buildPublicPartyResult(
+    snapshot: MixPartyPartyResultSnapshot,
+    viewerAccountId?: string,
+  ) {
+    const accountById = new Map(
+      database.accounts.map((account) => [account.id, account] as const),
+    );
+
+    const ranking = snapshot.ranking.map((row, index) => {
+      const account = row.isEphemeral ? undefined : accountById.get(row.accountId);
+      return {
+        rank: index + 1,
+        accountId: row.accountId,
+        participantId: row.participantId,
+        name: row.name || account?.name || (row.isEphemeral ? "Invité" : "Compte MixParty"),
+        avatar: row.avatar || account?.avatar,
+        isEphemeral: Boolean(row.isEphemeral),
+        partyScore: Math.max(0, Number(row.partyScore || 0)),
+        votesReceived: Math.max(0, Number(row.votesReceived || 0)),
+        songsWithVotes: Math.max(0, Number(row.songsWithVotes || 0)),
+        songsAdded: Math.max(0, Number(row.songsAdded || 0)),
+      };
+    });
+
+    const attendees = snapshot.attendeeAccountIds.map((accountId) => {
+      const account = accountById.get(accountId);
+      const historyEntry = account?.history.find(
+        (entry) => entry.partyCode === snapshot.code,
+      );
+      const rankingRow = ranking.find((row) => row.accountId === accountId);
+
+      return {
+        accountId,
+        name: account?.name || "Compte MixParty",
+        avatar: account?.avatar,
+        role: historyEntry?.role === "host" ? "host" : "participant",
+        qualified: Boolean(historyEntry?.participationCounted),
+        finalRank: rankingRow?.rank,
+        partyScore: rankingRow?.partyScore,
+      };
+    });
+
+    const host = attendees.find((attendee) => attendee.role === "host");
+
+    return {
+      ...snapshot,
+      ranking,
+      attendees,
+      host,
+      viewerAccountId,
+    };
+  }
+
+  function recordPartyResultSnapshot(input: {
+    code: unknown;
+    startedAt: unknown;
+    endedAt: unknown;
+    uniqueParticipants: unknown;
+    totalVotes: unknown;
+    songsPlayed: unknown;
+    totalSongs: unknown;
+    ranking: MixPartyPartyResultRankingRow[];
+    topSongs: MixPartyPartyResultSong[];
+  }) {
+    const code = String(input.code || "").trim().toUpperCase();
+    if (!code) return null;
+
+    const startedAt = Math.max(0, Number(input.startedAt || 0));
+    const endedAt = Math.max(startedAt, Number(input.endedAt || Date.now()));
+
+    const attendeeAccountIds = database.accounts
+      .filter((account) =>
+        account.history.some((entry) => entry.partyCode === code),
+      )
+      .map((account) => account.id);
+
+    const snapshot: MixPartyPartyResultSnapshot = {
+      code,
+      startedAt,
+      endedAt,
+      durationMs: Math.max(0, endedAt - startedAt),
+      uniqueParticipants: Math.max(0, Number(input.uniqueParticipants || 0)),
+      totalVotes: Math.max(0, Number(input.totalVotes || 0)),
+      songsPlayed: Math.max(0, Number(input.songsPlayed || 0)),
+      totalSongs: Math.max(0, Number(input.totalSongs || 0)),
+      attendeeAccountIds,
+      ranking: Array.isArray(input.ranking)
+        ? input.ranking.map((row) => ({
+            accountId: String(row.accountId || "").trim(),
+            participantId: String(row.participantId || "").trim() || undefined,
+            name: String(row.name || "").trim().slice(0, 80) || undefined,
+            avatar: String(row.avatar || "").trim().slice(0, 1_500_000) || undefined,
+            isEphemeral: Boolean(row.isEphemeral),
+            partyScore: Math.max(0, Number(row.partyScore || 0)),
+            votesReceived: Math.max(0, Number(row.votesReceived || 0)),
+            songsWithVotes: Math.max(0, Number(row.songsWithVotes || 0)),
+            songsAdded: Math.max(0, Number(row.songsAdded || 0)),
+          })).filter((row) => row.accountId)
+        : [],
+      topSongs: Array.isArray(input.topSongs)
+        ? input.topSongs
+            .map((song) => ({
+              videoId: String(song.videoId || "").trim(),
+              title: String(song.title || "").trim().slice(0, 240),
+              artistName: String(song.artistName || "").trim().slice(0, 160) || undefined,
+              thumbnail: String(song.thumbnail || "").trim().slice(0, 2000) || undefined,
+              votes: Math.max(0, Number(song.votes || 0)),
+              addedBy: String(song.addedBy || "").trim().slice(0, 80) || undefined,
+              addedByAccountId: String(song.addedByAccountId || "").trim() || undefined,
+              played: Boolean(song.played),
+            }))
+            .filter((song) => song.videoId && song.title)
+            .sort((a, b) => b.votes - a.votes)
+            .slice(0, 8)
+        : [],
+    };
+
+    database.partyResults = database.partyResults.filter(
+      (item) => item.code !== code,
+    );
+    database.partyResults.push(snapshot);
+    database.partyResults = database.partyResults.slice(-1000);
+    save();
+
+    return buildPublicPartyResult(snapshot);
+  }
+
+  function getPartyResultForToken(token: string, partyCodeValue: unknown) {
+    const account = accountFromToken(token);
+    if (!account) throw new Error("UNAUTHORIZED");
+
+    const partyCode = String(partyCodeValue || "").trim().toUpperCase();
+    const snapshot = database.partyResults.find((item) => item.code === partyCode);
+    if (!snapshot) throw new Error("PARTY_RESULT_NOT_FOUND");
+
+    const participated = account.history.some(
+      (entry) => entry.partyCode === partyCode,
+    );
+
+    if (!participated) {
+      throw new Error("PARTY_RESULT_FORBIDDEN");
+    }
+
+    return buildPublicPartyResult(snapshot, account.id);
   }
 
   function adminSimulateQualityBadge(
@@ -1978,6 +2354,7 @@ export function createAccountsStore(filePath: string) {
   return {
     register,
     login,
+    loginWithGoogle,
     authenticate,
     updateProfile,
     recordPartyJoined,
@@ -1995,8 +2372,11 @@ export function createAccountsStore(filePath: string) {
     recordHostedPartyEngagement,
     unlockRoiCache,
     partyQualifiedAccountIds,
+    partyAccountIds,
     recordGrosseSoiree,
     recordFinalPartyRanking,
+    recordPartyResultSnapshot,
+    getPartyResultForToken,
     adminSimulateQualityBadge,
     adminSimulateRankingResult,
     adminSimulateBonPublic,
