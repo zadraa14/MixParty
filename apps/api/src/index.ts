@@ -3057,14 +3057,7 @@ app.post("/account/login", (req, res) => {
   }
 });
 app.post("/account/google", async (req, res) => {
-  console.log("🔐 GOOGLE LOGIN REQUEST", {
-    configured: Boolean(googleOAuthClient && googleClientId),
-    credentialReceived: Boolean(req.body?.credential),
-    credentialLength: String(req.body?.credential || "").length,
-    origin: req.headers.origin || null,
-  });
-
-  if (!googleOAuthClient || !googleClientId) {
+if (!googleOAuthClient || !googleClientId) {
     return res.status(503).json({
       error: "Connexion Google non configurée sur l’API MixParty.",
       code: "GOOGLE_NOT_CONFIGURED",
@@ -3087,15 +3080,7 @@ app.post("/account/google", async (req, res) => {
     });
 
     const payload = ticket.getPayload();
-
-    console.log("✅ GOOGLE TOKEN VERIFIED", {
-      email: payload?.email || null,
-      emailVerified: payload?.email_verified === true,
-      audience: payload?.aud || null,
-      issuer: payload?.iss || null,
-    });
-
-    if (
+if (
       !payload?.sub ||
       !payload.email ||
       payload.email_verified !== true
@@ -13461,3 +13446,5 @@ httpServer.listen(
 
   }
 );
+
+
