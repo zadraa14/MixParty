@@ -4335,17 +4335,19 @@ async function removeSong(index: number, song: Song) {
                               onClick={() => vote(originalIndex)}
                               className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""} inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border bg-transparent p-0 transition-all active:scale-[.94] ${
                                 hasVoted
-                                  ? "border-pink-300/55 text-pink-300 shadow-[0_0_18px_rgba(236,72,153,.16)]"
-                                  : "border-white/14 text-white/78 hover:border-pink-300/45 hover:text-pink-200"
+                                  ? "border-pink-300/80 bg-pink-500/12 text-pink-300 shadow-[0_0_22px_rgba(236,72,153,.28)]"
+                                  : "border-white/18 text-white/48 hover:border-pink-300/45 hover:text-pink-200"
                               }`}
                               aria-label={hasVoted ? `Retirer mon vote pour ${song.title}` : `J'aime ${song.title}`}
                               aria-pressed={hasVoted}
                             >
                               <Heart
-                                className={`h-[18px] w-[18px] shrink-0 ${
-                                  hasVoted ? "fill-current" : ""
+                                className={`h-[18px] w-[18px] shrink-0 transition-all ${
+                                  hasVoted
+                                    ? "fill-current scale-110"
+                                    : "fill-transparent"
                                 }`}
-                                strokeWidth={2.2}
+                                strokeWidth={hasVoted ? 2.4 : 2}
                               />
                             </button>
                             {canRemove ? (
