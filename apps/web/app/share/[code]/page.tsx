@@ -13,19 +13,18 @@ type PartyResult = {
   host?: { name?: string } | null;
 };
 
-const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL || "https://mixpartyapp.fr").replace(/\/+$/, "");
+const SITE_URL = (
+  process.env.NEXT_PUBLIC_SITE_URL || "https://mixpartyapp.fr"
+).replace(/\/+$/, "");
 
 async function getPublicResult(code: string): Promise<PartyResult | null> {
   try {
     const response = await fetch(
       `${SITE_URL}/mixparty-api/party/${encodeURIComponent(code)}/share`,
-      {
-        cache: "no-store",
-      },
+      { cache: "no-store" },
     );
 
     if (!response.ok) return null;
-
     const data = await response.json();
     return data?.result || null;
   } catch {
@@ -55,11 +54,10 @@ export async function generateMetadata({
   const image = `${canonical}/opengraph-image`;
 
   return {
+    metadataBase: new URL(SITE_URL),
     title,
     description,
-    alternates: {
-      canonical,
-    },
+    alternates: { canonical },
     openGraph: {
       type: "website",
       url: canonical,

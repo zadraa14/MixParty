@@ -4,8 +4,6 @@ export const alt = "Récap premium de soirée MixParty";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
-export const runtime = "edge";
-
 type RankingRow = {
   rank?: number;
   name?: string;
@@ -38,20 +36,36 @@ const SITE_URL = (
 
 const BRAND_ICON = `${SITE_URL}/branding/icon.png`;
 
-async function loadGoogleFont(fontFamily: string, weights: number[], text: string) {
-  const query = new URLSearchParams({
-    family: `${fontFamily}:wght@${weights.join(";")}`,
-    text,
-  });
+async function loadGoogleFont(fontFamily: string, text: string) {
+  try {
+    const query = new URLSearchParams({
+      family: `${fontFamily}:wght@800`,
+      text,
+    });
 
-  const css = await fetch(`https://fonts.googleapis.com/css2?${query.toString()}`, {
-    headers: { "User-Agent": "Mozilla/5.0" },
-    cache: "force-cache",
-  }).then((res) => res.text());
+    const cssResponse = await fetch(
+      `https://fonts.googleapis.com/css2?${query.toString()}`,
+      { cache: "force-cache" },
+    );
 
-  const match = css.match(/src: url\(([^)]+)\) format\('(opentype|truetype|woff2?)'\)/);
-  if (!match) return null;
-  return fetch(match[1]).then((res) => res.arrayBuffer());
+    if (!cssResponse.ok) return null;
+
+    const css = await cssResponse.text();
+
+    // next/og supports TTF, OTF and WOFF. WOFF2 is intentionally excluded.
+    const resource = css.match(
+      /src:\s*url\(([^)]+)\)\s*format\('(opentype|truetype|woff)'\)/,
+    );
+
+    if (!resource?.[1]) return null;
+
+    const fontResponse = await fetch(resource[1], { cache: "force-cache" });
+    if (!fontResponse.ok) return null;
+
+    return await fontResponse.arrayBuffer();
+  } catch {
+    return null;
+  }
 }
 
 function normalizeAssetUrl(value?: string) {
@@ -367,7 +381,6 @@ export default async function Image({
     getPublicResult(code),
     loadGoogleFont(
       "Exo 2",
-      [700, 800, 900],
       "MixParty PARTY RESULTS RÉCAP DE SOIRÉE LE GRAND GAGNANT Benjamin remporte la soirée Résultats officiels PARTICIPANTS VOTES TITRES JOUÉS DURÉE MORCEAU DE LA SOIRÉE PARTYSCORE PODIUM DE LA SOIRÉE Classement stats musique souvenirs 0123456789àéèùêâîôûçABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz#·:/-",
     ).catch(() => null),
   ]);
@@ -429,7 +442,6 @@ export default async function Image({
               display: "flex",
               borderRadius: 999,
               background: "rgba(217,70,239,.10)",
-              filter: "blur(40px)",
             }}
           />
           <div
@@ -442,7 +454,6 @@ export default async function Image({
               display: "flex",
               borderRadius: 999,
               background: "rgba(124,58,237,.10)",
-              filter: "blur(40px)",
             }}
           />
 
