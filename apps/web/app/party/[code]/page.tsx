@@ -3254,14 +3254,14 @@ async function removeSong(index: number, song: Song) {
                 Tout le moteur de lecture existant est conservé.
                ===================================================== */}
             <section
-              className={`${activeMobileTab === "playback" ? "block" : "hidden"} md:hidden`}
+              className={`${activeMobileTab === "playback" ? "!block" : "!hidden"} md:!hidden`}
               aria-label="Lecture en cours"
             >
               {party.currentSong ? (
                 <div className="space-y-3">
                   {/* PLAYER YOUTUBE — volontairement nu : aucun overlay au-dessus */}
                   <div className="overflow-hidden rounded-[22px] border border-white/[0.09] bg-black shadow-[0_18px_55px_rgba(0,0,0,.38)]">
-                    <div className="aspect-video w-full bg-black">
+                    <div className="relative aspect-video w-full overflow-hidden bg-black">
                       {isPlaybackController ? (
                         <div
                           ref={(element) => {
@@ -3269,7 +3269,7 @@ async function removeSong(index: number, song: Song) {
                               setPlayerHostElement(element);
                             }
                           }}
-                          className="mixparty-youtube-host mixparty-youtube-host--clip-visible h-full w-full overflow-hidden bg-black"
+                          className="mixparty-youtube-host mixparty-youtube-host--clip-visible absolute inset-0 h-full w-full overflow-hidden bg-black [&>iframe]:!h-full [&>iframe]:!w-full"
                         />
                       ) : (
                         <div className="grid h-full w-full place-items-center bg-black px-5 text-center">
@@ -3556,7 +3556,7 @@ async function removeSong(index: number, song: Song) {
               )}
             </section>
 
-            <section className="hidden v53-player-shell premium-glass-card md:block">
+            <section className="!hidden v53-player-shell premium-glass-card md:!block">
               <div className="v53-player-header">
                 <div className="v53-player-live">
                   <span className="v53-player-live__dot" />
@@ -4692,7 +4692,7 @@ const canRemove =
 
             </section>
 
-            <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} premium-glass-card overflow-hidden rounded-[22px] border border-cyan-400/15 bg-cyan-500/[0.045] p-3 backdrop-blur-xl md:block md:rounded-[26px] md:p-4`}>
+            <section className={`${activeMobileTab === "playback" ? "block" : "hidden"} premium-glass-card overflow-hidden rounded-[22px] border border-cyan-400/15 bg-cyan-500/[0.045] p-3 backdrop-blur-xl md:block md:rounded-[26px] md:p-4`} className="hidden md:block">
               <button
                 type="button"
                 onClick={togglePartyBrainAutoRelay}
@@ -4756,7 +4756,7 @@ const canRemove =
               djModeActive
                 ? "border-emerald-400/25 bg-emerald-500/[0.08]"
                 : "border-white/10 bg-white/[0.035]"
-            }`}>
+            }`} className="hidden md:block">
               <button
                 type="button"
                 onClick={djModeActive ? deactivateDjMode : activateDjMode}
@@ -5603,6 +5603,20 @@ const canRemove =
           filter:
             drop-shadow(0 0 20px rgba(168,85,247,.42))
             drop-shadow(0 0 28px rgba(249,115,22,.2));
+        }
+
+        @media (max-width: 767px) {
+          .v53-player-shell {
+            display: none !important;
+          }
+
+          .mixparty-youtube-host--clip-visible,
+          .mixparty-youtube-host--clip-visible iframe {
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            max-height: 100% !important;
+          }
         }
 
         @media (max-width: 767px) {
