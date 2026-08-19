@@ -1,4 +1,5 @@
 ﻿import dotenv from "dotenv";
+import { OAuth2Client } from "google-auth-library";
 import express from "express";
 import cors from "cors";
 import { createServer } from "http";
@@ -61,6 +62,11 @@ app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: "2mb" }));
 
 const accountsStore = createAccountsStore(accountsFilePath);
+const googleClientId = String(process.env.GOOGLE_CLIENT_ID || "").trim();
+
+const googleOAuthClient = googleClientId
+  ? new OAuth2Client(googleClientId)
+  : null;
 
 function configuredAdminEmails() {
   return new Set(
@@ -3048,6 +3054,93 @@ app.post("/account/login", (req, res) => {
   } catch (error) {
     const response = accountErrorResponse(error);
     return res.status(response.status).json(response.body);
+  }
+});
+app.post("/account/google", async (req, res) => {
+  console.log("🔐 GOOGLE LOGIN REQUEST", {
+    configured: Boolean(googleOAuthClient && googleClientId),
+    credentialReceived: Boolean(req.body?.credential),
+    credentialLength: String(req.body?.credential || "").length,
+    origin: req.headers.origin || null,
+  });
+
+  if (!googleOAuthClient || !googleClientId) {
+    return res.status(503).json({
+      error: "Connexion Google non configurée sur l’API MixParty.",
+      code: "GOOGLE_NOT_CONFIGURED",
+    });
+  }
+
+  const credential = String(req.body?.credential || "").trim();
+
+  if (!credential || credential.length > 10_000) {
+    return res.status(400).json({
+      error: "Identifiant Google manquant ou invalide.",
+      code: "GOOGLE_CREDENTIAL_INVALID",
+    });
+  }
+
+  try {
+    const ticket = await googleOAuthClient.verifyIdToken({
+      idToken: credential,
+      audience: googleClientId,
+    });
+
+    const payload = ticket.getPayload();
+
+    console.log("✅ GOOGLE TOKEN VERIFIED", {
+      email: payload?.email || null,
+      emailVerified: payload?.email_verified === true,
+      audience: payload?.aud || null,
+      issuer: payload?.iss || null,
+    });
+
+    if (
+      !payload?.sub ||
+      !payload.email ||
+      payload.email_verified !== true
+    ) {
+      return res.status(401).json({
+        error: "Le compte Google n’a pas pu être vérifié.",
+        code: "GOOGLE_ID_INVALID",
+      });
+    }
+
+    const result = accountsStore.loginWithGoogle({
+      subject: payload.sub,
+      email: payload.email,
+      emailVerified: payload.email_verified,
+      name:
+        payload.name ||
+        payload.given_name ||
+        payload.email.split("@")[0],
+      avatar: payload.picture,
+    });
+
+    return res.json(result);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "";
+
+    if (
+      code === "GOOGLE_ID_INVALID" ||
+      code === "GOOGLE_EMAIL_INVALID" ||
+      code === "GOOGLE_ACCOUNT_CONFLICT"
+    ) {
+      const response = accountErrorResponse(error);
+      return res.status(response.status).json(response.body);
+    }
+
+    console.error("❌ GOOGLE LOGIN ERROR:", {
+      message: error instanceof Error ? error.message : String(error),
+      name: error instanceof Error ? error.name : typeof error,
+      configured: Boolean(googleOAuthClient && googleClientId),
+      origin: req.headers.origin || null,
+    });
+
+    return res.status(401).json({
+      error: "Connexion Google refusée. Réessaie avec ton compte Google.",
+      code: "GOOGLE_TOKEN_INVALID",
+    });
   }
 });
 
