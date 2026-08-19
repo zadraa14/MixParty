@@ -318,6 +318,7 @@ export default function PartyPage() {
   const [remotePlayback, setRemotePlayback] = useState({ state: 2, time: 0, receivedAt: Date.now() });
   const [youtubeError, setYoutubeError] = useState<number | null>(null);
   const [djModeActive, setDjModeActive] = useState(false);
+  const [mobileDjPanelOpen, setMobileDjPanelOpen] = useState(false);
   const [profileOverlayOpen, setProfileOverlayOpen] = useState(false);
   const [isPartyCreator, setIsPartyCreator] = useState(false);
   const [endPartyConfirmOpen, setEndPartyConfirmOpen] = useState(false);
@@ -3065,6 +3066,217 @@ async function removeSong(index: number, song: Song) {
         </div>
       ) : null}
 
+      {/* =========================================================
+          MOBILE DJ PANEL — bottom sheet premium
+          Réutilise toutes les fonctions DJ existantes.
+         ========================================================= */}
+      {mobileDjPanelOpen && isPartyCreator ? (
+        <div className="fixed inset-0 z-[10040] flex items-end bg-black/72 px-3 pb-[max(.75rem,env(safe-area-inset-bottom))] md:hidden">
+          <button
+            type="button"
+            aria-label="Fermer le mode DJ"
+            className="absolute inset-0 cursor-default"
+            onClick={() => setMobileDjPanelOpen(false)}
+          />
+
+          <section className="relative z-10 w-full overflow-hidden rounded-[30px] border border-white/[0.10] bg-[radial-gradient(circle_at_100%_0%,rgba(249,115,22,.12),transparent_34%),radial-gradient(circle_at_0%_0%,rgba(124,58,237,.14),transparent_38%),linear-gradient(160deg,rgba(18,13,29,.99),rgba(7,7,14,.995))] p-4 shadow-[0_-20px_70px_rgba(0,0,0,.48)]">
+            <div className="mx-auto mb-3 h-1.5 w-12 rounded-full bg-white/15" />
+
+            <div className="flex items-center gap-3">
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] border border-orange-300/20 bg-orange-500/[0.10] text-orange-300">
+                <Headphones className="h-5 w-5" />
+              </span>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-[8px] font-black uppercase tracking-[.16em] text-orange-300">
+                  Organisateur
+                </p>
+                <h2 className="font-[family:var(--font-exo-2)] text-lg font-black text-white">
+                  Mode DJ
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setMobileDjPanelOpen(false)}
+                className="grid h-9 w-9 place-items-center rounded-full border border-white/[0.08] bg-white/[0.035] text-lg font-light text-white/45"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Activer / désactiver mode DJ */}
+            <button
+              type="button"
+              onClick={djModeActive ? deactivateDjMode : activateDjMode}
+              disabled={!djModeActive && !isPlaybackController}
+              className={`mt-4 flex w-full items-center gap-3 rounded-[20px] border px-3.5 py-3.5 text-left ${
+                djModeActive
+                  ? "border-emerald-300/20 bg-emerald-500/[0.10]"
+                  : "border-white/[0.08] bg-white/[0.035]"
+              } disabled:opacity-40`}
+            >
+              <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[14px] ${
+                djModeActive
+                  ? "bg-emerald-500/[0.12] text-emerald-300"
+                  : "bg-orange-500/[0.10] text-orange-300"
+              }`}>
+                <Headphones className="h-5 w-5" />
+              </span>
+
+              <span className="min-w-0 flex-1">
+                <strong className="block text-sm font-black text-white">
+                  {djModeActive ? "Mode DJ activé" : "Activer le mode DJ"}
+                </strong>
+                <span className="mt-0.5 block text-[10px] leading-4 text-white/38">
+                  Garde l’écran actif pendant la soirée.
+                </span>
+              </span>
+
+              <span className={`relative h-7 w-12 shrink-0 rounded-full border ${
+                djModeActive
+                  ? "border-emerald-300/25 bg-emerald-500/25"
+                  : "border-white/10 bg-white/[0.06]"
+              }`}>
+                <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow ${
+                  djModeActive ? "left-6" : "left-1"
+                }`} />
+              </span>
+            </button>
+
+            {/* Cast */}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {!castConnected ? (
+                <button
+                  type="button"
+                  onClick={() => void startMixPartyCast("tv")}
+                  disabled={!castSdkReady || castConnecting}
+                  className="flex min-h-[78px] flex-col items-start justify-between rounded-[20px] border border-cyan-300/[0.16] bg-cyan-500/[0.07] p-3 text-left disabled:opacity-35"
+                >
+                  <Cast className={`h-5 w-5 text-cyan-300 ${castConnecting ? "animate-pulse" : ""}`} />
+                  <span>
+                    <strong className="block text-[11px] font-black text-white">
+                      {castConnecting ? "Connexion…" : "Caster sur TV"}
+                    </strong>
+                    <span className="mt-0.5 block text-[8px] text-white/34">
+                      {castAvailable ? "Choisir un écran" : castStateLabel}
+                    </span>
+                  </span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => void stopMixPartyCast()}
+                  className="flex min-h-[78px] flex-col items-start justify-between rounded-[20px] border border-emerald-300/[0.16] bg-emerald-500/[0.07] p-3 text-left"
+                >
+                  <Cast className="h-5 w-5 text-emerald-300" />
+                  <span>
+                    <strong className="block text-[11px] font-black text-white">
+                      {castDeviceName || "TV"} connectée
+                    </strong>
+                    <span className="mt-0.5 block text-[8px] text-emerald-200/55">
+                      Appuie pour déconnecter
+                    </span>
+                  </span>
+                </button>
+              )}
+
+              {/* Mode TV volontairement non lançable sur téléphone */}
+              <div className="flex min-h-[78px] flex-col items-start justify-between rounded-[20px] border border-purple-300/[0.10] bg-purple-500/[0.045] p-3 opacity-70">
+                <Expand className="h-5 w-5 text-purple-300" />
+                <span>
+                  <strong className="block text-[11px] font-black text-white">
+                    Mode TV
+                  </strong>
+                  <span className="mt-0.5 block text-[8px] leading-3 text-white/34">
+                    Disponible sur TV / ordinateur
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            {/* PartyBrain relay */}
+            <button
+              type="button"
+              onClick={togglePartyBrainAutoRelay}
+              disabled={!isPlaybackController || partyBrainRelayUpdating}
+              className="mt-3 flex w-full items-center gap-3 rounded-[20px] border border-cyan-300/[0.12] bg-[linear-gradient(135deg,rgba(6,182,212,.07),rgba(124,58,237,.055))] px-3.5 py-3.5 text-left disabled:opacity-40"
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-cyan-500/[0.10] text-cyan-300">
+                <Bot className="h-5 w-5" />
+              </span>
+
+              <span className="min-w-0 flex-1">
+                <strong className="block text-[11px] font-black text-white">
+                  Relais PartyBrain
+                </strong>
+                <span className="mt-0.5 block text-[8px] leading-3 text-white/34">
+                  Prend le relais lorsque la file est vide.
+                </span>
+              </span>
+
+              <span className={`relative h-7 w-12 shrink-0 rounded-full border ${
+                party?.partyBrainAutoRelayEnabled
+                  ? "border-emerald-300/25 bg-emerald-500/25"
+                  : "border-white/10 bg-white/[0.06]"
+              }`}>
+                <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow ${
+                  party?.partyBrainAutoRelayEnabled ? "left-6" : "left-1"
+                }`} />
+              </span>
+            </button>
+
+            {/* Infos rapides */}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-[8px] font-black ${
+                networkOnline
+                  ? "border-emerald-300/15 bg-emerald-500/[0.07] text-emerald-300"
+                  : "border-red-300/15 bg-red-500/[0.07] text-red-300"
+              }`}>
+                {networkOnline ? <Wifi className="h-3 w-3" /> : <WifiOff className="h-3 w-3" />}
+                {networkOnline ? "Connecté" : "Hors ligne"}
+              </span>
+
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.08] bg-white/[0.03] px-2.5 py-1.5 text-[8px] font-black text-white/45">
+                <Battery className="h-3 w-3" />
+                {batteryLevel === null ? "Batterie —" : `${batteryLevel} %`}
+              </span>
+
+              {djModeActive ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/15 bg-emerald-500/[0.07] px-2.5 py-1.5 text-[8px] font-black text-emerald-300">
+                  <Sparkles className="h-3 w-3" />
+                  {wakeLockActive ? "Écran maintenu" : "Mode DJ actif"}
+                </span>
+              ) : null}
+            </div>
+
+            {/* Terminer */}
+            <button
+              type="button"
+              onClick={() => {
+                setMobileDjPanelOpen(false);
+                setEndPartyConfirmOpen(true);
+              }}
+              disabled={endingParty}
+              className="mt-4 flex w-full items-center gap-3 rounded-[20px] border border-red-300/[0.16] bg-red-500/[0.07] px-3.5 py-3.5 text-left disabled:opacity-50"
+            >
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-[14px] bg-red-500/[0.10] text-red-300">
+                <DoorClosed className="h-5 w-5" />
+              </span>
+
+              <span className="min-w-0 flex-1">
+                <strong className="block text-[11px] font-black text-red-100">
+                  Terminer la soirée
+                </strong>
+                <span className="mt-0.5 block text-[8px] leading-3 text-red-100/35">
+                  Fige les résultats et génère le classement final.
+                </span>
+              </span>
+            </button>
+          </section>
+        </div>
+      ) : null}
+
       {endPartyConfirmOpen ? (
         <div className="fixed inset-0 z-[10020] grid place-items-center bg-[#05030c]/88 px-4 backdrop-blur-xl">
           <div className="relative w-full max-w-lg overflow-hidden rounded-[30px] border border-rose-300/20 bg-[#0b0813]/98 p-5 shadow-[0_35px_120px_rgba(0,0,0,.65),0_0_70px_rgba(244,63,94,.12)] sm:p-7">
@@ -3411,6 +3623,34 @@ async function removeSong(index: number, song: Song) {
                       ) : null}
                     </div>
                   </div>
+
+                  {/* RACCOURCI MODE DJ — organisateur uniquement */}
+                  {isPartyCreator ? (
+                    <button
+                      type="button"
+                      onClick={() => setMobileDjPanelOpen(true)}
+                      className="flex w-full items-center gap-3 rounded-[22px] border border-orange-300/[0.16] bg-[radial-gradient(circle_at_100%_0%,rgba(249,115,22,.12),transparent_36%),linear-gradient(135deg,rgba(33,16,29,.94),rgba(12,10,21,.96))] px-4 py-3.5 text-left shadow-[0_14px_38px_rgba(0,0,0,.24)] active:scale-[.99]"
+                    >
+                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] border border-orange-300/20 bg-orange-500/[0.10] text-orange-300 shadow-[0_0_18px_rgba(249,115,22,.08)]">
+                        <Headphones className="h-5 w-5" />
+                      </span>
+
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-[family:var(--font-exo-2)] text-sm font-black text-white">
+                          Mode DJ
+                        </span>
+                        <span className="mt-0.5 block text-[10px] font-semibold text-white/38">
+                          Cast, PartyBrain et commandes avancées
+                        </span>
+                      </span>
+
+                      <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                        djModeActive
+                          ? "bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.85)]"
+                          : "bg-white/20"
+                      }`} />
+                    </button>
+                  ) : null}
 
                   {/* PROCHAINES MUSIQUES */}
                   <div className="relative overflow-hidden rounded-[28px] border border-violet-300/[0.10] bg-[radial-gradient(circle_at_100%_0%,rgba(124,58,237,.11),transparent_36%),linear-gradient(145deg,rgba(12,9,24,.96),rgba(7,7,14,.98))] p-3.5 shadow-[0_18px_50px_rgba(0,0,0,.30)]">
