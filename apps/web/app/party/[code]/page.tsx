@@ -4536,23 +4536,39 @@ const canRemove =
                   { label: "Afro", query: "afro hits" },
                   { label: "Pop", query: "pop hits" },
                 ].map((category, index) => (
-                  <button
-                    key={category.label}
-                    type="button"
-                    onClick={() =>
-                      void searchYoutube(category.query, {
-                        updateInput: false,
-                        categoryLabel: category.label.replace("🔥 ", ""),
-                      })
-                    }
-                    className={`shrink-0 rounded-full border px-4 py-2.5 text-[10px] font-black ${
-                      index === 0
-                        ? "border-orange-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.15),rgba(249,115,22,.12))] text-orange-100"
-                        : "border-white/[0.08] bg-white/[0.035] text-white/58"
-                    }`}
-                  >
-                    {category.label}
-                  </button>
+                  {(() => {
+                    const normalizedCategoryLabel = category.label.replace("🔥 ", "");
+                    const categoryActive =
+                      activeSearchCategory === normalizedCategoryLabel;
+
+                    return (
+                      <button
+                        key={category.label}
+                        type="button"
+                        onClick={() =>
+                          void searchYoutube(category.query, {
+                            updateInput: false,
+                            categoryLabel: normalizedCategoryLabel,
+                          })
+                        }
+                        className={`shrink-0 rounded-full border px-4 py-2.5 text-[10px] font-black transition ${
+                          categoryActive
+                            ? "border-fuchsia-200/45 bg-[linear-gradient(135deg,rgba(124,58,237,.95),rgba(236,72,153,.92)_55%,rgba(249,115,22,.88))] text-white shadow-[0_0_0_1px_rgba(255,255,255,.05),0_0_22px_rgba(236,72,153,.24)]"
+                            : index === 0
+                              ? "border-orange-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.15),rgba(249,115,22,.12))] text-orange-100"
+                              : "border-white/[0.08] bg-white/[0.035] text-white/58"
+                        }`}
+                        aria-pressed={categoryActive}
+                      >
+                        <span className="inline-flex items-center gap-1.5">
+                          {categoryActive ? (
+                            <span className="h-1.5 w-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,.9)]" />
+                          ) : null}
+                          {category.label}
+                        </span>
+                      </button>
+                    );
+                  })()}
                 ))}
               </div>
 
