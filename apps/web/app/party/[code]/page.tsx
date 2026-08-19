@@ -303,6 +303,8 @@ export default function PartyPage() {
   const [copied, setCopied] = useState(false);
   const [mobileQrOpen, setMobileQrOpen] = useState(false);
   const [searching, setSearching] = useState(false);
+  const [mobileSearchError, setMobileSearchError] = useState("");
+  const [recentlyAddedVideoId, setRecentlyAddedVideoId] = useState<string | null>(null);
   const [karaokeMode, setKaraokeMode] = useState(false);
   const [karaokeScreenOpen, setKaraokeScreenOpen] = useState(false);
   const [karaokeCatalog, setKaraokeCatalog] = useState<KaraokeCatalogResponse | null>(null);
@@ -1532,6 +1534,7 @@ export default function PartyPage() {
     }
 
     setActiveSearchCategory(options?.categoryLabel || null);
+    setMobileSearchError("");
     setSearching(true);
 
     try {
@@ -1540,20 +1543,45 @@ export default function PartyPage() {
         fetch(`${getApiBaseUrl()}/partybrain/intelligence/insights/search?q=${encodeURIComponent(query)}`),
       ]);
 
-      const data = await response.json();
+      const data = await response.json().catch(() => []);
+
+      if (!response.ok) {
+        throw new Error(
+          typeof data?.error === "string"
+            ? data.error
+            : "La recherche est momentanément indisponible.",
+        );
+      }
+
       if (insightResponse.ok) {
         setSearchInsight(await insightResponse.json());
       } else {
         setSearchInsight(null);
       }
-    const pool = Array.isArray(data) ? data : [];
+
+      const pool = Array.isArray(data) ? data : [];
 
       setResults(
         pool.map((video) => ({
           ...video,
           sourceQuery: query,
           suggestionPool: pool,
-        }))
+        })),
+      );
+
+      if (pool.length === 0) {
+        setMobileSearchError(
+          `Aucun morceau trouvé pour « ${query} ». Essaie le titre exact ou le nom de l’artiste.`,
+        );
+      }
+    } catch (error) {
+      console.error("Recherche MixParty indisponible", error);
+      setResults([]);
+      setSearchInsight(null);
+      setMobileSearchError(
+        error instanceof Error
+          ? error.message
+          : "La recherche est momentanément indisponible.",
       );
     } finally {
       setSearching(false);
@@ -1700,6 +1728,10 @@ sourceQuery: video.sourceQuery || search.trim(),
 
       setResults((current) => current.filter((item) => item.id !== video.id));
       setSuggestions((current) => current.filter((item) => item.id !== video.id));
+      setRecentlyAddedVideoId(video.id);
+      window.setTimeout(() => {
+        setRecentlyAddedVideoId((current) => (current === video.id ? null : current));
+      }, 1800);
     } finally {
       setAddingVideoId(null);
     }
@@ -3972,6 +4004,57 @@ async function removeSong(index: number, song: Song) {
                       </button>
                     </div>
 
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <div className="rounded-[16px] border border-violet-300/[0.10] bg-violet-500/[0.045] px-2.5 py-2 text-center">
+                        <p className="text-[6px] font-black uppercase tracking-[.12em] text-white/25">File</p>
+                        <p className="mt-0.5 font-[family:var(--font-exo-2)] text-sm font-black text-violet-200">
+                          {(party.songs || []).filter((song) => !song.played).length}
+                        </p>
+                      </div>
+                      <div className="rounded-[16px] border border-pink-300/[0.10] bg-pink-500/[0.045] px-2.5 py-2 text-center">
+                        <p className="text-[6px] font-black uppercase tracking-[.12em] text-white/25">Votes</p>
+                        <p className="mt-0.5 font-[family:var(--font-exo-2)] text-sm font-black text-pink-200">
+                          {party.currentSong.votes || 0}
+                        </p>
+                      </div>
+                      <div className="rounded-[16px] border border-orange-300/[0.10] bg-orange-500/[0.045] px-2.5 py-2 text-center">
+                        <p className="text-[6px] font-black uppercase tracking-[.12em] text-white/25">Ambiance</p>
+                        <p className="mt-0.5 font-[family:var(--font-exo-2)] text-sm font-black text-orange-200">
+                          {partyBrainEnergy}
+                        </p>
+                      </div>
+                    </div>
+
+                    {(() => {
+                      const nextQueuedSong = (party.songs || []).find((song) => !song.played);
+                      if (!nextQueuedSong) return null;
+
+                      return (
+                        <button
+                          type="button"
+                          onClick={() => switchMobileTab("queue")}
+                          className="mt-3 flex w-full items-center gap-2.5 rounded-[17px] border border-white/[0.06] bg-black/15 p-2 text-left transition active:scale-[.99]"
+                        >
+                          <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-[11px] border border-white/[0.07] bg-white/[0.03]">
+                            <img
+                              src={getSongArtwork(nextQueuedSong)}
+                              alt=""
+                              className="h-full w-full object-cover"
+                            />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block text-[6.5px] font-black uppercase tracking-[.13em] text-fuchsia-300/70">
+                              À suivre
+                            </span>
+                            <span className="mt-0.5 block truncate text-[9px] font-black text-white/72">
+                              {nextQueuedSong.title}
+                            </span>
+                          </span>
+                          <span className="text-[8px] font-black text-white/28">Voir la file →</span>
+                        </button>
+                      );
+                    })()}
+
                     <div className="mt-3 flex items-center justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-2">
                         {(() => {
@@ -5054,6 +5137,7 @@ const canRemove =
                         setSearch("");
                         setResults([]);
                         setSearchInsight(null);
+                        setMobileSearchError("");
                         setActiveSearchCategory(null);
                       }}
                       className="shrink-0 text-[7px] font-black text-white/35"
@@ -5068,12 +5152,14 @@ const canRemove =
               <div className="no-scrollbar flex gap-2 overflow-x-auto pb-0.5">
                 {[
                   { label: "🔥 Hits", query: "hits france" },
-                  { label: "Rap FR", query: "rap français" },
-                  { label: "Années 2000", query: "hits années 2000" },
-                  { label: "Afro", query: "afro hits" },
-                  { label: "Pop", query: "pop hits" },
+                  { label: "🎤 Rap FR", query: "rap français" },
+                  { label: "💿 2000", query: "hits années 2000" },
+                  { label: "🌍 Afro", query: "afro hits" },
+                  { label: "✨ Pop", query: "pop hits" },
+                  { label: "🕺 Dance", query: "dance party hits" },
+                  { label: "🇫🇷 Français", query: "chansons françaises populaires" },
                 ].map((category, index) => {
-                  const normalizedCategoryLabel = category.label.replace("🔥 ", "");
+                  const normalizedCategoryLabel = category.label.replace(/^[^A-Za-zÀ-ÿ0-9]+\s*/u, "");
                   const categoryActive =
                     activeSearchCategory === normalizedCategoryLabel;
 
@@ -5206,11 +5292,40 @@ const canRemove =
 
               {/* Résultats */}
               {searching ? (
-                <div className="rounded-[22px] border border-white/[0.07] bg-white/[0.025] px-4 py-5 text-center">
-                  <Search className="mx-auto h-5 w-5 text-fuchsia-300" />
-                  <p className="mt-2 text-[10px] font-black text-white/45">
-                    Recherche des meilleurs résultats…
-                  </p>
+                <div className="rounded-[22px] border border-fuchsia-300/[0.10] bg-[linear-gradient(145deg,rgba(124,58,237,.07),rgba(236,72,153,.035),rgba(255,255,255,.02))] p-3.5">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fuchsia-400 opacity-45" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-fuchsia-400" />
+                    </span>
+                    <p className="text-[9px] font-black text-white/55">
+                      MixParty cherche les meilleurs résultats…
+                    </p>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {[0, 1, 2].map((item) => (
+                      <div key={item} className="flex items-center gap-2.5 rounded-[15px] border border-white/[0.05] bg-black/10 p-2">
+                        <div className="h-11 w-11 shrink-0 animate-pulse rounded-[11px] bg-white/[0.06]" />
+                        <div className="min-w-0 flex-1">
+                          <div className="h-2.5 w-3/4 animate-pulse rounded-full bg-white/[0.07]" />
+                          <div className="mt-2 h-2 w-1/2 animate-pulse rounded-full bg-white/[0.04]" />
+                        </div>
+                        <div className="h-8 w-16 animate-pulse rounded-full bg-fuchsia-500/[0.07]" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : mobileSearchError ? (
+                <div className="rounded-[20px] border border-orange-300/[0.12] bg-orange-500/[0.045] px-4 py-4">
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[13px] border border-orange-300/15 bg-orange-400/[0.08] text-orange-200">
+                      <Search className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black text-white/65">Pas de résultat pour l’instant</p>
+                      <p className="mt-1 text-[8px] font-semibold leading-4 text-white/32">{mobileSearchError}</p>
+                    </div>
+                  </div>
                 </div>
               ) : results.length > 0 ? (
                 <div className="rounded-[24px] border border-white/[0.07] bg-[#0a0912]/88 p-3">
@@ -5224,10 +5339,22 @@ const canRemove =
                   </div>
 
                   <div className="space-y-2">
-                    {results.map((video) => (
+                    {results.map((video) => {
+                      const alreadyAdded =
+                        party.currentSong?.videoId === video.id ||
+                        (party.songs || []).some(
+                          (song) => !song.played && song.videoId === video.id,
+                        );
+                      const justAdded = recentlyAddedVideoId === video.id;
+
+                      return (
                       <div
                         key={`mobile-search-result-${video.id}`}
-                        className="flex items-center gap-2.5 rounded-[17px] border border-white/[0.06] bg-white/[0.025] p-2"
+                        className={`flex items-center gap-2.5 rounded-[17px] border p-2 transition ${
+                          alreadyAdded || justAdded
+                            ? "border-emerald-300/[0.12] bg-emerald-500/[0.035]"
+                            : "border-white/[0.06] bg-white/[0.025]"
+                        }`}
                       >
                         <img
                           src={video.thumbnail}
@@ -5250,20 +5377,45 @@ const canRemove =
                         <button
                           type="button"
                           onClick={() => void addYoutubeSong(video)}
-                          disabled={addingVideoId === video.id}
-                          className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full border border-pink-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.13),rgba(249,115,22,.09))] px-3 text-[8px] font-black text-white disabled:opacity-40"
+                          disabled={alreadyAdded || justAdded || addingVideoId === video.id}
+                          className={`inline-flex h-9 shrink-0 items-center gap-1 rounded-full border px-3 text-[8px] font-black transition disabled:cursor-default ${
+                            alreadyAdded || justAdded
+                              ? "border-emerald-300/20 bg-emerald-500/[0.08] text-emerald-200"
+                              : "border-pink-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.13),rgba(249,115,22,.09))] text-white disabled:opacity-45"
+                          }`}
                         >
-                          <Plus className="h-3.5 w-3.5" />
-                          {addingVideoId === video.id ? "Ajout…" : "Ajouter"}
+                          {alreadyAdded || justAdded ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : (
+                            <Plus className="h-3.5 w-3.5" />
+                          )}
+                          {alreadyAdded || justAdded
+                            ? "Dans la file"
+                            : addingVideoId === video.id
+                              ? "Ajout…"
+                              : "Ajouter"}
                         </button>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ) : null}
 
               {/* PartyBrain suggestions */}
-              {suggestions.length > 0 ? (
+              {loadingSuggestions && suggestions.length === 0 ? (
+                <div className="rounded-[22px] border border-fuchsia-300/[0.10] bg-fuchsia-500/[0.035] p-3">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-10 w-10 place-items-center rounded-[15px] border border-fuchsia-300/15 bg-fuchsia-500/[0.08]">
+                      <Bot className="h-4 w-4 animate-pulse text-fuchsia-200" />
+                    </span>
+                    <div>
+                      <p className="text-[10px] font-black text-white/58">PartyBrain analyse l’ambiance…</p>
+                      <p className="mt-0.5 text-[7px] font-semibold text-white/28">Suggestions adaptées à la soirée en cours</p>
+                    </div>
+                  </div>
+                </div>
+              ) : suggestions.length > 0 ? (
                 <div className="overflow-hidden rounded-[22px] border border-fuchsia-300/[0.12] bg-[radial-gradient(circle_at_0%_50%,rgba(168,85,247,.16),transparent_38%),linear-gradient(135deg,rgba(28,14,43,.94),rgba(11,9,20,.97))] p-3 shadow-[0_12px_32px_rgba(0,0,0,.20)]">
                   <div className="flex items-center gap-3">
                     <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] border border-fuchsia-300/20 bg-fuchsia-500/[0.10] text-fuchsia-200">
