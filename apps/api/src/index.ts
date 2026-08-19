@@ -3139,6 +3139,21 @@ app.get("/account/me", (req, res) => {
 
   return res.json({ account });
 });
+app.get("/party/:code/result", (req, res) => {
+  const token = readBearerToken(req);
+
+  try {
+    const result = accountsStore.getPartyResultForToken(
+      token,
+      req.params.code
+    );
+
+    return res.json({ result });
+  } catch (error) {
+    const response = accountErrorResponse(error);
+    return res.status(response.status).json(response.body);
+  }
+});
 
 app.patch("/account/me", (req, res) => {
   const token = readBearerToken(req);
