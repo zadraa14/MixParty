@@ -2740,7 +2740,10 @@ async function removeSong(index: number, song: Song) {
 
     // Les zones de défilement horizontal (ex. alphabet Karaoké A-Z)
     // doivent garder le geste pour elles-mêmes et ne jamais changer d'onglet.
-    if (target?.closest?.('[data-mixparty-horizontal-scroll="true"]')) {
+    if (
+      target?.closest?.('[data-mixparty-horizontal-scroll="true"]') ||
+      target?.closest?.('[data-mixparty-no-tab-swipe="true"]')
+    ) {
       mobileSwipeStartRef.current = null;
       return;
     }
@@ -2756,7 +2759,10 @@ async function removeSong(index: number, song: Song) {
       window.setTimeout(() => setKaraokeUserInteracting(false), 220);
     }
 
-    if (target?.closest?.('[data-mixparty-horizontal-scroll="true"]')) {
+    if (
+      target?.closest?.('[data-mixparty-horizontal-scroll="true"]') ||
+      target?.closest?.('[data-mixparty-no-tab-swipe="true"]')
+    ) {
       mobileSwipeStartRef.current = null;
       return;
     }
@@ -4449,7 +4455,12 @@ const canRemove =
                   </button>
 
                   {search.trim().length >= 1 ? (
-                    <div className="absolute left-0 right-0 top-[54px] z-40 overflow-hidden rounded-[18px] border border-fuchsia-300/[0.14] bg-[#0b0914]/[0.985] shadow-[0_18px_50px_rgba(0,0,0,.52)] backdrop-blur-xl">
+                    <div
+                      data-mixparty-no-tab-swipe="true"
+                      onTouchStart={(event) => event.stopPropagation()}
+                      onTouchEnd={(event) => event.stopPropagation()}
+                      className="absolute left-0 right-0 top-[54px] z-40 overflow-hidden rounded-[18px] border border-fuchsia-300/[0.14] bg-[#0b0914]/[0.985] shadow-[0_18px_50px_rgba(0,0,0,.52)] backdrop-blur-xl"
+                    >
                       <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-2">
                         <span className="text-[7px] font-black uppercase tracking-[.13em] text-fuchsia-300">
                           Artistes
@@ -4532,7 +4543,13 @@ const canRemove =
               </div>
 
               {/* Catégories rapides */}
-              <div className="no-scrollbar flex gap-2 overflow-x-auto pb-0.5">
+              <div
+                data-mixparty-horizontal-scroll="true"
+                data-mixparty-no-tab-swipe="true"
+                onTouchStart={(event) => event.stopPropagation()}
+                onTouchEnd={(event) => event.stopPropagation()}
+                className="no-scrollbar flex touch-pan-x gap-2 overflow-x-auto overscroll-x-contain pb-0.5"
+              >
                 {[
                   { label: "🔥 Hits", query: "hits france" },
                   { label: "Rap FR", query: "rap français" },
@@ -4624,7 +4641,13 @@ const canRemove =
                         </div>
 
                         {displayedArtists.length > 0 ? (
-                          <div className="no-scrollbar mt-3 flex gap-3 overflow-x-auto pb-1">
+                          <div
+                            data-mixparty-horizontal-scroll="true"
+                            data-mixparty-no-tab-swipe="true"
+                            onTouchStart={(event) => event.stopPropagation()}
+                            onTouchEnd={(event) => event.stopPropagation()}
+                            className="no-scrollbar mt-3 flex touch-pan-x gap-3 overflow-x-auto overscroll-x-contain pb-1"
+                          >
                             {displayedArtists.map((artist, index) => (
                               <button
                                 key={artist.id}
@@ -4751,7 +4774,13 @@ const canRemove =
                     </div>
                   </div>
 
-                  <div className="no-scrollbar mt-2.5 flex gap-2 overflow-x-auto pb-0.5">
+                  <div
+                    data-mixparty-horizontal-scroll="true"
+                    data-mixparty-no-tab-swipe="true"
+                    onTouchStart={(event) => event.stopPropagation()}
+                    onTouchEnd={(event) => event.stopPropagation()}
+                    className="no-scrollbar mt-2.5 flex touch-pan-x gap-2 overflow-x-auto overscroll-x-contain pb-0.5"
+                  >
                     {suggestions.slice(0, 3).map((video) => (
                       <div
                         key={`mobile-search-partybrain-${video.id}`}
