@@ -6234,14 +6234,36 @@ const canRemove =
                 </button>
               </div>
 
-              <p className="mt-2 text-xs font-semibold text-white/38">
-                PartyScore live provisoire · évolue avec les votes et les morceaux ajoutés.
-              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/15 bg-emerald-500/[0.06] px-2.5 py-1 text-[8px] font-black uppercase tracking-[.12em] text-emerald-300">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-45" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                  </span>
+                  Live
+                </span>
+                <p className="text-xs font-semibold text-white/38">
+                  PartyScore provisoire · évolue avec les votes et les morceaux ajoutés.
+                </p>
+              </div>
 
               {liveRankingWithRank.length > 0 ? (
                 <>
-                  <div className="mt-5 grid grid-cols-3 items-end gap-2">
-                    {[1, 0, 2].map((podiumIndex) => {
+                  <div
+                    className={`mt-5 grid items-end gap-2 ${
+                      liveRankingWithRank.length === 1
+                        ? "grid-cols-1"
+                        : liveRankingWithRank.length === 2
+                          ? "grid-cols-2"
+                          : "grid-cols-3"
+                    }`}
+                  >
+                    {(liveRankingWithRank.length === 1
+                      ? [0]
+                      : liveRankingWithRank.length === 2
+                        ? [0, 1]
+                        : [1, 0, 2]
+                    ).map((podiumIndex) => {
                       const entry = liveRankingWithRank[podiumIndex];
                       if (!entry) {
                         return <div key={podiumIndex} className="h-[150px]" />;
@@ -6263,18 +6285,28 @@ const canRemove =
                           key={entry.id}
                           className={`relative flex flex-col items-center rounded-[22px] border px-2 pb-3 pt-4 text-center ${
                             isWinner
-                              ? "min-h-[188px] border-amber-300/35 bg-[linear-gradient(180deg,rgba(245,158,11,.13),rgba(236,72,153,.08),rgba(255,255,255,.025))] shadow-[0_0_38px_rgba(245,158,11,.12)]"
+                              ? liveRankingWithRank.length === 1
+                                ? "mx-auto min-h-[210px] w-full max-w-[260px] border-amber-300/40 bg-[linear-gradient(180deg,rgba(245,158,11,.15),rgba(236,72,153,.09),rgba(255,255,255,.025))] shadow-[0_0_46px_rgba(245,158,11,.16)]"
+                                : "min-h-[188px] border-amber-300/35 bg-[linear-gradient(180deg,rgba(245,158,11,.13),rgba(236,72,153,.08),rgba(255,255,255,.025))] shadow-[0_0_38px_rgba(245,158,11,.12)]"
                               : "min-h-[165px] border-white/10 bg-white/[0.035]"
                           }`}
                         >
                           {isWinner ? (
-                            <Crown className="absolute -top-5 h-9 w-9 fill-amber-300 text-amber-300 drop-shadow-[0_0_12px_rgba(251,191,36,.55)]" />
+                            <Crown
+                              className={`absolute fill-amber-300 text-amber-300 drop-shadow-[0_0_12px_rgba(251,191,36,.55)] ${
+                                liveRankingWithRank.length === 1
+                                  ? "-top-7 h-11 w-11"
+                                  : "-top-5 h-9 w-9"
+                              }`}
+                            />
                           ) : null}
 
                           <div
                             className={`relative grid overflow-hidden rounded-full border-2 ${
                               podiumRank === 1
-                                ? "h-[76px] w-[76px] border-amber-300 shadow-[0_0_24px_rgba(251,191,36,.26)]"
+                                ? liveRankingWithRank.length === 1
+                                  ? "h-[92px] w-[92px] border-amber-300 shadow-[0_0_30px_rgba(251,191,36,.30)]"
+                                  : "h-[76px] w-[76px] border-amber-300 shadow-[0_0_24px_rgba(251,191,36,.26)]"
                                 : podiumRank === 2
                                   ? "h-[62px] w-[62px] border-violet-300/70"
                                   : "h-[62px] w-[62px] border-orange-300/70"
@@ -6301,8 +6333,24 @@ const canRemove =
                           <strong className="mt-3 max-w-full truncate text-[12px] font-black text-white">
                             {entry.name}
                           </strong>
-                          <span className="mt-1 max-w-full truncate rounded-full border border-fuchsia-300/15 bg-fuchsia-500/[0.07] px-2 py-1 text-[7px] font-black text-fuchsia-200/80">
-                            {badge}
+                          <span
+                            className={`mt-1 max-w-full truncate rounded-full border px-2.5 py-1 text-[7px] font-black ${
+                              badge === "Top voteur"
+                                ? "border-violet-300/25 bg-violet-500/[0.10] text-violet-200"
+                                : badge === "Hitmaker"
+                                  ? "border-pink-300/25 bg-pink-500/[0.10] text-pink-200"
+                                  : badge === "Machine à sons"
+                                    ? "border-cyan-300/25 bg-cyan-500/[0.10] text-cyan-200"
+                                    : "border-orange-300/25 bg-orange-500/[0.10] text-orange-200"
+                            }`}
+                          >
+                            {badge === "Top voteur"
+                              ? "♥ Top voteur"
+                              : badge === "Hitmaker"
+                                ? "★ Hitmaker"
+                                : badge === "Machine à sons"
+                                  ? "♫ Machine à sons"
+                                  : "⚡ En feu"}
                           </span>
 
                           <span className="mt-auto pt-3 text-[8px] font-bold text-white/35">
@@ -6372,8 +6420,19 @@ const canRemove =
                     ))}
 
                     {liveRankingWithRank.length <= 3 ? (
-                      <div className="px-4 py-4 text-center text-[10px] font-semibold text-white/28">
-                        Les prochains participants apparaîtront ici en direct.
+                      <div className="px-4 py-4 text-center">
+                        <p className="text-[10px] font-semibold text-white/32">
+                          {liveRankingWithRank.length === 1
+                            ? "Le podium est à toi pour l’instant 👑"
+                            : liveRankingWithRank.length === 2
+                              ? "Encore une place à prendre sur le podium 🏆"
+                              : "Le podium est complet · le classement continue en direct."}
+                        </p>
+                        {liveRankingWithRank.length < 3 ? (
+                          <p className="mt-1 text-[8px] font-bold text-white/18">
+                            Les nouveaux participants apparaîtront automatiquement ici.
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
