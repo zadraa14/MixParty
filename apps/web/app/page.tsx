@@ -7,7 +7,6 @@ import {
   Bot,
   Check,
   Headphones,
-  Home as HomeIcon,
   Info,
   KeyRound,
   LayoutGrid,
@@ -871,42 +870,18 @@ export default function Home() {
             ].map(({ Icon, title, text: featureText, card, icon }) => (
               <article
                 key={title}
-                className={`min-w-0 rounded-[17px] border p-2.5 text-center ${card}`}
+                className={`flex min-h-[96px] min-w-0 flex-col items-center justify-center rounded-[20px] border px-2.5 py-3.5 text-center ${card}`}
               >
-                <Icon className={`mx-auto h-5 w-5 ${icon}`} />
-                <h2 className="mt-2 text-[7px] font-black leading-[1.15] text-white/88">
+                <Icon className={`mx-auto h-6 w-6 ${icon}`} />
+                <h2 className="mt-2.5 text-[8.2px] font-black leading-[1.15] text-white/90">
                   {title}
                 </h2>
-                <p className="mt-1 text-[5.3px] leading-[1.25] text-white/32">
+                <p className="mt-1.5 text-[6.2px] font-semibold leading-[1.3] text-white/38">
                   {featureText}
                 </p>
               </article>
             ))}
           </section>
-
-          {/* NAV */}
-          <nav className="mt-2 grid h-[48px] shrink-0 grid-cols-4 rounded-[17px] border border-white/[0.08] bg-[#080710]/95 p-1">
-            {[
-              { label: "Accueil", Icon: HomeIcon, action: () => {} },
-              { label: "Créer", Icon: Sparkles, action: () => void createParty() },
-              { label: "Rejoindre", Icon: UsersRound, action: () => setMobileJoinOpen(true) },
-              { label: "Profil", Icon: UserRound, action: () => router.push(account ? "/profile" : "/") },
-            ].map(({ label, Icon, action }, index) => (
-              <button
-                key={label}
-                type="button"
-                onClick={action}
-                className={`flex flex-col items-center justify-center gap-0.5 rounded-[13px] text-[6.4px] font-black ${
-                  index === 0
-                    ? "border border-fuchsia-300/20 bg-fuchsia-500/[0.08] text-fuchsia-200"
-                    : "text-white/38"
-                }`}
-              >
-                <Icon className="h-3.5 w-3.5" />
-                {label}
-              </button>
-            ))}
-          </nav>
 
           {/* MODAL REJOINDRE */}
           {mobileJoinOpen ? (
