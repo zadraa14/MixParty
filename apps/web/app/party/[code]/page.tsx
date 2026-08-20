@@ -4303,19 +4303,6 @@ async function removeSong(index: number, song: Song) {
                     <h1>Console DJ</h1>
                   </div>
                 </div>
-                {isPlaybackController && (
-                  <button
-                    type="button"
-                    onClick={toggleClipDisplay}
-                    disabled={clipDisplayUpdating}
-                    className={`dj-console-clip-toggle ${party.showYoutubeClip ? "dj-console-clip-toggle--active" : ""}`}
-                    aria-pressed={Boolean(party.showYoutubeClip)}
-                  >
-                    {clipDisplayUpdating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Disc3 className="h-4 w-4" />}
-                    <span>{party.showYoutubeClip ? "Masquer le clip" : "Afficher le clip"}</span>
-                  </button>
-                )}
-
                 <div className="v53-player-audience">
                   <UsersRound className="h-4 w-4" />
                   <strong>{party.participants.length}</strong>
@@ -4327,25 +4314,32 @@ async function removeSong(index: number, song: Song) {
                 <div className="dj-console-redesign">
                   <div className="dj-console-main">
                     <div
-                      className={`dj-console-cover ${hasHdCover(party.currentSong) ? "dj-console-cover--hd" : "dj-console-cover--logo"} ${party.showYoutubeClip ? "dj-console-cover--clip" : ""}`}
-                      style={hasHdCover(party.currentSong) && !party.showYoutubeClip ? { backgroundImage: `url(${getSongArtwork(party.currentSong)})` } : undefined}
+                      className={`dj-console-cover yt-compliance-desktop-player ${
+                        isPlaybackController ? "dj-console-cover--clip" : hasHdCover(party.currentSong) ? "dj-console-cover--hd" : "dj-console-cover--logo"
+                      }`}
+                      style={!isPlaybackController && hasHdCover(party.currentSong) ? { backgroundImage: `url(${getSongArtwork(party.currentSong)})` } : undefined}
                     >
-                      {isPlaybackController && (
+                      {isPlaybackController ? (
                         <div
                           ref={(element) => {
-                            if (typeof window === "undefined" || window.innerWidth >= 768) {
+                            if (
+                              (typeof window === "undefined" || window.innerWidth >= 768) &&
+                              !tvModeActive
+                            ) {
                               setPlayerHostElement(element);
                             }
                           }}
-                          className={`mixparty-youtube-host absolute inset-0 h-full w-full min-w-0 max-w-full overflow-hidden ${party.showYoutubeClip ? "mixparty-youtube-host--clip-visible" : "mixparty-youtube-host--audio-only"}`}
+                          className="mixparty-youtube-host mixparty-youtube-host--clip-visible absolute inset-0 h-full w-full min-w-0 max-w-full overflow-hidden bg-black [&>iframe]:!h-full [&>iframe]:!w-full"
                         />
+                      ) : (
+                        <>
+                          <span className="dj-console-cover__glow" />
+                          <img
+                            src={getSongArtwork(party.currentSong)}
+                            alt={hasHdCover(party.currentSong) ? `Jaquette de ${party.currentSong.title}` : "Logo MixParty"}
+                          />
+                        </>
                       )}
-                      <span className={`dj-console-cover__glow ${party.showYoutubeClip ? "opacity-0" : ""}`} />
-                      <img
-                        className={party.showYoutubeClip ? "dj-console-cover__artwork--hidden" : ""}
-                        src={getSongArtwork(party.currentSong)}
-                        alt={hasHdCover(party.currentSong) ? `Jaquette de ${party.currentSong.title}` : "Logo MixParty"}
-                      />
                     </div>
 
                     <div className="dj-console-track">
@@ -6478,12 +6472,27 @@ const canRemove =
               <section className="v60-tv__now">
                 <div className="v60-tv__current-pill">EN COURS</div>
                 <div className="v60-tv__now-grid">
-                  <div className="v60-tv__cover-wrap">
-                    <div className="v60-tv__cover-glow" />
-                    {party.currentSong?.thumbnail ? (
-                      <img src={getSongArtwork(party.currentSong)} alt={hasHdCover(party.currentSong) ? "Pochette du morceau en lecture" : "Logo MixParty"} className={`v60-tv__cover ${hasHdCover(party.currentSong) ? "" : "v60-tv__cover--logo"}`} />
+                  <div className="v60-tv__cover-wrap yt-compliance-tv-player">
+                    {isPlaybackController && party.currentSong ? (
+                      <div className="yt-compliance-tv-player__frame">
+                        <div
+                          ref={(element) => {
+                            if (tvModeActive) {
+                              setPlayerHostElement(element);
+                            }
+                          }}
+                          className="mixparty-youtube-host mixparty-youtube-host--clip-visible absolute inset-0 h-full w-full overflow-hidden bg-black [&>iframe]:!h-full [&>iframe]:!w-full"
+                        />
+                      </div>
                     ) : (
-                      <div className="v60-tv__cover v60-tv__cover--empty"><Music4 /></div>
+                      <>
+                        <div className="v60-tv__cover-glow" />
+                        {party.currentSong?.thumbnail ? (
+                          <img src={getSongArtwork(party.currentSong)} alt={hasHdCover(party.currentSong) ? "Pochette du morceau en lecture" : "Logo MixParty"} className={`v60-tv__cover ${hasHdCover(party.currentSong) ? "" : "v60-tv__cover--logo"}`} />
+                        ) : (
+                          <div className="v60-tv__cover v60-tv__cover--empty"><Music4 /></div>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -7082,6 +7091,73 @@ const canRemove =
 
         .v53-queue-actions {
           flex-shrink: 0;
+        }
+
+        /* =========================================================
+           YOUTUBE COMPLIANCE — DESKTOP / TV
+           Le player reste visible et sans overlay MixParty.
+           ========================================================= */
+        @media (min-width: 768px) {
+          .yt-compliance-desktop-player {
+            position: relative;
+            width: 100%;
+            min-width: 200px;
+            min-height: 270px;
+            aspect-ratio: 16 / 9;
+            overflow: hidden;
+            background: #000;
+          }
+
+          .yt-compliance-desktop-player .mixparty-youtube-host,
+          .yt-compliance-desktop-player .mixparty-youtube-host iframe {
+            width: 100% !important;
+            height: 100% !important;
+            min-width: 200px !important;
+            min-height: 200px !important;
+            max-width: none !important;
+            max-height: none !important;
+          }
+
+          .yt-compliance-tv-player {
+            position: relative;
+            width: min(46vw, 760px);
+            min-width: 480px;
+            aspect-ratio: 16 / 9;
+            overflow: visible;
+            background: transparent;
+          }
+
+          .yt-compliance-tv-player__frame {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+            height: 100%;
+            min-width: 480px;
+            min-height: 270px;
+            overflow: hidden;
+            border-radius: 24px;
+            background: #000;
+            box-shadow: 0 24px 70px rgba(0,0,0,.45);
+          }
+
+          .yt-compliance-tv-player__frame .mixparty-youtube-host,
+          .yt-compliance-tv-player__frame .mixparty-youtube-host iframe {
+            width: 100% !important;
+            height: 100% !important;
+            min-width: 480px !important;
+            min-height: 270px !important;
+            max-width: none !important;
+            max-height: none !important;
+          }
+
+          /* Aucun effet MixParty ne doit recouvrir le lecteur YouTube. */
+          .yt-compliance-desktop-player::before,
+          .yt-compliance-desktop-player::after,
+          .yt-compliance-tv-player__frame::before,
+          .yt-compliance-tv-player__frame::after {
+            display: none !important;
+            content: none !important;
+          }
         }
 
         /* =========================================================
