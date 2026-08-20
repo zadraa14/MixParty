@@ -2041,13 +2041,29 @@ async function removeSong(index: number, song: Song) {
 
   async function vote(index: number) {
     const votedSong = party?.songs[index];
-    if (votedSong) {
+    if (!votedSong || !playerName.trim()) return;
+
+    const normalizedPlayerName = playerName.trim().toLowerCase();
+    const hasAlreadyVoted =
+      Array.isArray(votedSong.voters) &&
+      votedSong.voters.some(
+        (voter) => String(voter || "").trim().toLowerCase() === normalizedPlayerName,
+      );
+
+    // Le coeur fonctionne comme un vrai toggle :
+    // 1er appui = vote, 2e appui = retrait du vote.
+    if (!hasAlreadyVoted) {
       const burstId = `${votedSong.videoId}-${votedSong.addedAt}`;
       setVoteBurst(burstId);
-      window.setTimeout(() => setVoteBurst((current) => current === burstId ? null : current), 700);
+      window.setTimeout(
+        () => setVoteBurst((current) => current === burstId ? null : current),
+        700,
+      );
     }
+
+    const action = hasAlreadyVoted ? "downvote" : "vote";
     const response = await fetch(
-      `${getApiBaseUrl()}/party/${code}/song/${index}/vote`,
+      `${getApiBaseUrl()}/party/${code}/song/${index}/${action}`,
       {
         method: "POST",
         headers: {
@@ -2055,9 +2071,9 @@ async function removeSong(index: number, song: Song) {
           ...mixPartyAccountAuthHeader(),
         },
         body: JSON.stringify({
-          name: playerName
-        })
-      }
+          name: playerName,
+        }),
+      },
     );
 
     const updated = await response.json();
