@@ -1591,7 +1591,16 @@ export default function PartyPage() {
 
 
   useEffect(() => {
-    if (activeMobileTab !== "add" || karaokeMode) return;
+    if (karaokeMode) return;
+
+    const isDesktop =
+      typeof window !== "undefined" &&
+      window.matchMedia("(min-width: 768px)").matches;
+
+    // Mobile : uniquement dans l'onglet Ajouter.
+    // Desktop : la recherche est toujours visible, donc l'autocomplétion doit
+    // fonctionner même si activeMobileTab reste sur "playback".
+    if (!isDesktop && activeMobileTab !== "add") return;
 
     const controller = new AbortController();
     const timer = window.setTimeout(async () => {
@@ -4804,6 +4813,16 @@ const canRemove =
     participantId &&
     song.addedById === participantId
   );
+
+const hasVoted = Boolean(
+  playerName &&
+    Array.isArray(song.voters) &&
+    song.voters.some(
+      (voter) =>
+        String(voter || "").trim().toLowerCase() ===
+        playerName.trim().toLowerCase(),
+    ),
+);
                     return (
                       <div
                           key={`${song.videoId}-${song.addedAt}`}
@@ -4846,31 +4865,53 @@ const canRemove =
                             </span>
                           </div>
 
-                          <div className={`mt-3 grid w-full min-w-0 max-w-full gap-2 ${canRemove ? "grid-cols-[minmax(0,1fr)_auto]" : "grid-cols-1"}`}>
-                            <button
-                              type="button"
-                              onClick={() => vote(originalIndex)}
-                              className={`vote-button ${voteBurst === `${song.videoId}-${song.addedAt}` ? "vote-button--burst" : ""} flex w-full min-w-0 max-w-full items-center justify-center overflow-hidden`}
-                            >
-                              <span className="vote-button__glow" aria-hidden="true" />
-                              <span className="vote-button__plus">+1</span>
-                              <span className="relative z-10 flex min-w-0 items-center justify-center gap-1.5">
-                                <ArrowBigUp className="h-4 w-4 shrink-0" />
-                                <span className="truncate">Voter · {song.votes}</span>
+                          <div className="mt-3 flex w-full min-w-0 items-center justify-between gap-3">
+                            <div className="flex min-w-0 items-center gap-2">
+                              <span className="text-[15px] font-black text-white">
+                                {song.votes}
                               </span>
-                            </button>
+                              <span className="text-[10px] font-bold uppercase tracking-[.08em] text-white/30">
+                                vote{song.votes > 1 ? "s" : ""}
+                              </span>
+                            </div>
 
-                            {canRemove && (
+                            <div className="flex shrink-0 items-center gap-2">
                               <button
                                 type="button"
-                                onClick={() => removeSong(originalIndex, song)}
-                                className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-400/20 bg-red-500/10 text-red-200 transition active:scale-95"
-                                aria-label={`Supprimer ${song.title}`}
-                                title="Supprimer cette musique"
+                                onClick={() => vote(originalIndex)}
+                                className={`desktop-queue-heart inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full border bg-black/20 p-0 transition-all duration-200 active:scale-[.86] ${
+                                  hasVoted
+                                    ? "border-pink-300/35 bg-pink-500/[0.10] shadow-[0_0_22px_rgba(236,72,153,.18)]"
+                                    : "border-white/[0.08] hover:border-pink-300/25 hover:bg-pink-500/[0.06]"
+                                } ${
+                                  voteBurst === `${song.videoId}-${song.addedAt}` ? "scale-110" : ""
+                                }`}
+                                aria-label={hasVoted ? `Retirer mon vote pour ${song.title}` : `J'aime ${song.title}`}
+                                aria-pressed={hasVoted}
+                                title={hasVoted ? "Retirer mon vote" : "J'aime"}
                               >
-                                <Trash2 className="h-4 w-4" />
+                                <Heart
+                                  className={`h-7 w-7 shrink-0 transition-all duration-200 ${
+                                    hasVoted
+                                      ? "scale-110 fill-pink-500 text-pink-300 drop-shadow-[0_0_10px_rgba(236,72,153,.95)]"
+                                      : "fill-transparent text-white/45 hover:text-pink-300"
+                                  }`}
+                                  strokeWidth={hasVoted ? 2.2 : 1.9}
+                                />
                               </button>
-                            )}
+
+                              {canRemove && (
+                                <button
+                                  type="button"
+                                  onClick={() => removeSong(originalIndex, song)}
+                                  className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-red-400/20 bg-red-500/10 text-red-200 transition hover:bg-red-500/15 active:scale-95"
+                                  aria-label={`Supprimer ${song.title}`}
+                                  title="Supprimer cette musique"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
 
@@ -5418,7 +5459,7 @@ const canRemove =
 
             {!karaokeMode ? (
               <section
-                className="hidden space-y-4 md:block"
+                className="desktop-unified-search hidden space-y-5 md:block"
                 aria-label="Rechercher une musique"
               >
                 <div className="mb-1 flex items-end justify-between gap-4 px-1">
@@ -5430,7 +5471,7 @@ const canRemove =
                       Ajoute la prochaine musique
                     </h2>
                   </div>
-                  <span className="rounded-full border border-emerald-300/10 bg-emerald-500/[0.05] px-3 py-1.5 text-[9px] font-black uppercase tracking-[.12em] text-emerald-300">
+                  <span className="rounded-full border border-emerald-300/10 bg-emerald-500/[0.05] px-3 py-1.5 text-[16px] font-black uppercase tracking-[.12em] text-emerald-300">
                     MusicBrain
                   </span>
                 </div>
@@ -5438,20 +5479,20 @@ const canRemove =
               <div className="rounded-[28px] border border-white/[0.08] bg-[radial-gradient(circle_at_100%_0%,rgba(236,72,153,.10),transparent_34%),linear-gradient(145deg,rgba(17,11,29,.96),rgba(8,7,14,.98))] p-5 shadow-[0_20px_60px_rgba(0,0,0,.28)] xl:p-6">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[8px] font-black uppercase tracking-[.17em] text-fuchsia-300">
+                    <p className="text-[16px] font-black uppercase tracking-[.17em] text-fuchsia-300">
                       Ajouter un morceau
                     </p>
                     <h2 className="mt-1 font-[family:var(--font-exo-2)] text-2xl font-black text-white">
                       Trouve le son parfait
                     </h2>
                   </div>
-                  <span className="rounded-full border border-emerald-300/10 bg-emerald-500/[0.05] px-2.5 py-1 text-[7px] font-black text-emerald-300">
+                  <span className="rounded-full border border-emerald-300/10 bg-emerald-500/[0.05] px-2.5 py-1 text-[15px] font-black text-emerald-300">
                     MusicBrain
                   </span>
                 </div>
 
                 <div className="relative mt-3">
-                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-white/30" />
+                  <Search className="pointer-events-none absolute left-5 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
                   <input
                     value={search}
                     onChange={(event) => {
@@ -5465,13 +5506,13 @@ const canRemove =
                     }}
                     placeholder="Rechercher un titre ou un artiste"
                     autoComplete="off"
-                    className="h-14 w-full rounded-[18px] border border-white/[0.09] bg-black/25 pl-12 pr-14 text-[14px] font-semibold text-white outline-none placeholder:text-white/25 focus:border-fuchsia-300/35"
+                    className="h-16 w-full rounded-[20px] border border-white/[0.09] bg-black/25 pl-14 pr-16 text-[17px] font-semibold text-white outline-none placeholder:text-white/25 focus:border-fuchsia-300/35"
                   />
                   <button
                     type="button"
                     onClick={() => void searchYoutube()}
                     disabled={!search.trim() || searching}
-                    className="absolute right-2 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-[13px] border border-fuchsia-300/15 bg-fuchsia-500/[0.10] text-fuchsia-200 disabled:opacity-30"
+                    className="absolute right-2 top-1/2 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-[13px] border border-fuchsia-300/15 bg-fuchsia-500/[0.10] text-fuchsia-200 disabled:opacity-30"
                     aria-label="Rechercher"
                   >
                     <Search className={`h-4 w-4 ${searching ? "animate-pulse" : ""}`} />
@@ -5480,16 +5521,16 @@ const canRemove =
                   {search.trim().length >= 1 ? (
                     <div className="absolute left-0 right-0 top-[54px] z-40 overflow-hidden rounded-[18px] border border-fuchsia-300/[0.14] bg-[#0b0914]/[0.985] shadow-[0_18px_50px_rgba(0,0,0,.52)] backdrop-blur-xl">
                       <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-2">
-                        <span className="text-[7px] font-black uppercase tracking-[.13em] text-fuchsia-300">
+                        <span className="text-[15px] font-black uppercase tracking-[.13em] text-fuchsia-300">
                           Artistes
                         </span>
-                        <span className="text-[6.5px] font-bold text-emerald-300/55">
+                        <span className="text-[15px] font-bold text-emerald-300/55">
                           MusicBrain · 0 quota YouTube
                         </span>
                       </div>
 
                       {artistSuggestionsLoading ? (
-                        <div className="px-3 py-3 text-[9px] font-bold text-white/35">
+                        <div className="px-3 py-3 text-[16px] font-bold text-white/35">
                           Recherche d’artistes…
                         </div>
                       ) : artistSuggestions.length > 0 ? (
@@ -5501,7 +5542,7 @@ const canRemove =
                               onClick={() => void searchYoutube(artist.name)}
                               className="flex w-full items-center gap-2.5 rounded-[13px] px-2 py-2 text-left active:bg-white/[0.06]"
                             >
-                              <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border border-fuchsia-300/20 bg-[linear-gradient(145deg,rgba(124,58,237,.28),rgba(236,72,153,.18))]">
+                              <span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-full border border-fuchsia-300/20 bg-[linear-gradient(145deg,rgba(124,58,237,.28),rgba(236,72,153,.18))]">
                                 {artist.imageUrl ? (
                                   <img
                                     src={artist.imageUrl}
@@ -5516,20 +5557,20 @@ const canRemove =
                               </span>
 
                               <span className="min-w-0 flex-1">
-                                <span className="block truncate text-[11px] font-black text-white">
+                                <span className="block truncate text-[16px] font-black text-white">
                                   {artist.name}
                                 </span>
-                                <span className="mt-0.5 block text-[7px] font-semibold text-white/28">
+                                <span className="mt-0.5 block text-[15px] font-semibold text-white/28">
                                   Voir les morceaux
                                 </span>
                               </span>
 
-                              <span className="text-[14px] text-white/20">›</span>
+                              <span className="text-[16px] text-white/20">›</span>
                             </button>
                           ))}
                         </div>
                       ) : (
-                        <div className="px-3 py-3 text-[9px] font-bold text-white/30">
+                        <div className="px-3 py-3 text-[16px] font-bold text-white/30">
                           Aucun artiste commençant par « {search.trim()} »
                         </div>
                       )}
@@ -5538,7 +5579,7 @@ const canRemove =
                 </div>
 
                 <div className="mt-2 flex items-center justify-between gap-2">
-                  <p className="text-[7px] font-semibold leading-3 text-white/28">
+                  <p className="text-[15px] font-semibold leading-3 text-white/28">
                     Les suggestions d’artistes n’utilisent aucun quota YouTube.
                   </p>
                   {search.trim() ? (
@@ -5551,7 +5592,7 @@ const canRemove =
                         setMobileSearchError("");
                         setActiveSearchCategory(null);
                       }}
-                      className="shrink-0 text-[7px] font-black text-white/35"
+                      className="shrink-0 text-[15px] font-black text-white/35"
                     >
                       Effacer
                     </button>
@@ -5560,7 +5601,7 @@ const canRemove =
               </div>
 
               {/* Catégories rapides */}
-              <div data-mixparty-horizontal-scroll="true" className="no-scrollbar flex gap-2 overflow-x-auto pb-0.5">
+              <div data-mixparty-horizontal-scroll="true" className="no-scrollbar flex gap-3 overflow-x-auto pb-1">
                 {[
                   { label: "🔥 Hits", query: "hits france" },
                   { label: "🎤 Rap FR", query: "rap français" },
@@ -5585,7 +5626,7 @@ const canRemove =
                           categoryLabel: normalizedCategoryLabel,
                         })
                       }
-                      className={`shrink-0 rounded-full border px-4 py-2.5 text-[10px] font-black transition ${
+                      className={`shrink-0 rounded-full border px-5 py-3 text-[15px] font-black transition ${
                         categoryActive
                           ? "border-fuchsia-200/45 bg-[linear-gradient(135deg,rgba(124,58,237,.95),rgba(236,72,153,.92)_55%,rgba(249,115,22,.88))] text-white shadow-[0_0_0_1px_rgba(255,255,255,.05),0_0_22px_rgba(236,72,153,.24)]"
                           : index === 0
@@ -5644,21 +5685,21 @@ const canRemove =
                                 ? `Artistes · ${activeSearchCategory}`
                                 : "Suggestions d’artistes"}
                             </p>
-                            <p className="mt-0.5 text-[7px] font-semibold text-emerald-300/55">
+                            <p className="mt-0.5 text-[15px] font-semibold text-emerald-300/55">
                               {activeSearchCategory
                                 ? "Artistes présents dans cette sélection"
                                 : "MusicBrain + MusicBrainz · 0 quota YouTube"}
                             </p>
                           </div>
                           {artistSuggestionsLoading && !activeSearchCategory ? (
-                            <span className="text-[7px] font-black text-white/25">
+                            <span className="text-[15px] font-black text-white/25">
                               Recherche…
                             </span>
                           ) : null}
                         </div>
 
                         {displayedArtists.length > 0 ? (
-                          <div data-mixparty-horizontal-scroll="true" className="no-scrollbar mt-3 flex gap-3 overflow-x-auto pb-1">
+                          <div data-mixparty-horizontal-scroll="true" className="no-scrollbar mt-4 flex gap-4 overflow-x-auto pb-2">
                             {displayedArtists.map((artist, index) => (
                               <button
                                 key={artist.id}
@@ -5684,7 +5725,7 @@ const canRemove =
                                     </span>
                                   ) : null}
                                 </span>
-                                <span className="mt-1.5 block truncate text-[8px] font-black text-white/65">
+                                <span className="mt-1.5 block truncate text-[16px] font-black text-white/65">
                                   {artist.name}
                                 </span>
                               </button>
@@ -5692,7 +5733,7 @@ const canRemove =
                           </div>
                         ) : (
                           <div className="mt-3 rounded-[16px] border border-dashed border-white/[0.08] bg-black/15 px-3 py-4 text-center">
-                            <p className="text-[9px] font-bold text-white/32">
+                            <p className="text-[16px] font-bold text-white/32">
                               {artistSuggestionsLoading
                                 ? "MusicBrain cherche les artistes…"
                                 : "Les artistes apparaîtront ici."}
@@ -5713,14 +5754,14 @@ const canRemove =
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fuchsia-400 opacity-45" />
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-fuchsia-400" />
                     </span>
-                    <p className="text-[9px] font-black text-white/55">
+                    <p className="text-[16px] font-black text-white/55">
                       MixParty cherche les meilleurs résultats…
                     </p>
                   </div>
                   <div className="mt-3 space-y-2">
                     {[0, 1, 2].map((item) => (
                       <div key={item} className="flex items-center gap-2.5 rounded-[15px] border border-white/[0.05] bg-black/10 p-2">
-                        <div className="h-11 w-11 shrink-0 animate-pulse rounded-[11px] bg-white/[0.06]" />
+                        <div className="h-14 w-14 shrink-0 animate-pulse rounded-[11px] bg-white/[0.06]" />
                         <div className="min-w-0 flex-1">
                           <div className="h-2.5 w-3/4 animate-pulse rounded-full bg-white/[0.07]" />
                           <div className="mt-2 h-2 w-1/2 animate-pulse rounded-full bg-white/[0.04]" />
@@ -5733,12 +5774,12 @@ const canRemove =
               ) : mobileSearchError ? (
                 <div className="rounded-[20px] border border-orange-300/[0.12] bg-orange-500/[0.045] px-4 py-4">
                   <div className="flex items-start gap-3">
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[13px] border border-orange-300/15 bg-orange-400/[0.08] text-orange-200">
+                    <span className="grid h-16 w-16 shrink-0 place-items-center rounded-[13px] border border-orange-300/15 bg-orange-400/[0.08] text-orange-200">
                       <Search className="h-4 w-4" />
                     </span>
                     <div className="min-w-0">
-                      <p className="text-[10px] font-black text-white/65">Pas de résultat pour l’instant</p>
-                      <p className="mt-1 text-[8px] font-semibold leading-4 text-white/32">{mobileSearchError}</p>
+                      <p className="text-[15px] font-black text-white/65">Pas de résultat pour l’instant</p>
+                      <p className="mt-1 text-[16px] font-semibold leading-4 text-white/32">{mobileSearchError}</p>
                     </div>
                   </div>
                 </div>
@@ -5748,7 +5789,7 @@ const canRemove =
                     <h3 className="font-[family:var(--font-exo-2)] text-sm font-black text-white">
                       Résultats
                     </h3>
-                    <span className="text-[7px] font-black text-white/24">
+                    <span className="text-[15px] font-black text-white/24">
                       {results.length} morceau{results.length > 1 ? "x" : ""}
                     </span>
                   </div>
@@ -5774,13 +5815,13 @@ const canRemove =
                         <img
                           src={video.thumbnail}
                           alt=""
-                          className="h-12 w-12 shrink-0 rounded-[12px] object-cover"
+                          className="h-16 w-16 shrink-0 rounded-[12px] object-cover"
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[11px] font-black text-white">
+                          <p className="truncate text-[16px] font-black text-white">
                             {video.title}
                           </p>
-                          <p className="mt-0.5 truncate text-[8px] font-semibold text-white/34">
+                          <p className="mt-0.5 truncate text-[16px] font-semibold text-white/34">
                             {video.artistName || video.channelTitle || "Artiste"}
                           </p>
                         </div>
@@ -5793,7 +5834,7 @@ const canRemove =
                           type="button"
                           onClick={() => void addYoutubeSong(video)}
                           disabled={alreadyAdded || justAdded || addingVideoId === video.id}
-                          className={`inline-flex h-9 shrink-0 items-center gap-1 rounded-full border px-3 text-[8px] font-black transition disabled:cursor-default ${
+                          className={`inline-flex h-9 shrink-0 items-center gap-1 rounded-full border px-3 text-[16px] font-black transition disabled:cursor-default ${
                             alreadyAdded || justAdded
                               ? "border-emerald-300/20 bg-emerald-500/[0.08] text-emerald-200"
                               : "border-pink-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.13),rgba(249,115,22,.09))] text-white disabled:opacity-45"
@@ -5825,15 +5866,15 @@ const canRemove =
                       <Bot className="h-4 w-4 animate-pulse text-fuchsia-200" />
                     </span>
                     <div>
-                      <p className="text-[10px] font-black text-white/58">PartyBrain analyse l’ambiance…</p>
-                      <p className="mt-0.5 text-[7px] font-semibold text-white/28">Suggestions adaptées à la soirée en cours</p>
+                      <p className="text-[15px] font-black text-white/58">PartyBrain analyse l’ambiance…</p>
+                      <p className="mt-0.5 text-[15px] font-semibold text-white/28">Suggestions adaptées à la soirée en cours</p>
                     </div>
                   </div>
                 </div>
               ) : suggestions.length > 0 ? (
                 <div className="overflow-hidden rounded-[22px] border border-fuchsia-300/[0.12] bg-[radial-gradient(circle_at_0%_50%,rgba(168,85,247,.16),transparent_38%),linear-gradient(135deg,rgba(28,14,43,.94),rgba(11,9,20,.97))] p-3 shadow-[0_12px_32px_rgba(0,0,0,.20)]">
                   <div className="flex items-center gap-3">
-                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] border border-fuchsia-300/20 bg-fuchsia-500/[0.10] text-fuchsia-200">
+                    <span className="grid h-14 w-14 shrink-0 place-items-center rounded-[16px] border border-fuchsia-300/20 bg-fuchsia-500/[0.10] text-fuchsia-200">
                       <Bot className="h-5 w-5" />
                     </span>
                     <div className="min-w-0">
@@ -5845,13 +5886,13 @@ const canRemove =
                           AI
                         </span>
                       </div>
-                      <p className="mt-0.5 text-[8px] leading-3 text-white/34">
+                      <p className="mt-0.5 text-[16px] leading-3 text-white/34">
                         Selon l’ambiance actuelle.
                       </p>
                     </div>
                   </div>
 
-                  <div className="no-scrollbar mt-3 flex gap-3 overflow-x-auto pb-1">
+                  <div className="no-scrollbar mt-4 flex gap-4 overflow-x-auto pb-2">
                     {suggestions.slice(0, 3).map((video) => (
                       <div
                         key={`mobile-search-partybrain-${video.id}`}
@@ -5860,10 +5901,10 @@ const canRemove =
                         <img
                           src={video.thumbnail}
                           alt=""
-                          className="h-10 w-10 shrink-0 rounded-[11px] object-cover"
+                          className="h-16 w-16 shrink-0 rounded-[11px] object-cover"
                         />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-[10px] font-black text-white">
+                          <p className="truncate text-[15px] font-black text-white">
                             {video.title}
                           </p>
                           <p className="mt-0.5 truncate text-[7.5px] font-semibold text-white/32">
@@ -5874,7 +5915,7 @@ const canRemove =
                           type="button"
                           onClick={() => void addYoutubeSong(video, "partybrain_suggestion")}
                           disabled={addingVideoId === video.id}
-                          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-orange-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.14),rgba(249,115,22,.12))] text-orange-100 disabled:opacity-40"
+                          className="grid h-16 w-16 shrink-0 place-items-center rounded-full border border-orange-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.14),rgba(249,115,22,.12))] text-orange-100 disabled:opacity-40"
                           aria-label={`Ajouter ${video.title}`}
                         >
                           <Plus className="h-4 w-4" />
@@ -5888,7 +5929,7 @@ const canRemove =
 
               <div className="flex items-start gap-2.5 rounded-[18px] border border-violet-300/[0.08] bg-violet-500/[0.035] px-3 py-3">
                 <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-300" />
-                <p className="text-[8px] leading-4 text-white/35">
+                <p className="text-[16px] leading-4 text-white/35">
                   Les recherches d’artistes sont servies par MusicBrain. YouTube reste seulement le secours ciblé pour trouver un morceau absent du catalogue connu.
                 </p>
               </div>
@@ -7588,7 +7629,8 @@ const canRemove =
           }
 
           .desktop-main-column [aria-label="Rechercher une musique"] input {
-            min-height: 54px;
+            min-height: 64px;
+            font-size: 17px;
           }
 
           .desktop-main-column [aria-label="Rechercher une musique"] button {
@@ -7597,6 +7639,25 @@ const canRemove =
 
           .desktop-main-column [aria-label="Rechercher une musique"] button:active {
             transform: scale(.985);
+          }
+
+          .desktop-unified-search {
+            font-size: 15px;
+          }
+
+          .desktop-unified-search > div:first-child h2 {
+            font-size: clamp(28px, 2vw, 36px);
+            line-height: 1.08;
+          }
+
+          .desktop-unified-search .no-scrollbar {
+            padding-bottom: 8px;
+          }
+        }
+
+        @media (min-width: 1280px) {
+          .desktop-unified-search {
+            gap: 24px;
           }
         }
 
