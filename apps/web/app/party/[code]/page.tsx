@@ -1798,6 +1798,18 @@ export default function PartyPage() {
   }
 
 
+  function searchArtistFromSuggestion(artistName: string) {
+    const query = String(artistName || "").trim();
+    if (!query || searching) return;
+
+    // Le clic sur un artiste lance bien sa recherche, mais ne laisse pas son nom
+    // dans le champ : l'autocomplétion se referme et les suggestions reviennent.
+    setSearch("");
+    setActiveSearchCategory(null);
+    void searchYoutube(query, { updateInput: false });
+  }
+
+
   useEffect(() => {
     if (karaokeMode) return;
 
@@ -5377,7 +5389,7 @@ const hasVoted = Boolean(
                             <button
                               key={`artist-autocomplete-${artist.id}`}
                               type="button"
-                              onClick={() => void searchYoutube(artist.name)}
+                              onClick={() => searchArtistFromSuggestion(artist.name)}
                               className="flex w-full items-center gap-2.5 rounded-[13px] px-2 py-2 text-left active:bg-white/[0.06]"
                             >
                               <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border border-fuchsia-300/20 bg-[linear-gradient(145deg,rgba(124,58,237,.28),rgba(236,72,153,.18))]">
@@ -5542,7 +5554,7 @@ const hasVoted = Boolean(
                               <button
                                 key={artist.id}
                                 type="button"
-                                onClick={() => void searchYoutube(artist.name)}
+                                onClick={() => searchArtistFromSuggestion(artist.name)}
                                 className="w-[70px] shrink-0 text-center"
                               >
                                 <span className="relative mx-auto grid h-[58px] w-[58px] place-items-center overflow-hidden rounded-full border border-fuchsia-300/25 bg-[linear-gradient(145deg,rgba(124,58,237,.30),rgba(236,72,153,.20),rgba(249,115,22,.18))] shadow-[0_0_18px_rgba(217,70,239,.08)]">
