@@ -1004,3 +1004,217 @@ Méthode :
 - revoir visuellement le lecteur YouTube tout en respectant les règles YouTube ;
 - aucune régression desktop ;
 - conception compatible avec les futures applications iOS / Android.
+
+## 2026-08-20 — MusicBrain : Renommage + Nettoyage des artistes
+
+### 🎵 Nouvel onglet Renommage
+- Suppression de l’onglet Karaoké visible dans l’admin MusicBrain.
+- Le code Karaoké reste conservé et désactivé pour une future réactivation.
+- Ajout d’un nouvel onglet `Renommage`.
+- Détection des morceaux potentiellement mal nommés :
+  - Official Video / Official Audio
+  - Clip officiel / Audio officiel
+  - Lyrics / Visualizer
+  - artiste répété dans le titre
+  - titre YouTube brut
+  - faible confiance metadata
+  - QUERY_FALLBACK
+  - artiste suspect
+- Affichage du titre YouTube brut, chaîne, artiste, confiance, stats et jaquette.
+- Modification manuelle du titre et de l’artiste.
+- Les corrections conservent :
+  - videoId
+  - jaquette
+  - votes
+  - lectures
+  - ajouts
+  - statistiques MusicBrain.
+- Ajout d’une vue :
+  - À corriger
+  - Tous les morceaux
+  - Déjà corrigés
+
+### 🤖 Nettoyage automatique des titres
+- Ajout d’un bouton de correction automatique sûre.
+- Il ne modifie jamais automatiquement le nom d’artiste.
+- Nettoyage automatique notamment de :
+  - parenthèses/crochets parasites
+  - Official Video
+  - Official Audio
+  - Clip officiel
+  - Lyrics
+  - Visualizer
+  - HD / 4K
+  - hashtags finaux
+  - préfixes `ARTISTE - TITRE` lorsque l’identité est suffisamment fiable.
+- Les morceaux douteux restent en validation manuelle.
+- Premier nettoyage automatique effectué :
+  - 13 689 titres détectés initialement
+  - 13 618 restants après première passe.
+
+### 👤 Nouvel onglet Artistes
+- Ajout d’un espace dédié au nettoyage du catalogue artistes.
+- Affichage :
+  - nom de l’artiste
+  - nombre de morceaux
+  - activité
+  - exemples de morceaux
+  - jaquettes
+  - confiance metadata
+  - raisons de suspicion.
+- Recherche par artiste ou morceau.
+
+### 🧠 MusicBrain Artist Scoring V3
+Ancien système abandonné car trop large :
+- 2 472 artistes suspects sur 3 787.
+
+Nouveau score de suspicion de 0 à 100 avec signaux négatifs ET positifs.
+
+Catégories :
+- 🗑️ Quasi certains faux : score >= 80
+- 🔴 Très suspects : score 55–79
+- 🟠 À vérifier : score 30–54
+- ✅ Probablement valides : score < 30
+
+Exemples de signaux négatifs :
+- identité suspecte
+- nom de chaîne YouTube
+- nom très court
+- nom non artistique
+- un seul morceau
+- 100 % QUERY_FALLBACK
+- majorité fallback
+- faible confiance metadata.
+
+Exemples de preuves positives faisant baisser le score :
+- plusieurs morceaux connus
+- catalogue important
+- metadata fiable
+- plusieurs sources solides
+- activité réelle
+- morceaux joués / ajoutés.
+
+Important :
+- absence d’activité seule ≠ artiste suspect
+- QUERY_FALLBACK seul ≠ artiste faux.
+
+Résultat V3 observé :
+- 22 Quasi certains faux
+- 44 Très suspects
+- 1 635 À vérifier
+- 2 086 Probablement valides
+
+### 🧹 Nettoyage effectué
+- 22/22 artistes `Quasi certains faux` supprimés.
+- 42/44 artistes `Très suspects` supprimés.
+- Deux cas intéressants conservés :
+  - `Jacques Brel` = vrai artiste
+  - `3 Café Gourmand` = mauvaise identité à corriger vers `Trois Cafés Gourmands`.
+
+### ☑️ Sélection multiple
+- Ajout de cases à cocher sur les artistes.
+- `Tout sélectionner / Tout désélectionner`.
+- Compteur du nombre sélectionné.
+- Suppression multiple en une action.
+- Confirmation avant suppression indiquant :
+  - nombre d’artistes
+  - nombre approximatif de morceaux supprimés.
+
+### 🚫 Blacklist persistante artistes
+- Lorsqu’un faux artiste est supprimé, son identité est enregistrée dans `blockedArtists`.
+- MusicBrain refuse ensuite de le réapprendre automatiquement.
+- La blacklist est persistante sur le volume Railway.
+- Le blocage survit aux redémarrages.
+- Les morceaux liés, relations artistes, collaborateurs et transitions correspondantes sont nettoyés.
+- Endpoint prévu pour débloquer manuellement une identité en cas d’erreur.
+
+### ✅ Validation manuelle des vrais artistes — V4
+Nouvelle action :
+`Valider l’artiste`
+
+- Un vrai artiste classé à tort comme suspect peut être validé.
+- L’identité est enregistrée dans `validatedArtists`.
+- Son score de suspicion devient 0.
+- Il passe dans les artistes valides.
+- Il ne reviendra plus dans les catégories suspectes.
+- Exemple prévu : `Jacques Brel`.
+
+### ✏️ Renommer / Fusionner un artiste — V4
+Nouvelle action :
+`Renommer / fusionner`
+
+Exemple :
+`3 Café Gourmand`
+→
+`Trois Cafés Gourmands`
+
+Comportement :
+- déplace tous les morceaux vers la nouvelle identité
+- conserve les videoId et statistiques
+- conserve les jaquettes
+- met à jour artistName / artistKey
+- conserve l’ancien nom comme alias
+- fusionne avec l’artiste cible s’il existe déjà
+- fusionne les relations/collaborateurs
+- blacklist l’ancien mauvais nom
+- valide automatiquement la nouvelle identité.
+
+### 🗑️ Suppression artiste
+Troisième action disponible sur chaque carte :
+`Supprimer`
+
+- supprime l’artiste et ses morceaux de MusicBrain
+- nettoie les références liées
+- place l’identité en blacklist permanente.
+
+### 🛠️ Correctif TypeScript
+Le premier déploiement de la suppression multiple a échoué sur Railway :
+- TS2538 `unknown cannot be used as an index type`
+- TS2345
+- TS18046
+
+Cause :
+`artistKeys` était inféré comme `unknown[]`.
+
+Correction :
+- typage explicite `unknown[]`
+- conversion vers `Set<string>`
+- résultat final typé `string[]`.
+
+Build API redevenu vert.
+
+### 📌 Décision produit
+Le nettoyage manuel complet des ~1 600 artistes `À vérifier` est trop long.
+
+Décision :
+- ne pas poursuivre ce nettoyage à la main pour l’instant
+- conserver le système V4 disponible
+- les déchets évidents ont déjà été fortement réduits
+- améliorer plus tard le scoring / l’automatisation si nécessaire
+- ne jamais supprimer automatiquement les cas ambigus.
+
+### État actuel
+✅ Renommage MusicBrain opérationnel  
+✅ Nettoyage automatique sûr des titres  
+✅ Onglet Artistes  
+✅ Score artistes V3  
+✅ Suppression multiple  
+✅ Blacklist persistante  
+✅ Validation manuelle V4  
+✅ Renommage / fusion artiste V4  
+✅ Build et Railway fonctionnels après correctif  
+⏸️ Nettoyage manuel massif des artistes mis en pause
+
+récap de la session du 20 août 2026 avec notamment :
+
+suppression du récap inutile dans Profil ;
+suppression de la barre basse de la home mobile + cartes agrandies ;
+bouton Profil de la home : compte → profil / sans compte → création-connexion ;
+recherche artiste mobile : sélection d’un artiste referme/nettoie la recherche ;
+suppression des pastilles 1 / 2 / 3 sur les suggestions artistes ;
+historique Profil : uniquement les soirées terminées ;
+vote cœur = voter / retirer son vote ;
+suppression file d’attente sans couper la musique ;
+mini-player DJ déplaçable ;
+identité + avatar des participants mémorisés pendant toute la soirée, même après déconnexion ;
+classement final complet avec tous les participants.
