@@ -13273,27 +13273,37 @@ function updateMusicBrainSongIdentity(
 
 
 
-type MusicBrainArtistAdminFilter = "suspects" | "all";
+type MusicBrainArtistAdminFilter = "trash" | "high" | "review" | "valid" | "all";
 
 function musicBrainArtistAdminSuspicion(artist: MusicBrainArtist) {
   const name = String(artist.name || "").trim();
-  const key = normalizeMusicQuery(name);
   const songs = Object.values(artist.songs || {});
   const reasons: string[] = [];
+  const positiveSignals: string[] = [];
+  let score = 0;
 
-  if (!name || isSuspiciousArtistName(name)) {
+  const clearlySuspiciousIdentity = !name || isSuspiciousArtistName(name);
+  if (clearlySuspiciousIdentity) {
+    score += 50;
     reasons.push("identite_suspecte");
   }
 
-  if (name.length <= 2) {
+  if (name.length > 0 && name.length <= 2) {
+    score += 25;
     reasons.push("nom_tres_court");
   }
 
-  if (/^@/.test(name) || /\b(topic|official|officiel|music|records?|production|channel|tv)\b/i.test(name)) {
+  const looksLikeChannel =
+    /^@/.test(name) ||
+    /\b(topic|official|officiel|music|records?|production|channel|tv)\b/i.test(name);
+
+  if (looksLikeChannel) {
+    score += 60;
     reasons.push("nom_de_chaine");
   }
 
-  if (/^[\d\W_]+$/u.test(name)) {
+  if (name && /^[\d\W_]+$/u.test(name)) {
+    score += 70;
     reasons.push("nom_non_artistique");
   }
 
@@ -13301,17 +13311,22 @@ function musicBrainArtistAdminSuspicion(artist: MusicBrainArtist) {
     (song) => Number(song.metadataConfidence || 0) < 60
   ).length;
 
+  const highConfidenceSongs = songs.filter(
+    (song) => Number(song.metadataConfidence || 0) >= 85
+  ).length;
+
   const fallbackSongs = songs.filter(
     (song) => song.metadataSource === "QUERY_FALLBACK"
   ).length;
 
-  if (songs.length > 0 && lowConfidenceSongs === songs.length) {
-    reasons.push("tous_morceaux_faible_confiance");
-  }
+  const strongMetadataSongs = songs.filter(
+    (song) =>
+      song.metadataSource !== "QUERY_FALLBACK" &&
+      Number(song.metadataConfidence || 0) >= 75
+  ).length;
 
-  if (songs.length > 0 && fallbackSongs === songs.length) {
-    reasons.push("tous_morceaux_fallback");
-  }
+  const playedSongs = songs.filter((song) => Number(song.playedCount || 0) > 0).length;
+  const addedSongs = songs.filter((song) => Number(song.addedCount || 0) > 0).length;
 
   const totalActivity = songs.reduce(
     (total, song) =>
@@ -13323,15 +13338,86 @@ function musicBrainArtistAdminSuspicion(artist: MusicBrainArtist) {
     0
   );
 
+  if (songs.length === 1) {
+    score += 15;
+    reasons.push("un_seul_morceau");
+  }
+
+  if (songs.length > 0 && fallbackSongs === songs.length) {
+    score += 30;
+    reasons.push("tous_morceaux_fallback");
+  } else if (songs.length > 0 && fallbackSongs / songs.length >= 0.75) {
+    score += 16;
+    reasons.push("fallback_majoritaire");
+  }
+
+  if (songs.length > 0 && lowConfidenceSongs === songs.length) {
+    score += 25;
+    reasons.push("tous_morceaux_faible_confiance");
+  } else if (songs.length > 0 && lowConfidenceSongs / songs.length >= 0.75) {
+    score += 12;
+    reasons.push("faible_confiance_majoritaire");
+  }
+
+  // No activity alone is a weak clue only — never enough to condemn an artist.
   if (songs.length > 0 && totalActivity === 0) {
+    score += 5;
     reasons.push("aucune_activite");
   }
 
+  // Positive evidence lowers the suspicion score.
+  if (songs.length >= 5) {
+    score -= 35;
+    positiveSignals.push("catalogue_fourni");
+  } else if (songs.length >= 3) {
+    score -= 20;
+    positiveSignals.push("plusieurs_morceaux");
+  }
+
+  if (highConfidenceSongs >= 3) {
+    score -= 30;
+    positiveSignals.push("metadata_tres_fiable");
+  } else if (highConfidenceSongs >= 1) {
+    score -= 12;
+    positiveSignals.push("metadata_fiable");
+  }
+
+  if (strongMetadataSongs >= 3) {
+    score -= 18;
+    positiveSignals.push("sources_metadata_solides");
+  }
+
+  if (playedSongs >= 2 || addedSongs >= 3 || totalActivity >= 20) {
+    score -= 28;
+    positiveSignals.push("activite_reelle");
+  } else if (playedSongs >= 1 || addedSongs >= 1 || totalActivity >= 5) {
+    score -= 12;
+    positiveSignals.push("activite_observee");
+  }
+
+  score = Math.max(0, Math.min(100, Math.round(score)));
+
+  const tier =
+    score >= 80
+      ? "trash"
+      : score >= 55
+        ? "high"
+        : score >= 30
+          ? "review"
+          : "valid";
+
   return {
-    suspicious: reasons.length > 0,
+    suspicious: tier !== "valid",
+    tier,
+    score,
     reasons: [...new Set(reasons)],
+    positiveSignals: [...new Set(positiveSignals)],
     lowConfidenceSongs,
+    highConfidenceSongs,
     fallbackSongs,
+    strongMetadataSongs,
+    playedSongs,
+    addedSongs,
     totalActivity,
   };
 }
@@ -13365,9 +13451,16 @@ function musicBrainArtistAdminItem(artist: MusicBrainArtist) {
     firstSeenAt: Number(artist.firstSeenAt || 0),
     lastSeenAt: Number(artist.lastSeenAt || 0),
     suspicious: suspicion.suspicious,
+    tier: suspicion.tier,
+    suspicionScore: suspicion.score,
     reasons: suspicion.reasons,
+    positiveSignals: suspicion.positiveSignals,
     lowConfidenceSongs: suspicion.lowConfidenceSongs,
+    highConfidenceSongs: suspicion.highConfidenceSongs,
     fallbackSongs: suspicion.fallbackSongs,
+    strongMetadataSongs: suspicion.strongMetadataSongs,
+    playedSongs: suspicion.playedSongs,
+    addedSongs: suspicion.addedSongs,
     totalActivity: suspicion.totalActivity,
     examples: sortedSongs.slice(0, 6).map((song) => ({
       videoId: song.videoId,
@@ -13384,9 +13477,14 @@ function musicBrainArtistAdminItem(artist: MusicBrainArtist) {
 }
 
 app.get("/partybrain/musicbrain-artists", (req, res) => {
-  const requestedFilter = String(req.query?.filter || "suspects").trim().toLowerCase();
+  const requestedFilter = String(req.query?.filter || "trash").trim().toLowerCase();
   const filter: MusicBrainArtistAdminFilter =
-    requestedFilter === "all" ? "all" : "suspects";
+    requestedFilter === "high" ||
+    requestedFilter === "review" ||
+    requestedFilter === "valid" ||
+    requestedFilter === "all"
+      ? requestedFilter
+      : "trash";
   const query = normalizeMusicQuery(String(req.query?.q || ""));
   const rawLimit = Number(req.query?.limit || 300);
   const rawOffset = Number(req.query?.offset || 0);
@@ -13395,7 +13493,7 @@ app.get("/partybrain/musicbrain-artists", (req, res) => {
 
   const allItems = Object.values(musicBrain.artists)
     .map(musicBrainArtistAdminItem)
-    .filter((item) => filter === "all" || item.suspicious)
+    .filter((item) => filter === "all" || item.tier === filter)
     .filter((item) => {
       if (!query) return true;
       const haystack = [
@@ -13406,8 +13504,9 @@ app.get("/partybrain/musicbrain-artists", (req, res) => {
       return normalizeMusicQuery(haystack).includes(query);
     })
     .sort((a, b) => {
-      if (a.suspicious !== b.suspicious) return a.suspicious ? -1 : 1;
-      if (a.reasons.length !== b.reasons.length) return b.reasons.length - a.reasons.length;
+      if (a.suspicionScore !== b.suspicionScore) {
+        return b.suspicionScore - a.suspicionScore;
+      }
       if (a.totalActivity !== b.totalActivity) return a.totalActivity - b.totalActivity;
       return a.name.localeCompare(b.name, "fr");
     });
@@ -13429,8 +13528,17 @@ app.get("/partybrain/musicbrain-artists", (req, res) => {
         : null,
     summary: {
       totalArtists: Object.keys(musicBrain.artists).length,
-      suspiciousArtists: Object.values(musicBrain.artists).filter(
-        (artist) => musicBrainArtistAdminSuspicion(artist).suspicious
+      trashArtists: Object.values(musicBrain.artists).filter(
+        (artist) => musicBrainArtistAdminSuspicion(artist).tier === "trash"
+      ).length,
+      highRiskArtists: Object.values(musicBrain.artists).filter(
+        (artist) => musicBrainArtistAdminSuspicion(artist).tier === "high"
+      ).length,
+      reviewArtists: Object.values(musicBrain.artists).filter(
+        (artist) => musicBrainArtistAdminSuspicion(artist).tier === "review"
+      ).length,
+      validArtists: Object.values(musicBrain.artists).filter(
+        (artist) => musicBrainArtistAdminSuspicion(artist).tier === "valid"
       ).length,
       blockedArtists: Object.keys(musicBrain.blockedArtists || {}).length,
     },

@@ -382,9 +382,16 @@ type MusicBrainArtistAdminItem = {
   firstSeenAt: number;
   lastSeenAt: number;
   suspicious: boolean;
+  tier: "trash" | "high" | "review" | "valid";
+  suspicionScore: number;
   reasons: string[];
+  positiveSignals: string[];
   lowConfidenceSongs: number;
+  highConfidenceSongs: number;
   fallbackSongs: number;
+  strongMetadataSongs: number;
+  playedSongs: number;
+  addedSongs: number;
   totalActivity: number;
   examples: Array<{
     videoId: string;
@@ -401,7 +408,7 @@ type MusicBrainArtistAdminItem = {
 
 type MusicBrainArtistsResponse = {
   generatedAt: number;
-  filter: "suspects" | "all";
+  filter: "trash" | "high" | "review" | "valid" | "all";
   query: string;
   total: number;
   returned: number;
@@ -411,7 +418,10 @@ type MusicBrainArtistsResponse = {
   nextOffset?: number | null;
   summary: {
     totalArtists: number;
-    suspiciousArtists: number;
+    trashArtists: number;
+    highRiskArtists: number;
+    reviewArtists: number;
+    validArtists: number;
     blockedArtists: number;
   };
   items: MusicBrainArtistAdminItem[];
@@ -610,7 +620,7 @@ export default function MusicBrainAdminPage() {
   const [artistAdminLoading, setArtistAdminLoading] = useState(false);
   const [artistAdminError, setArtistAdminError] = useState("");
   const [artistAdminMessage, setArtistAdminMessage] = useState("");
-  const [artistAdminFilter, setArtistAdminFilter] = useState<"suspects" | "all">("suspects");
+  const [artistAdminFilter, setArtistAdminFilter] = useState<"trash" | "high" | "review" | "valid" | "all">("trash");
   const [artistAdminSearch, setArtistAdminSearch] = useState("");
   const [artistDeleteKey, setArtistDeleteKey] = useState("");
   const [selectedArtistKeys, setSelectedArtistKeys] = useState<Record<string, boolean>>({});
@@ -3851,45 +3861,35 @@ export default function MusicBrainAdminPage() {
           </div>
 
           <p className="mt-4 max-w-2xl text-sm leading-6 text-white/50">
-            Cette vue remonte en priorité les identités suspectes : noms de chaîne YouTube,
-            artistes génériques, entrées très courtes, artistes dont tous les morceaux viennent
-            d’un fallback ou ont une faible confiance. Un artiste supprimé est maintenant gardé
-            en liste noire afin que MusicBrain refuse de le réapprendre plus tard.
+            MusicBrain calcule maintenant un score de suspicion avec des signaux négatifs
+            et positifs. Un fallback ou une absence d’activité ne suffit plus à condamner un artiste.
+            Les artistes supprimés restent mémorisés en liste noire pour empêcher leur retour.
           </p>
         </div>
 
-        <div className="grid min-w-[360px] grid-cols-3 gap-2">
-          <div className="rounded-2xl border border-amber-300/10 bg-amber-500/[0.06] px-4 py-4 text-center">
-            <p className="text-xl font-black text-amber-300">
-              {number.format(artistAdminData?.summary.suspiciousArtists ?? 0)}
-            </p>
-            <p className="mt-1 text-[9px] font-black uppercase tracking-[.12em] text-white/35">
-              suspects
-            </p>
-          </div>
-          <div className="rounded-2xl border border-cyan-300/10 bg-cyan-500/[0.06] px-4 py-4 text-center">
-            <p className="text-xl font-black text-cyan-300">
-              {number.format(artistAdminData?.summary.totalArtists ?? stats.totals.artists)}
-            </p>
-            <p className="mt-1 text-[9px] font-black uppercase tracking-[.12em] text-white/35">
-              artistes
-            </p>
-          </div>
-          <div className="rounded-2xl border border-red-300/10 bg-red-500/[0.06] px-4 py-4 text-center">
-            <p className="text-xl font-black text-red-300">
-              {number.format(artistAdminData?.summary.blockedArtists ?? 0)}
-            </p>
-            <p className="mt-1 text-[9px] font-black uppercase tracking-[.12em] text-white/35">
-              bloqués
-            </p>
-          </div>
+        <div className="grid min-w-[520px] grid-cols-5 gap-2">
+          {[
+            ["Quasi faux", artistAdminData?.summary.trashArtists ?? 0, "text-red-300"],
+            ["Très suspects", artistAdminData?.summary.highRiskArtists ?? 0, "text-orange-300"],
+            ["À vérifier", artistAdminData?.summary.reviewArtists ?? 0, "text-amber-300"],
+            ["Probables valides", artistAdminData?.summary.validArtists ?? 0, "text-emerald-300"],
+            ["Bloqués", artistAdminData?.summary.blockedArtists ?? 0, "text-fuchsia-300"],
+          ].map(([label, value, tone]) => (
+            <div key={String(label)} className="rounded-2xl border border-white/8 bg-black/20 px-3 py-4 text-center">
+              <p className={`text-lg font-black ${tone}`}>{number.format(Number(value))}</p>
+              <p className="mt-1 text-[8px] font-black uppercase tracking-[.09em] text-white/35">{label}</p>
+            </div>
+          ))}
         </div>
       </div>
 
       <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap gap-2">
           {[
-            { key: "suspects" as const, label: "Artistes suspects" },
+            { key: "trash" as const, label: "🗑️ Quasi certains faux" },
+            { key: "high" as const, label: "🔴 Très suspects" },
+            { key: "review" as const, label: "🟠 À vérifier" },
+            { key: "valid" as const, label: "✅ Probablement valides" },
             { key: "all" as const, label: "Tous les artistes" },
           ].map((item) => (
             <button
@@ -3898,6 +3898,7 @@ export default function MusicBrainAdminPage() {
               onClick={() => {
                 setArtistAdminFilter(item.key);
                 setArtistAdminMessage("");
+                setSelectedArtistKeys({});
               }}
               className={`rounded-2xl border px-4 py-2.5 text-xs font-black transition ${
                 artistAdminFilter === item.key
@@ -3984,6 +3985,11 @@ export default function MusicBrainAdminPage() {
           <span className="rounded-full border border-cyan-300/10 bg-cyan-500/[0.06] px-3 py-1.5 text-[10px] font-black uppercase tracking-[.10em] text-cyan-200">
             {Object.values(selectedArtistKeys).filter(Boolean).length} sélectionné(s)
           </span>
+          {artistAdminFilter === "trash" ? (
+            <span className="rounded-full border border-red-300/10 bg-red-500/[0.06] px-3 py-1.5 text-[10px] font-black uppercase tracking-[.10em] text-red-200">
+              score ≥ 80
+            </span>
+          ) : null}
         </div>
 
         <button
@@ -4010,7 +4016,10 @@ export default function MusicBrainAdminPage() {
             nom_de_chaine: "Nom de chaîne",
             nom_non_artistique: "Nom non artistique",
             tous_morceaux_faible_confiance: "Faible confiance",
+            faible_confiance_majoritaire: "Confiance faible majoritaire",
             tous_morceaux_fallback: "Fallback uniquement",
+            fallback_majoritaire: "Fallback majoritaire",
+            un_seul_morceau: "Un seul morceau",
             aucune_activite: "Aucune activité",
           };
 
@@ -4054,6 +4063,23 @@ export default function MusicBrainAdminPage() {
                     </div>
                   </div>
 
+                  <div className="mt-3 inline-flex items-center gap-2 rounded-xl border border-white/8 bg-black/20 px-3 py-2">
+                    <span className="text-[9px] font-black uppercase tracking-[.11em] text-white/35">
+                      Score suspicion
+                    </span>
+                    <span className={`text-sm font-black ${
+                      item.tier === "trash"
+                        ? "text-red-300"
+                        : item.tier === "high"
+                          ? "text-orange-300"
+                          : item.tier === "review"
+                            ? "text-amber-300"
+                            : "text-emerald-300"
+                    }`}>
+                      {item.suspicionScore}/100
+                    </span>
+                  </div>
+
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {item.reasons.map((reason) => (
                       <span
@@ -4064,6 +4090,18 @@ export default function MusicBrainAdminPage() {
                       </span>
                     ))}
                   </div>
+                  {item.positiveSignals.length ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {item.positiveSignals.map((signal) => (
+                        <span
+                          key={signal}
+                          className="rounded-full border border-emerald-300/10 bg-emerald-500/[0.055] px-2.5 py-1 text-[9px] font-black uppercase tracking-[.08em] text-emerald-200/65"
+                        >
+                          {signal.replaceAll("_", " ")}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="min-w-0">
@@ -4128,8 +4166,8 @@ export default function MusicBrainAdminPage() {
             <p className="mt-3 font-black text-emerald-100">
               {artistAdminSearch.trim()
                 ? "Aucun artiste ne correspond à cette recherche."
-                : artistAdminFilter === "suspects"
-                  ? "Aucun artiste suspect détecté."
+                : artistAdminFilter === "trash"
+                  ? "Aucun artiste quasi certain faux détecté."
                   : "Aucun artiste dans cette vue."}
             </p>
           </div>
