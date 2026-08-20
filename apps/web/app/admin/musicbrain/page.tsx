@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, BarChart3, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Clock3, Database, KeyRound, Mic2, Music2, Network, PencilLine, RefreshCw, Search, ShieldCheck, Sparkles, ThumbsUp, Timer, Trash2, Upload, UsersRound, Wifi, type LucideIcon } from "lucide-react";
+import { Activity, AlertTriangle, BarChart3, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Clock3, Database, KeyRound, Mic2, Music2, Network, PencilLine, RefreshCw, Search, ShieldCheck, Sparkles, ThumbsUp, Timer, Trash2, Upload, UserRound, UsersRound, Wifi, type LucideIcon } from "lucide-react";
 import { getApiBaseUrl } from "../../../lib/config";
 
 type Stats = {
@@ -372,6 +372,50 @@ type KaraokeLyricsAuditData = {
 };
 
 
+
+type MusicBrainArtistAdminItem = {
+  key: string;
+  name: string;
+  aliases: string[];
+  songCount: number;
+  searchCount: number;
+  firstSeenAt: number;
+  lastSeenAt: number;
+  suspicious: boolean;
+  reasons: string[];
+  lowConfidenceSongs: number;
+  fallbackSongs: number;
+  totalActivity: number;
+  examples: Array<{
+    videoId: string;
+    title: string;
+    rawTitle: string;
+    thumbnail: string;
+    metadataConfidence: number;
+    metadataSource?: string | null;
+    playedCount: number;
+    addedCount: number;
+    voteCount: number;
+  }>;
+};
+
+type MusicBrainArtistsResponse = {
+  generatedAt: number;
+  filter: "suspects" | "all";
+  query: string;
+  total: number;
+  returned: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  nextOffset?: number | null;
+  summary: {
+    totalArtists: number;
+    suspiciousArtists: number;
+  };
+  items: MusicBrainArtistAdminItem[];
+};
+
 type MusicBrainRenameIssue =
   | "titre_youtube_brut"
   | "titre_avec_balise_video"
@@ -561,6 +605,14 @@ export default function MusicBrainAdminPage() {
   const [autoAcceptV35Message, setAutoAcceptV35Message] = useState("");
   const [autoAcceptV35Error, setAutoAcceptV35Error] = useState("");
 
+  const [artistAdminData, setArtistAdminData] = useState<MusicBrainArtistsResponse | null>(null);
+  const [artistAdminLoading, setArtistAdminLoading] = useState(false);
+  const [artistAdminError, setArtistAdminError] = useState("");
+  const [artistAdminMessage, setArtistAdminMessage] = useState("");
+  const [artistAdminFilter, setArtistAdminFilter] = useState<"suspects" | "all">("suspects");
+  const [artistAdminSearch, setArtistAdminSearch] = useState("");
+  const [artistDeleteKey, setArtistDeleteKey] = useState("");
+
   const [renameData, setRenameData] = useState<MusicBrainRenameResponse | null>(null);
   const [renameLoading, setRenameLoading] = useState(false);
   const [renameError, setRenameError] = useState("");
@@ -577,6 +629,7 @@ export default function MusicBrainAdminPage() {
     | "overview"
     | "catalog"
     | "quality"
+    | "artists"
     | "rename"
     | "karaoke"
     | "covers"
@@ -852,6 +905,87 @@ export default function MusicBrainAdminPage() {
       setAutoFixLoading(false);
     }
   }
+
+  async function loadMusicBrainArtists(
+    nextFilter = artistAdminFilter,
+    nextSearch = artistAdminSearch
+  ) {
+    setArtistAdminLoading(true);
+    setArtistAdminError("");
+
+    try {
+      const params = new URLSearchParams({
+        filter: nextFilter,
+        limit: "300",
+      });
+      if (nextSearch.trim()) params.set("q", nextSearch.trim());
+
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/musicbrain-artists?${params.toString()}`,
+        { cache: "no-store" }
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Catalogue artistes MusicBrain indisponible.");
+      }
+
+      setArtistAdminData(data);
+    } catch (err) {
+      setArtistAdminError(
+        err instanceof Error ? err.message : "Catalogue artistes MusicBrain indisponible."
+      );
+    } finally {
+      setArtistAdminLoading(false);
+    }
+  }
+
+  async function deleteMusicBrainArtist(item: MusicBrainArtistAdminItem) {
+    if (!adminToken.trim()) {
+      setArtistAdminError(
+        "Entre le code administrateur Railway dans Maintenance avant de supprimer un artiste."
+      );
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Supprimer définitivement « ${item.name} » de MusicBrain ?\n\n${item.songCount} morceau(x) lié(s) seront également retirés du catalogue MusicBrain.\n\nUtilise ce bouton uniquement si cet artiste est faux / inexistant.`
+    );
+    if (!confirmed) return;
+
+    setArtistDeleteKey(item.key);
+    setArtistAdminError("");
+    setArtistAdminMessage("");
+
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/maintenance/musicbrain-artists/${encodeURIComponent(item.key)}`,
+        {
+          method: "DELETE",
+          headers: {
+            "x-partybrain-admin-token": adminToken.trim(),
+          },
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Suppression impossible.");
+      }
+
+      setArtistAdminMessage(data?.message || "Artiste supprimé.");
+      await loadMusicBrainArtists(artistAdminFilter, artistAdminSearch);
+      await loadStats();
+      await loadRenameItems(renameFilter, renameSearch);
+    } catch (err) {
+      setArtistAdminError(
+        err instanceof Error ? err.message : "Suppression impossible."
+      );
+    } finally {
+      setArtistDeleteKey("");
+    }
+  }
+
 
   async function loadRenameItems(
     nextFilter = renameFilter,
@@ -1932,6 +2066,13 @@ export default function MusicBrainAdminPage() {
   }, [activeAdminTab, renameFilter]);
 
   useEffect(() => {
+    if (activeAdminTab === "artists") {
+      void loadMusicBrainArtists(artistAdminFilter, artistAdminSearch);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAdminTab, artistAdminFilter]);
+
+  useEffect(() => {
     const refreshDelay = stats?.academy.running ? 5_000 : 60_000;
     const timer = window.setInterval(() => {
       void loadStats();
@@ -1983,6 +2124,7 @@ export default function MusicBrainAdminPage() {
       | "overview"
       | "catalog"
       | "quality"
+      | "artists"
       | "rename"
       | "karaoke"
       | "covers"
@@ -1996,6 +2138,7 @@ export default function MusicBrainAdminPage() {
     { key: "overview", label: "Vue d’ensemble", icon: BrainCircuit, description: "Santé générale de MusicBrain" },
     { key: "catalog", label: "Catalogue", icon: Database, description: "Artistes et morceaux appris" },
     { key: "quality", label: "Qualité", icon: ShieldCheck, description: "Entrées incertaines et réparations" },
+    { key: "artists", label: "Artistes", icon: UserRound, description: "Trier les artistes suspects ou inexistants" },
     { key: "rename", label: "Renommage", icon: PencilLine, description: "Corriger proprement les titres et artistes" },
     { key: "covers", label: "Jaquettes", icon: Sparkles, description: "Bibliothèque HD Covers" },
     { key: "academy", label: "Academy", icon: BookOpen, description: "Apprentissage automatique" },
@@ -3587,6 +3730,254 @@ export default function MusicBrainAdminPage() {
               </>
             ) : null}
 
+
+
+{activeAdminTab === "artists" ? (
+  <>
+    <section className="mb-7 overflow-hidden rounded-[30px] border border-cyan-300/15 bg-[radial-gradient(circle_at_0%_0%,rgba(34,211,238,.13),transparent_34%),radial-gradient(circle_at_100%_0%,rgba(168,85,247,.10),transparent_30%),linear-gradient(145deg,rgba(10,18,28,.97),rgba(8,7,15,.99))] p-5 shadow-[0_26px_80px_rgba(0,0,0,.30)] backdrop-blur-xl sm:p-7">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+        <div className="max-w-3xl">
+          <div className="flex items-center gap-3">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl border border-cyan-300/15 bg-cyan-500/10 text-cyan-200">
+              <UserRound className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xs font-black uppercase tracking-[.24em] text-cyan-300">
+                MusicBrain Artists
+              </p>
+              <h2 className="mt-1 text-2xl font-black sm:text-3xl">
+                Nettoyer les artistes
+              </h2>
+            </div>
+          </div>
+
+          <p className="mt-4 max-w-2xl text-sm leading-6 text-white/50">
+            Cette vue remonte en priorité les identités suspectes : noms de chaîne YouTube,
+            artistes génériques, entrées très courtes, artistes dont tous les morceaux viennent
+            d’un fallback ou ont une faible confiance.
+          </p>
+        </div>
+
+        <div className="grid min-w-[250px] grid-cols-2 gap-2">
+          <div className="rounded-2xl border border-amber-300/10 bg-amber-500/[0.06] px-4 py-4 text-center">
+            <p className="text-xl font-black text-amber-300">
+              {number.format(artistAdminData?.summary.suspiciousArtists ?? 0)}
+            </p>
+            <p className="mt-1 text-[9px] font-black uppercase tracking-[.12em] text-white/35">
+              suspects
+            </p>
+          </div>
+          <div className="rounded-2xl border border-cyan-300/10 bg-cyan-500/[0.06] px-4 py-4 text-center">
+            <p className="text-xl font-black text-cyan-300">
+              {number.format(artistAdminData?.summary.totalArtists ?? stats.totals.artists)}
+            </p>
+            <p className="mt-1 text-[9px] font-black uppercase tracking-[.12em] text-white/35">
+              artistes
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { key: "suspects" as const, label: "Artistes suspects" },
+            { key: "all" as const, label: "Tous les artistes" },
+          ].map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => {
+                setArtistAdminFilter(item.key);
+                setArtistAdminMessage("");
+              }}
+              className={`rounded-2xl border px-4 py-2.5 text-xs font-black transition ${
+                artistAdminFilter === item.key
+                  ? "border-cyan-300/30 bg-cyan-500/12 text-cyan-100"
+                  : "border-white/8 bg-black/20 text-white/45 hover:border-white/15 hover:text-white/70"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        <form
+          className="flex min-w-0 flex-1 gap-2 lg:max-w-xl"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void loadMusicBrainArtists(artistAdminFilter, artistAdminSearch);
+          }}
+        >
+          <label className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
+            <Search className="h-4 w-4 shrink-0 text-white/35" />
+            <input
+              value={artistAdminSearch}
+              onChange={(event) => setArtistAdminSearch(event.target.value)}
+              placeholder="Chercher un artiste ou un morceau…"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-white/25"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={artistAdminLoading}
+            className="grid h-12 w-12 place-items-center rounded-2xl border border-cyan-300/20 bg-cyan-500/10 text-cyan-100 transition hover:bg-cyan-500/15 disabled:opacity-50"
+            aria-label="Rechercher"
+          >
+            <RefreshCw className={`h-4 w-4 ${artistAdminLoading ? "animate-spin" : ""}`} />
+          </button>
+        </form>
+      </div>
+
+      {artistAdminError ? (
+        <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm font-bold text-red-100">
+          {artistAdminError}
+        </div>
+      ) : null}
+
+      {artistAdminMessage ? (
+        <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm font-bold text-emerald-100">
+          {artistAdminMessage}
+        </div>
+      ) : null}
+    </section>
+
+    <section className="rounded-[30px] border border-white/10 bg-white/[0.04] p-4 backdrop-blur-xl sm:p-6">
+      <div className="mb-5 flex items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[.22em] text-amber-300">
+            Tri des artistes
+          </p>
+          <h3 className="mt-1 text-2xl font-black">
+            {artistAdminLoading
+              ? "Analyse du catalogue…"
+              : `${number.format(artistAdminData?.total ?? 0)} artiste(s)`}
+          </h3>
+        </div>
+        <p className="max-w-md text-right text-xs leading-5 text-white/35">
+          Supprimer un artiste retire également ses morceaux de MusicBrain. À utiliser uniquement
+          quand l’identité est réellement fausse ou inexistante.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        {(artistAdminData?.items || []).map((item) => {
+          const reasonLabels: Record<string, string> = {
+            identite_suspecte: "Identité suspecte",
+            nom_tres_court: "Nom très court",
+            nom_de_chaine: "Nom de chaîne",
+            nom_non_artistique: "Nom non artistique",
+            tous_morceaux_faible_confiance: "Faible confiance",
+            tous_morceaux_fallback: "Fallback uniquement",
+            aucune_activite: "Aucune activité",
+          };
+
+          return (
+            <article
+              key={item.key}
+              className="rounded-[26px] border border-white/[0.08] bg-[linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.018))] p-4 shadow-[0_16px_44px_rgba(0,0,0,.18)]"
+            >
+              <div className="grid gap-5 xl:grid-cols-[minmax(220px,.72fr)_minmax(0,1.6fr)_180px] xl:items-start">
+                <div>
+                  <div className="flex items-start gap-3">
+                    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-cyan-300/12 bg-cyan-500/[0.07] text-cyan-200">
+                      <UserRound className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black uppercase tracking-[.16em] text-white/30">
+                        Artiste
+                      </p>
+                      <h4 className="mt-1 truncate text-xl font-black text-white">{item.name}</h4>
+                      <p className="mt-1 text-xs text-white/35">
+                        {number.format(item.songCount)} morceau(x) · activité {number.format(item.totalActivity)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {item.reasons.map((reason) => (
+                      <span
+                        key={reason}
+                        className="rounded-full border border-amber-300/10 bg-amber-500/[0.07] px-2.5 py-1 text-[9px] font-black uppercase tracking-[.08em] text-amber-200/75"
+                      >
+                        {reasonLabels[reason] || reason}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="min-w-0">
+                  <p className="mb-2 text-[10px] font-black uppercase tracking-[.16em] text-white/30">
+                    Exemples de morceaux
+                  </p>
+
+                  <div className="grid gap-2 md:grid-cols-2">
+                    {item.examples.map((song) => (
+                      <div
+                        key={song.videoId}
+                        className="flex min-w-0 items-center gap-3 rounded-2xl border border-white/7 bg-black/20 p-2.5"
+                      >
+                        {song.thumbnail ? (
+                          <img
+                            src={song.thumbnail}
+                            alt=""
+                            className="h-12 w-12 shrink-0 rounded-xl object-cover"
+                          />
+                        ) : (
+                          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/[0.05]">
+                            <Music2 className="h-4 w-4 text-white/25" />
+                          </div>
+                        )}
+
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-black text-white/80">{song.title}</p>
+                          <p className="mt-0.5 text-[10px] text-white/30">
+                            confiance {song.metadataConfidence}% · {song.playedCount} lecture(s)
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-[22px] border border-red-300/10 bg-red-500/[0.04] p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[.16em] text-red-200/60">
+                    Suppression
+                  </p>
+                  <p className="mt-2 text-xs leading-5 text-white/40">
+                    Supprime cet artiste seulement si tu es certain qu’il n’existe pas ou que c’est une mauvaise identité.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => void deleteMusicBrainArtist(item)}
+                    disabled={artistDeleteKey === item.key}
+                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-red-300/15 bg-red-500/10 px-4 py-3 text-xs font-black text-red-100 transition hover:bg-red-500/15 disabled:opacity-40"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    {artistDeleteKey === item.key ? "Suppression…" : "Supprimer l’artiste"}
+                  </button>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+
+        {!artistAdminLoading && !(artistAdminData?.items || []).length ? (
+          <div className="rounded-[24px] border border-emerald-300/10 bg-emerald-500/[0.05] p-8 text-center">
+            <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-300" />
+            <p className="mt-3 font-black text-emerald-100">
+              {artistAdminSearch.trim()
+                ? "Aucun artiste ne correspond à cette recherche."
+                : artistAdminFilter === "suspects"
+                  ? "Aucun artiste suspect détecté."
+                  : "Aucun artiste dans cette vue."}
+            </p>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  </>
+) : null}
 
 {activeAdminTab === "rename" ? (
   <>

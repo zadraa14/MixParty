@@ -13229,6 +13229,235 @@ function updateMusicBrainSongIdentity(
 
 
 
+
+type MusicBrainArtistAdminFilter = "suspects" | "all";
+
+function musicBrainArtistAdminSuspicion(artist: MusicBrainArtist) {
+  const name = String(artist.name || "").trim();
+  const key = normalizeMusicQuery(name);
+  const songs = Object.values(artist.songs || {});
+  const reasons: string[] = [];
+
+  if (!name || isSuspiciousArtistName(name)) {
+    reasons.push("identite_suspecte");
+  }
+
+  if (name.length <= 2) {
+    reasons.push("nom_tres_court");
+  }
+
+  if (/^@/.test(name) || /\b(topic|official|officiel|music|records?|production|channel|tv)\b/i.test(name)) {
+    reasons.push("nom_de_chaine");
+  }
+
+  if (/^[\d\W_]+$/u.test(name)) {
+    reasons.push("nom_non_artistique");
+  }
+
+  const lowConfidenceSongs = songs.filter(
+    (song) => Number(song.metadataConfidence || 0) < 60
+  ).length;
+
+  const fallbackSongs = songs.filter(
+    (song) => song.metadataSource === "QUERY_FALLBACK"
+  ).length;
+
+  if (songs.length > 0 && lowConfidenceSongs === songs.length) {
+    reasons.push("tous_morceaux_faible_confiance");
+  }
+
+  if (songs.length > 0 && fallbackSongs === songs.length) {
+    reasons.push("tous_morceaux_fallback");
+  }
+
+  const totalActivity = songs.reduce(
+    (total, song) =>
+      total +
+      Number(song.searchCount || 0) +
+      Number(song.addedCount || 0) * 2 +
+      Number(song.playedCount || 0) * 3 +
+      Number(song.voteCount || 0) * 2,
+    0
+  );
+
+  if (songs.length > 0 && totalActivity === 0) {
+    reasons.push("aucune_activite");
+  }
+
+  return {
+    suspicious: reasons.length > 0,
+    reasons: [...new Set(reasons)],
+    lowConfidenceSongs,
+    fallbackSongs,
+    totalActivity,
+  };
+}
+
+function musicBrainArtistAdminItem(artist: MusicBrainArtist) {
+  const songs = Object.values(artist.songs || {});
+  const suspicion = musicBrainArtistAdminSuspicion(artist);
+
+  const sortedSongs = songs
+    .slice()
+    .sort((a, b) => {
+      const activityA =
+        Number(a.playedCount || 0) * 5 +
+        Number(a.addedCount || 0) * 4 +
+        Number(a.voteCount || 0) * 3 +
+        Number(a.searchCount || 0);
+      const activityB =
+        Number(b.playedCount || 0) * 5 +
+        Number(b.addedCount || 0) * 4 +
+        Number(b.voteCount || 0) * 3 +
+        Number(b.searchCount || 0);
+      return activityB - activityA;
+    });
+
+  return {
+    key: artist.key,
+    name: artist.name,
+    aliases: artist.aliases || [],
+    songCount: songs.length,
+    searchCount: Number(artist.searchCount || 0),
+    firstSeenAt: Number(artist.firstSeenAt || 0),
+    lastSeenAt: Number(artist.lastSeenAt || 0),
+    suspicious: suspicion.suspicious,
+    reasons: suspicion.reasons,
+    lowConfidenceSongs: suspicion.lowConfidenceSongs,
+    fallbackSongs: suspicion.fallbackSongs,
+    totalActivity: suspicion.totalActivity,
+    examples: sortedSongs.slice(0, 6).map((song) => ({
+      videoId: song.videoId,
+      title: song.title,
+      rawTitle: song.rawTitle || song.title,
+      thumbnail: song.coverUrl || song.thumbnail || "",
+      metadataConfidence: Number(song.metadataConfidence || 0),
+      metadataSource: song.metadataSource || null,
+      playedCount: Number(song.playedCount || 0),
+      addedCount: Number(song.addedCount || 0),
+      voteCount: Number(song.voteCount || 0),
+    })),
+  };
+}
+
+app.get("/partybrain/musicbrain-artists", (req, res) => {
+  const requestedFilter = String(req.query?.filter || "suspects").trim().toLowerCase();
+  const filter: MusicBrainArtistAdminFilter =
+    requestedFilter === "all" ? "all" : "suspects";
+  const query = normalizeMusicQuery(String(req.query?.q || ""));
+  const rawLimit = Number(req.query?.limit || 300);
+  const rawOffset = Number(req.query?.offset || 0);
+  const limit = Math.max(1, Math.min(500, Number.isFinite(rawLimit) ? Math.floor(rawLimit) : 300));
+  const offset = Math.max(0, Number.isFinite(rawOffset) ? Math.floor(rawOffset) : 0);
+
+  const allItems = Object.values(musicBrain.artists)
+    .map(musicBrainArtistAdminItem)
+    .filter((item) => filter === "all" || item.suspicious)
+    .filter((item) => {
+      if (!query) return true;
+      const haystack = [
+        item.name,
+        ...item.aliases,
+        ...item.examples.flatMap((song) => [song.title, song.rawTitle]),
+      ].join(" ");
+      return normalizeMusicQuery(haystack).includes(query);
+    })
+    .sort((a, b) => {
+      if (a.suspicious !== b.suspicious) return a.suspicious ? -1 : 1;
+      if (a.reasons.length !== b.reasons.length) return b.reasons.length - a.reasons.length;
+      if (a.totalActivity !== b.totalActivity) return a.totalActivity - b.totalActivity;
+      return a.name.localeCompare(b.name, "fr");
+    });
+
+  const pageItems = allItems.slice(offset, offset + limit);
+
+  return res.json({
+    generatedAt: Date.now(),
+    filter,
+    query: String(req.query?.q || ""),
+    total: allItems.length,
+    returned: pageItems.length,
+    offset,
+    limit,
+    hasMore: offset + pageItems.length < allItems.length,
+    nextOffset:
+      offset + pageItems.length < allItems.length
+        ? offset + pageItems.length
+        : null,
+    summary: {
+      totalArtists: Object.keys(musicBrain.artists).length,
+      suspiciousArtists: Object.values(musicBrain.artists).filter(
+        (artist) => musicBrainArtistAdminSuspicion(artist).suspicious
+      ).length,
+    },
+    items: pageItems,
+  });
+});
+
+app.delete("/partybrain/maintenance/musicbrain-artists/:artistKey", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  const artistKey = String(req.params.artistKey || "").trim();
+  const artist = musicBrain.artists[artistKey];
+
+  if (!artist) {
+    return res.status(404).json({ error: "Artiste MusicBrain introuvable." });
+  }
+
+  const songs = Object.values(artist.songs || {});
+  const videoIds = new Set(songs.map((song) => song.videoId));
+  const deletedSongCount = songs.length;
+
+  // Remove artist catalog bucket.
+  delete musicBrain.artists[artistKey];
+
+  // Remove all songs attached to that fake/junk artist from the global catalog.
+  for (const videoId of videoIds) {
+    delete musicBrain.songs[videoId];
+    delete karaokeAudit.entries[videoId];
+    delete karaokeLyricsAudit.entries[videoId];
+    delete karaokeSyncEngineState.entries[videoId];
+  }
+
+  // Remove transitions involving deleted songs.
+  for (const [transitionKey, transition] of Object.entries(musicBrain.transitions)) {
+    if (
+      videoIds.has(transition.fromVideoId) ||
+      videoIds.has(transition.toVideoId)
+    ) {
+      delete musicBrain.transitions[transitionKey];
+    }
+  }
+
+  // Remove artist relations involving deleted artist.
+  for (const [relationKey, relation] of Object.entries(musicBrain.artistRelations)) {
+    if (relation.fromKey === artistKey || relation.toKey === artistKey) {
+      delete musicBrain.artistRelations[relationKey];
+    }
+  }
+
+  // Remove collaborator links pointing to deleted artist.
+  for (const remainingArtist of Object.values(musicBrain.artists)) {
+    if (remainingArtist.collaborators?.[artistKey]) {
+      delete remainingArtist.collaborators[artistKey];
+    }
+  }
+
+  musicBrain.updatedAt = Date.now();
+  saveMusicBrain();
+  saveKaraokeAudit();
+  saveKaraokeLyricsAudit();
+  saveKaraokeSyncEngineState();
+
+  return res.json({
+    ok: true,
+    artistName: artist.name,
+    deletedSongCount,
+    message: `Artiste « ${artist.name} » supprimé de MusicBrain avec ${deletedSongCount} morceau(x) associé(s).`,
+  });
+});
+
+
 function deterministicMusicBrainTitleCleanup(
   rawValue: unknown,
   artistNameValue: unknown
