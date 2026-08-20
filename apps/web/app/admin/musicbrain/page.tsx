@@ -384,6 +384,8 @@ type MusicBrainArtistAdminItem = {
   suspicious: boolean;
   tier: "trash" | "high" | "review" | "valid";
   suspicionScore: number;
+  manuallyValidated: boolean;
+  manualValidatedAt: number;
   reasons: string[];
   positiveSignals: string[];
   lowConfidenceSongs: number;
@@ -423,6 +425,7 @@ type MusicBrainArtistsResponse = {
     reviewArtists: number;
     validArtists: number;
     blockedArtists: number;
+    manuallyValidatedArtists: number;
   };
   items: MusicBrainArtistAdminItem[];
 };
@@ -625,6 +628,10 @@ export default function MusicBrainAdminPage() {
   const [artistDeleteKey, setArtistDeleteKey] = useState("");
   const [selectedArtistKeys, setSelectedArtistKeys] = useState<Record<string, boolean>>({});
   const [artistBulkDeleteLoading, setArtistBulkDeleteLoading] = useState(false);
+  const [artistValidateKey, setArtistValidateKey] = useState("");
+  const [artistRenameKey, setArtistRenameKey] = useState("");
+  const [artistRenameValue, setArtistRenameValue] = useState("");
+  const [artistRenameLoadingKey, setArtistRenameLoadingKey] = useState("");
 
   const [renameData, setRenameData] = useState<MusicBrainRenameResponse | null>(null);
   const [renameLoading, setRenameLoading] = useState(false);
@@ -996,6 +1003,114 @@ export default function MusicBrainAdminPage() {
       );
     } finally {
       setArtistDeleteKey("");
+    }
+  }
+
+
+  async function validateMusicBrainArtistFromAdmin(item: MusicBrainArtistAdminItem) {
+    if (!adminToken.trim()) {
+      setArtistAdminError(
+        "Entre le code administrateur Railway dans Maintenance avant de valider un artiste."
+      );
+      return;
+    }
+
+    setArtistValidateKey(item.key);
+    setArtistAdminError("");
+    setArtistAdminMessage("");
+
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/maintenance/musicbrain-artists/${encodeURIComponent(item.key)}/validate`,
+        {
+          method: "POST",
+          headers: {
+            "x-partybrain-admin-token": adminToken.trim(),
+          },
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Validation impossible.");
+      }
+
+      setArtistAdminMessage(data?.message || "Artiste validé.");
+      setSelectedArtistKeys((current) => {
+        const next = { ...current };
+        delete next[item.key];
+        return next;
+      });
+      await loadMusicBrainArtists(artistAdminFilter, artistAdminSearch);
+      await loadStats();
+    } catch (err) {
+      setArtistAdminError(
+        err instanceof Error ? err.message : "Validation impossible."
+      );
+    } finally {
+      setArtistValidateKey("");
+    }
+  }
+
+  async function renameMusicBrainArtistFromAdmin(item: MusicBrainArtistAdminItem) {
+    if (!adminToken.trim()) {
+      setArtistAdminError(
+        "Entre le code administrateur Railway dans Maintenance avant de renommer un artiste."
+      );
+      return;
+    }
+
+    const nextName = artistRenameValue.trim();
+    if (!nextName) {
+      setArtistAdminError("Entre le nouveau nom de l’artiste.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Corriger « ${item.name} » en « ${nextName} » ?\n\nTous ses morceaux seront déplacés vers la bonne identité. Si « ${nextName} » existe déjà, les deux artistes seront fusionnés. L’ancien nom sera bloqué pour éviter son retour.`
+    );
+    if (!confirmed) return;
+
+    setArtistRenameLoadingKey(item.key);
+    setArtistAdminError("");
+    setArtistAdminMessage("");
+
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/maintenance/musicbrain-artists/${encodeURIComponent(item.key)}/rename`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-partybrain-admin-token": adminToken.trim(),
+          },
+          body: JSON.stringify({ artistName: nextName }),
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Renommage impossible.");
+      }
+
+      setArtistAdminMessage(data?.message || "Artiste corrigé.");
+      setArtistRenameKey("");
+      setArtistRenameValue("");
+      setSelectedArtistKeys((current) => {
+        const next = { ...current };
+        delete next[item.key];
+        return next;
+      });
+
+      await loadMusicBrainArtists(artistAdminFilter, artistAdminSearch);
+      await loadStats();
+      await loadRenameItems(renameFilter, renameSearch);
+    } catch (err) {
+      setArtistAdminError(
+        err instanceof Error ? err.message : "Renommage impossible."
+      );
+    } finally {
+      setArtistRenameLoadingKey("");
     }
   }
 
@@ -3864,6 +3979,7 @@ export default function MusicBrainAdminPage() {
             MusicBrain calcule maintenant un score de suspicion avec des signaux négatifs
             et positifs. Un fallback ou une absence d’activité ne suffit plus à condamner un artiste.
             Les artistes supprimés restent mémorisés en liste noire pour empêcher leur retour.
+            Les artistes validés manuellement sont mémorisés eux aussi et sortiront définitivement des suspects.
           </p>
         </div>
 
@@ -4046,7 +4162,7 @@ export default function MusicBrainAdminPage() {
                 </label>
               </div>
 
-              <div className="grid gap-5 xl:grid-cols-[minmax(220px,.72fr)_minmax(0,1.6fr)_180px] xl:items-start">
+              <div className="grid gap-5 xl:grid-cols-[minmax(220px,.72fr)_minmax(0,1.55fr)_230px] xl:items-start">
                 <div>
                   <div className="flex items-start gap-3">
                     <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-cyan-300/12 bg-cyan-500/[0.07] text-cyan-200">
@@ -4079,6 +4195,14 @@ export default function MusicBrainAdminPage() {
                       {item.suspicionScore}/100
                     </span>
                   </div>
+
+                  {item.manuallyValidated ? (
+                    <div className="mt-3">
+                      <span className="rounded-full border border-emerald-300/15 bg-emerald-500/[0.08] px-3 py-1.5 text-[9px] font-black uppercase tracking-[.09em] text-emerald-200">
+                        ✓ Validé manuellement
+                      </span>
+                    </div>
+                  ) : null}
 
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {item.reasons.map((reason) => (
@@ -4138,21 +4262,92 @@ export default function MusicBrainAdminPage() {
                   </div>
                 </div>
 
-                <div className="rounded-[22px] border border-red-300/10 bg-red-500/[0.04] p-4">
-                  <p className="text-[10px] font-black uppercase tracking-[.16em] text-red-200/60">
-                    Suppression
+                <div className="rounded-[22px] border border-white/8 bg-black/20 p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[.16em] text-white/35">
+                    Actions
                   </p>
-                  <p className="mt-2 text-xs leading-5 text-white/40">
-                    Supprime cet artiste seulement si tu es certain qu’il n’existe pas ou que c’est une mauvaise identité.
-                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() => void validateMusicBrainArtistFromAdmin(item)}
+                    disabled={artistValidateKey === item.key || item.manuallyValidated}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border border-emerald-300/15 bg-emerald-500/[0.08] px-3 py-3 text-xs font-black text-emerald-100 transition hover:bg-emerald-500/[0.13] disabled:opacity-40"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    {item.manuallyValidated
+                      ? "Artiste validé"
+                      : artistValidateKey === item.key
+                        ? "Validation…"
+                        : "Valider l’artiste"}
+                  </button>
+
+                  {artistRenameKey === item.key ? (
+                    <div className="mt-3 rounded-2xl border border-violet-300/12 bg-violet-500/[0.05] p-3">
+                      <label className="block text-[9px] font-black uppercase tracking-[.12em] text-violet-200/70">
+                        Nouveau nom
+                      </label>
+                      <input
+                        autoFocus
+                        value={artistRenameValue}
+                        onChange={(event) => setArtistRenameValue(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void renameMusicBrainArtistFromAdmin(item);
+                          }
+                          if (event.key === "Escape") {
+                            setArtistRenameKey("");
+                            setArtistRenameValue("");
+                          }
+                        }}
+                        className="mt-2 h-10 w-full rounded-xl border border-violet-300/15 bg-black/30 px-3 text-xs font-bold text-white outline-none focus:border-violet-300/35"
+                      />
+                      <div className="mt-2 grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setArtistRenameKey("");
+                            setArtistRenameValue("");
+                          }}
+                          disabled={artistRenameLoadingKey === item.key}
+                          className="rounded-xl border border-white/8 bg-white/[0.04] px-2 py-2 text-[10px] font-black text-white/50"
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void renameMusicBrainArtistFromAdmin(item)}
+                          disabled={artistRenameLoadingKey === item.key || !artistRenameValue.trim()}
+                          className="rounded-xl border border-violet-300/15 bg-violet-500/15 px-2 py-2 text-[10px] font-black text-violet-100 disabled:opacity-40"
+                        >
+                          {artistRenameLoadingKey === item.key ? "Correction…" : "Confirmer"}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setArtistRenameKey(item.key);
+                        setArtistRenameValue(item.name);
+                        setArtistAdminError("");
+                        setArtistAdminMessage("");
+                      }}
+                      className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-violet-300/15 bg-violet-500/[0.08] px-3 py-3 text-xs font-black text-violet-100 transition hover:bg-violet-500/[0.13]"
+                    >
+                      <PencilLine className="h-4 w-4" />
+                      Renommer / fusionner
+                    </button>
+                  )}
+
                   <button
                     type="button"
                     onClick={() => void deleteMusicBrainArtist(item)}
                     disabled={artistDeleteKey === item.key}
-                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-red-300/15 bg-red-500/10 px-4 py-3 text-xs font-black text-red-100 transition hover:bg-red-500/15 disabled:opacity-40"
+                    className="mt-2 flex w-full items-center justify-center gap-2 rounded-2xl border border-red-300/15 bg-red-500/[0.08] px-3 py-3 text-xs font-black text-red-100 transition hover:bg-red-500/[0.13] disabled:opacity-40"
                   >
                     <Trash2 className="h-4 w-4" />
-                    {artistDeleteKey === item.key ? "Suppression…" : "Supprimer l’artiste"}
+                    {artistDeleteKey === item.key ? "Suppression…" : "Supprimer"}
                   </button>
                 </div>
               </div>

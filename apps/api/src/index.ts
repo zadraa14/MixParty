@@ -308,6 +308,10 @@ type MusicBrainDatabase = {
     string,
     { key: string; name: string; deletedAt: number; deletedSongCount: number }
   >;
+  validatedArtists: Record<
+    string,
+    { key: string; name: string; validatedAt: number }
+  >;
 };
 
 
@@ -1063,6 +1067,7 @@ function createEmptyMusicBrain(): MusicBrainDatabase {
     transitions: {},
     artistRelations: {},
     blockedArtists: {},
+    validatedArtists: {},
   };
 }
 
@@ -1092,6 +1097,10 @@ function loadMusicBrain() {
         blockedArtists:
           parsed.blockedArtists && typeof parsed.blockedArtists === "object"
             ? parsed.blockedArtists
+            : {},
+        validatedArtists:
+          parsed.validatedArtists && typeof parsed.validatedArtists === "object"
+            ? parsed.validatedArtists
             : {},
       };
       mergeMusicBrainArtists();
@@ -1125,6 +1134,30 @@ function blockMusicBrainArtist(artistName: unknown, deletedSongCount = 0) {
     deletedAt: Date.now(),
     deletedSongCount: Math.max(0, Number(deletedSongCount || 0)),
   };
+  return true;
+}
+
+function isMusicBrainArtistManuallyValidated(value: unknown) {
+  const key = normalizeMusicQuery(cleanArtistName(String(value || "")));
+  return Boolean(key && musicBrain.validatedArtists?.[key]);
+}
+
+function validateMusicBrainArtist(artist: MusicBrainArtist) {
+  const key = normalizeMusicQuery(artist.name);
+  if (!key) return false;
+
+  musicBrain.validatedArtists ||= {};
+  musicBrain.validatedArtists[key] = {
+    key,
+    name: artist.name,
+    validatedAt: Date.now(),
+  };
+
+  // A manually validated real artist must never remain blacklisted.
+  if (musicBrain.blockedArtists?.[key]) {
+    delete musicBrain.blockedArtists[key];
+  }
+
   return true;
 }
 
@@ -13278,6 +13311,44 @@ type MusicBrainArtistAdminFilter = "trash" | "high" | "review" | "valid" | "all"
 function musicBrainArtistAdminSuspicion(artist: MusicBrainArtist) {
   const name = String(artist.name || "").trim();
   const songs = Object.values(artist.songs || {});
+
+  if (isMusicBrainArtistManuallyValidated(name)) {
+    const totalActivity = songs.reduce(
+      (total, song) =>
+        total +
+        Number(song.searchCount || 0) +
+        Number(song.addedCount || 0) * 2 +
+        Number(song.playedCount || 0) * 3 +
+        Number(song.voteCount || 0) * 2,
+      0
+    );
+
+    return {
+      suspicious: false,
+      tier: "valid" as const,
+      score: 0,
+      reasons: [],
+      positiveSignals: ["validation_manuelle"],
+      lowConfidenceSongs: songs.filter(
+        (song) => Number(song.metadataConfidence || 0) < 60
+      ).length,
+      highConfidenceSongs: songs.filter(
+        (song) => Number(song.metadataConfidence || 0) >= 85
+      ).length,
+      fallbackSongs: songs.filter(
+        (song) => song.metadataSource === "QUERY_FALLBACK"
+      ).length,
+      strongMetadataSongs: songs.filter(
+        (song) =>
+          song.metadataSource !== "QUERY_FALLBACK" &&
+          Number(song.metadataConfidence || 0) >= 75
+      ).length,
+      playedSongs: songs.filter((song) => Number(song.playedCount || 0) > 0).length,
+      addedSongs: songs.filter((song) => Number(song.addedCount || 0) > 0).length,
+      totalActivity,
+    };
+  }
+
   const reasons: string[] = [];
   const positiveSignals: string[] = [];
   let score = 0;
@@ -13453,6 +13524,10 @@ function musicBrainArtistAdminItem(artist: MusicBrainArtist) {
     suspicious: suspicion.suspicious,
     tier: suspicion.tier,
     suspicionScore: suspicion.score,
+    manuallyValidated: isMusicBrainArtistManuallyValidated(artist.name),
+    manualValidatedAt: Number(
+      musicBrain.validatedArtists?.[normalizeMusicQuery(artist.name)]?.validatedAt || 0
+    ),
     reasons: suspicion.reasons,
     positiveSignals: suspicion.positiveSignals,
     lowConfidenceSongs: suspicion.lowConfidenceSongs,
@@ -13541,8 +13616,221 @@ app.get("/partybrain/musicbrain-artists", (req, res) => {
         (artist) => musicBrainArtistAdminSuspicion(artist).tier === "valid"
       ).length,
       blockedArtists: Object.keys(musicBrain.blockedArtists || {}).length,
+      manuallyValidatedArtists: Object.keys(musicBrain.validatedArtists || {}).length,
     },
     items: pageItems,
+  });
+});
+
+
+
+app.post("/partybrain/maintenance/musicbrain-artists/:artistKey/validate", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  const artistKey = String(req.params.artistKey || "").trim();
+  const artist = musicBrain.artists[artistKey];
+
+  if (!artist) {
+    return res.status(404).json({ error: "Artiste MusicBrain introuvable." });
+  }
+
+  validateMusicBrainArtist(artist);
+  musicBrain.updatedAt = Date.now();
+  saveMusicBrain();
+
+  return res.json({
+    ok: true,
+    artistKey,
+    artistName: artist.name,
+    message: `« ${artist.name} » est maintenant validé manuellement et ne sera plus classé comme suspect.`,
+  });
+});
+
+app.post("/partybrain/maintenance/musicbrain-artists/:artistKey/rename", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  const oldArtistKey = String(req.params.artistKey || "").trim();
+  const sourceArtist = musicBrain.artists[oldArtistKey];
+
+  if (!sourceArtist) {
+    return res.status(404).json({ error: "Artiste MusicBrain introuvable." });
+  }
+
+  const requestedName = cleanArtistName(String(req.body?.artistName || "")).slice(0, 160);
+  const newArtistKey = normalizeMusicQuery(requestedName);
+
+  if (!requestedName || !newArtistKey || isSuspiciousArtistName(requestedName)) {
+    return res.status(400).json({ error: "Le nouveau nom d’artiste est invalide." });
+  }
+
+  if (newArtistKey === oldArtistKey) {
+    sourceArtist.name = requestedName;
+    sourceArtist.lastSeenAt = Date.now();
+
+    for (const song of Object.values(sourceArtist.songs || {})) {
+      song.artistName = requestedName;
+      song.artistKey = newArtistKey;
+      song.manualRenamedAt = Date.now();
+      song.manualRenamePreviousArtistName ||= sourceArtist.name;
+      musicBrain.songs[song.videoId] = song;
+    }
+
+    validateMusicBrainArtist(sourceArtist);
+    musicBrain.updatedAt = Date.now();
+    saveMusicBrain();
+
+    return res.json({
+      ok: true,
+      merged: false,
+      artistKey: newArtistKey,
+      artistName: requestedName,
+      movedSongs: Object.keys(sourceArtist.songs || {}).length,
+      message: `Nom corrigé en « ${requestedName} » et artiste validé.`,
+    });
+  }
+
+  if (isMusicBrainArtistBlocked(requestedName)) {
+    return res.status(409).json({
+      error: `« ${requestedName} » est actuellement dans la liste noire MusicBrain. Débloque-le avant de fusionner vers cette identité.`,
+    });
+  }
+
+  const now = Date.now();
+  const sourceName = sourceArtist.name;
+  const sourceSongs = Object.values(sourceArtist.songs || {});
+  const existingTarget = musicBrain.artists[newArtistKey];
+
+  const targetArtist: MusicBrainArtist = existingTarget || {
+    key: newArtistKey,
+    name: requestedName,
+    aliases: [],
+    collaborators: {},
+    firstSeenAt: sourceArtist.firstSeenAt || now,
+    lastSeenAt: now,
+    searchCount: 0,
+    songs: {},
+  };
+
+  targetArtist.name = requestedName;
+  targetArtist.lastSeenAt = now;
+  targetArtist.firstSeenAt = Math.min(
+    Number(targetArtist.firstSeenAt || now),
+    Number(sourceArtist.firstSeenAt || now)
+  );
+  targetArtist.searchCount =
+    Number(targetArtist.searchCount || 0) + Number(sourceArtist.searchCount || 0);
+
+  const aliases = new Set<string>([
+    ...(targetArtist.aliases || []),
+    ...(sourceArtist.aliases || []),
+    sourceName,
+  ]);
+  aliases.delete(requestedName);
+  targetArtist.aliases = [...aliases].filter(Boolean).slice(0, 50);
+
+  for (const song of sourceSongs) {
+    const previousArtistName = song.artistName;
+    song.artistName = requestedName;
+    song.artistKey = newArtistKey;
+    song.manualRenamedAt = now;
+    song.manualRenamePreviousArtistName = previousArtistName;
+    song.metadataConfidence = Math.max(Number(song.metadataConfidence || 0), 95);
+    song.manualValidatedAt = now;
+    song.manualValidationCategory = "artist_rename";
+    song.lastSeenAt = now;
+
+    targetArtist.songs[song.videoId] = song;
+    musicBrain.songs[song.videoId] = song;
+
+    const karaokeEntry = karaokeAudit.entries[song.videoId];
+    if (karaokeEntry) karaokeEntry.sourceArtistName = requestedName;
+  }
+
+  // Merge collaborator knowledge from the old bucket.
+  for (const [collaboratorKey, link] of Object.entries(sourceArtist.collaborators || {})) {
+    if (collaboratorKey === newArtistKey || collaboratorKey === oldArtistKey) continue;
+    const current = targetArtist.collaborators[collaboratorKey];
+    if (current) {
+      current.count += Number(link.count || 0);
+      current.lastSeenAt = Math.max(Number(current.lastSeenAt || 0), Number(link.lastSeenAt || 0));
+    } else {
+      targetArtist.collaborators[collaboratorKey] = { ...link };
+    }
+  }
+
+  musicBrain.artists[newArtistKey] = targetArtist;
+  delete musicBrain.artists[oldArtistKey];
+
+  // Rewrite collaborator links that pointed to the old identity.
+  for (const artist of Object.values(musicBrain.artists)) {
+    const oldLink = artist.collaborators?.[oldArtistKey];
+    if (!oldLink) continue;
+
+    delete artist.collaborators[oldArtistKey];
+    if (artist.key === newArtistKey) continue;
+
+    const current = artist.collaborators[newArtistKey];
+    if (current) {
+      current.count += Number(oldLink.count || 0);
+      current.lastSeenAt = Math.max(Number(current.lastSeenAt || 0), Number(oldLink.lastSeenAt || 0));
+      current.name = requestedName;
+    } else {
+      artist.collaborators[newArtistKey] = {
+        ...oldLink,
+        key: newArtistKey,
+        name: requestedName,
+      };
+    }
+  }
+
+  // Rewrite relation graph and merge duplicate relation counters.
+  const rebuiltRelations: Record<string, MusicBrainArtistRelation> = {};
+  for (const relation of Object.values(musicBrain.artistRelations)) {
+    const fromKey = relation.fromKey === oldArtistKey ? newArtistKey : relation.fromKey;
+    const toKey = relation.toKey === oldArtistKey ? newArtistKey : relation.toKey;
+    if (!fromKey || !toKey || fromKey === toKey) continue;
+
+    const key = relationKey(fromKey, toKey);
+    const current = rebuiltRelations[key];
+    if (current) {
+      current.count += Number(relation.count || 0);
+      current.lastSeenAt = Math.max(
+        Number(current.lastSeenAt || 0),
+        Number(relation.lastSeenAt || 0)
+      );
+    } else {
+      rebuiltRelations[key] = {
+        ...relation,
+        fromKey,
+        toKey,
+      };
+    }
+  }
+  musicBrain.artistRelations = rebuiltRelations;
+
+  // The old wrong identity is tombstoned so it cannot be re-learned.
+  blockMusicBrainArtist(sourceName, 0);
+
+  // Move an existing manual validation from old identity, then validate the corrected one.
+  if (musicBrain.validatedArtists?.[oldArtistKey]) {
+    delete musicBrain.validatedArtists[oldArtistKey];
+  }
+  validateMusicBrainArtist(targetArtist);
+
+  musicBrain.updatedAt = Date.now();
+  saveMusicBrain();
+  saveKaraokeAudit();
+
+  return res.json({
+    ok: true,
+    merged: Boolean(existingTarget),
+    oldArtistName: sourceName,
+    artistKey: newArtistKey,
+    artistName: requestedName,
+    movedSongs: sourceSongs.length,
+    message: existingTarget
+      ? `« ${sourceName} » a été fusionné dans « ${requestedName} » (${sourceSongs.length} morceau(x) déplacé(s)). L’ancienne identité est bloquée.`
+      : `« ${sourceName} » devient « ${requestedName} » (${sourceSongs.length} morceau(x) déplacé(s)). L’ancienne identité est bloquée.`,
   });
 });
 
@@ -13614,6 +13902,9 @@ app.post("/partybrain/maintenance/musicbrain-artists/bulk-delete", (req, res) =>
     const videoIds = new Set(songs.map((song) => song.videoId));
 
     blockMusicBrainArtist(artist.name, songs.length);
+    if (musicBrain.validatedArtists?.[artistKey]) {
+      delete musicBrain.validatedArtists[artistKey];
+    }
 
     delete musicBrain.artists[artistKey];
 
@@ -13681,6 +13972,9 @@ app.delete("/partybrain/maintenance/musicbrain-artists/:artistKey", (req, res) =
 
   // Permanent tombstone: this identity is remembered even after deletion.
   blockMusicBrainArtist(artist.name, deletedSongCount);
+  if (musicBrain.validatedArtists?.[artistKey]) {
+    delete musicBrain.validatedArtists[artistKey];
+  }
 
   // Remove artist catalog bucket.
   delete musicBrain.artists[artistKey];
