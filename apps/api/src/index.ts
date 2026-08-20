@@ -490,9 +490,13 @@ function finalizePlayback(party: Party, reason: "ended" | "dj_skip" | "dj_previo
 function startPlaybackTelemetry(party: Party, song: Song) {
   const previous = playbackTelemetry.get(party.code);
   if (previous && previous.videoId === song.videoId && !previous.finalized) return;
+
+  const now = Date.now();
+  party.lastMusicActivityAt = now;
+
   playbackTelemetry.set(party.code, {
     videoId: song.videoId,
-    startedAt: Date.now(),
+    startedAt: now,
     lastTime: 0,
     lastState: -1,
     lastProgressBucket: 0,
@@ -797,6 +801,7 @@ type Party = {
   currentSong: Song | null;
   createdAt: number;
   lastActivityAt: number;
+  lastMusicActivityAt: number;
   creatorToken: string;
   partyBrainAutoRelayEnabled: boolean;
   rankingSnapshotCount: number;
@@ -832,6 +837,13 @@ if(fs.existsSync(dataFilePath)){
           ),
         ];
     party.lastActivityAt = Number(party.lastActivityAt || party.createdAt || Date.now());
+    // Migration V1 : une ancienne soirée sans ce champ démarre son compteur musique
+    // depuis sa dernière activité connue si un morceau était actif, sinon depuis sa création.
+    party.lastMusicActivityAt = Number(
+      party.lastMusicActivityAt ||
+        (party.currentSong ? party.lastActivityAt : party.createdAt) ||
+        Date.now(),
+    );
     party.creatorToken = typeof party.creatorToken === "string" && party.creatorToken ? party.creatorToken : randomUUID();
     party.partyBrainAutoRelayEnabled = Boolean(party.partyBrainAutoRelayEnabled);
     party.rankingSnapshotCount = Math.max(0, Number(party.rankingSnapshotCount || 0));
@@ -864,12 +876,35 @@ function generateCode() {
 
 
 
+const PARTY_NO_MUSIC_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+const PARTY_GENERAL_INACTIVITY_TIMEOUT_MS = 6 * 60 * 60 * 1000;
+
 function partyLastActivityAt(party: Party) {
   return Number(party.lastActivityAt || party.createdAt || 0);
 }
 
+function partyLastMusicActivityAt(party: Party) {
+  return Number(
+    party.lastMusicActivityAt ||
+      (party.currentSong ? party.lastActivityAt : party.createdAt) ||
+      0,
+  );
+}
+
+function partyExpirationReason(party: Party, now = Date.now()) {
+  if (now - partyLastMusicActivityAt(party) >= PARTY_NO_MUSIC_TIMEOUT_MS) {
+    return "expired_2h_without_music";
+  }
+
+  if (now - partyLastActivityAt(party) >= PARTY_GENERAL_INACTIVITY_TIMEOUT_MS) {
+    return "expired_6h_inactivity";
+  }
+
+  return null;
+}
+
 function partyIsExpired(party: Party) {
-  return Date.now() - partyLastActivityAt(party) >= 6 * 60 * 60 * 1000;
+  return Boolean(partyExpirationReason(party));
 }
 
 function findParty(code:string) {
@@ -2813,8 +2848,8 @@ function cleanOldParties(){
       party.lastActivityAt = party.createdAt;
     }
 
-    const expired = now - party.lastActivityAt >= 6 * 60 * 60 * 1000;
-    if (!expired) {
+    const expirationReason = partyExpirationReason(party, now);
+    if (!expirationReason) {
       keptParties.push(party);
       continue;
     }
@@ -2823,11 +2858,14 @@ function cleanOldParties(){
       finalizePlayback(party, "song_change");
     }
 
-    const endedAt = Number(party.lastActivityAt || now);
+    const endedAt =
+      expirationReason === "expired_2h_without_music"
+        ? Math.min(now, partyLastMusicActivityAt(party) + PARTY_NO_MUSIC_TIMEOUT_MS)
+        : Math.min(now, partyLastActivityAt(party) + PARTY_GENERAL_INACTIVITY_TIMEOUT_MS);
 
     recordPartyEvent(party, "PARTY_ENDED", {
       context: {
-        reason: "expired_6h_inactivity",
+        reason: expirationReason,
         songsPlayed: party.history?.length || 0,
         songsQueued: party.songs?.filter((song) => !song.played).length || 0,
       },
@@ -2889,7 +2927,7 @@ function cleanOldParties(){
 
 }
 
-setInterval(cleanOldParties, 10 * 60 * 1000);
+setInterval(cleanOldParties, 5 * 60 * 1000);
 
 function pruneOfflineParticipants(party: Party) {
   const cutoff = Date.now() - 30_000;
@@ -4122,6 +4160,7 @@ const party:Party = {
   currentSong: null,
   createdAt: Date.now(),
   lastActivityAt: Date.now(),
+  lastMusicActivityAt: Date.now(),
   creatorToken: randomUUID(),
   partyBrainAutoRelayEnabled: false,
   rankingSnapshotCount: 0,
@@ -5267,9 +5306,21 @@ io.on("connection",(socket)=>{
       if (telemetry) {
         telemetry.lastTime = time;
         telemetry.lastState = state;
+
+        if (state === 1) {
+          party.lastMusicActivityAt = Date.now();
+        }
+
         const bucket = Math.floor(time / 30);
         if (bucket > telemetry.lastProgressBucket) {
           telemetry.lastProgressBucket = bucket;
+
+          // Une sauvegarde toutes les ~30 s suffit pour conserver le compteur
+          // de musique en cas de redémarrage Railway, sans écrire à chaque sync.
+          if (state === 1) {
+            saveParties();
+          }
+
           const duration = Number(party.currentSong.durationSeconds || 0);
           recordPartyEvent(party, "SONG_PROGRESS", {
             song: songEventSnapshot(party, party.currentSong),
