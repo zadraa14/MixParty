@@ -198,6 +198,7 @@ addedBy:string;
 addedById?:string;
 addedByAccountId?:string;
 voters:string[];
+voterIds?:string[];
   played:boolean;
   addedAt:number;
   sourceQuery?:string;
@@ -804,12 +805,14 @@ function partyIntelligenceStats() {
 }
 
 type Participant = { id:string; name:string; avatar?:string; accountId?:string; lastSeen:number };
+type ParticipantProfile = { id:string; name:string; avatar?:string; accountId?:string };
 
 type Party = {
   code: string;
   songs: Song[];
   history: Song[];
   participants: Participant[];
+  participantProfiles: ParticipantProfile[];
   seenParticipantIds: string[];
   currentSong: Song | null;
   createdAt: number;
@@ -843,6 +846,57 @@ if(fs.existsSync(dataFilePath)){
         ? { id: `legacy-${index}-${participant}`, name: participant, lastSeen: 0 }
         : { ...participant, lastSeen: Number(participant.lastSeen || 0) }
     );
+    party.participantProfiles = Array.isArray(party.participantProfiles)
+      ? party.participantProfiles
+          .filter((profile:any) => profile && String(profile.id || "").trim())
+          .map((profile:any) => ({
+            id: String(profile.id || "").trim(),
+            name: String(profile.name || "").trim() || "Invité",
+            avatar: typeof profile.avatar === "string" && profile.avatar ? profile.avatar : undefined,
+            accountId: typeof profile.accountId === "string" && profile.accountId ? profile.accountId : undefined,
+          }))
+      : party.participants.map((participant: Participant) => ({
+          id: participant.id,
+          name: participant.name,
+          avatar: participant.avatar,
+          accountId: participant.accountId,
+        }));
+
+    for (const participant of party.participants) {
+      const existingProfile = party.participantProfiles.find(
+        (profile: ParticipantProfile) =>
+          profile.id === participant.id ||
+          Boolean(
+            participant.accountId &&
+            profile.accountId &&
+            profile.accountId === participant.accountId,
+          ),
+      );
+
+      if (existingProfile) {
+        existingProfile.id = participant.id || existingProfile.id;
+        existingProfile.name = participant.name || existingProfile.name;
+        existingProfile.avatar = participant.avatar || existingProfile.avatar;
+        existingProfile.accountId = participant.accountId || existingProfile.accountId;
+      } else {
+        party.participantProfiles.push({
+          id: participant.id,
+          name: participant.name,
+          avatar: participant.avatar,
+          accountId: participant.accountId,
+        });
+      }
+    }
+
+    party.participantProfiles = party.participantProfiles.slice(-5000);
+
+    for (const song of [...(party.songs || []), ...(party.history || [])]) {
+      if (!Array.isArray(song.voterIds)) song.voterIds = [];
+    }
+    if (party.currentSong && !Array.isArray(party.currentSong.voterIds)) {
+      party.currentSong.voterIds = [];
+    }
+
     party.seenParticipantIds = Array.isArray(party.seenParticipantIds)
       ? [...new Set(party.seenParticipantIds.map(String).filter(Boolean))]
       : [
@@ -3042,6 +3096,53 @@ function updateParty(party:Party) {
 }
 
 
+function rememberPartyParticipantProfile(
+  party: Party,
+  profileValue: {
+    id?: unknown;
+    name?: unknown;
+    avatar?: unknown;
+    accountId?: unknown;
+  },
+) {
+  const id = String(profileValue.id || "").trim();
+  const accountId = String(profileValue.accountId || "").trim();
+  const name = String(profileValue.name || "").trim();
+  const avatar =
+    typeof profileValue.avatar === "string" && profileValue.avatar
+      ? profileValue.avatar
+      : undefined;
+
+  if (!id || !name) return;
+
+  if (!Array.isArray(party.participantProfiles)) {
+    party.participantProfiles = [];
+  }
+
+  const existing = party.participantProfiles.find(
+    (profile) =>
+      profile.id === id ||
+      Boolean(accountId && profile.accountId && profile.accountId === accountId),
+  );
+
+  if (existing) {
+    existing.id = id;
+    existing.name = name || existing.name;
+    existing.avatar = avatar || existing.avatar;
+    existing.accountId = accountId || existing.accountId;
+  } else {
+    party.participantProfiles.push({
+      id,
+      name,
+      avatar,
+      accountId: accountId || undefined,
+    });
+  }
+
+  party.participantProfiles = party.participantProfiles.slice(-5000);
+}
+
+
 function registerPartyParticipant(party: Party, participantIdValue: unknown) {
   const participantId = String(participantIdValue || "").trim();
   if (!participantId) return;
@@ -3081,7 +3182,7 @@ function buildFinalPartyRanking(party: Party) {
     }
   >();
 
-  for (const participant of party.participants) {
+  for (const participant of party.participantProfiles || []) {
     const participantId = String(participant.id || "").trim();
     if (!participantId) continue;
 
@@ -4237,6 +4338,7 @@ const party:Party = {
   songs: [],
   history: [],
   participants: [],
+  participantProfiles: [],
   seenParticipantIds: [],
   currentSong: null,
   createdAt: Date.now(),
@@ -4373,10 +4475,16 @@ app.post("/party/:code/presence", (req, res) => {
   if (!party) return res.status(404).json({ error: "Soirée introuvable" });
 
   const id = String(req.body.id || "").trim();
-  const name = String(req.body.name || "").trim();
-  const avatar = typeof req.body.avatar === "string" ? req.body.avatar : undefined;
+  const requestedName = String(req.body.name || "").trim();
+  const requestedAvatar = typeof req.body.avatar === "string" ? req.body.avatar : undefined;
   const accountToken = readBearerToken(req);
   const authenticatedAccount = accountToken ? accountsStore.authenticate(accountToken) : null;
+  const name = String(authenticatedAccount?.name || requestedName).trim();
+  const avatar =
+    (typeof authenticatedAccount?.avatar === "string" && authenticatedAccount.avatar
+      ? authenticatedAccount.avatar
+      : requestedAvatar) || undefined;
+
   if (!id || !name) return res.status(400).json({ error: "Participant invalide" });
 
   const participant = party.participants.find((item) => item.id === id);
@@ -4388,9 +4496,21 @@ app.post("/party/:code/presence", (req, res) => {
     participant.accountId = authenticatedAccount?.id || participant.accountId;
     participant.lastSeen = Date.now();
   } else {
-    party.participants.push({ id, name, avatar, accountId: authenticatedAccount?.id, lastSeen: Date.now() });
+    party.participants.push({
+      id,
+      name,
+      avatar,
+      accountId: authenticatedAccount?.id,
+      lastSeen: Date.now(),
+    });
   }
 
+  rememberPartyParticipantProfile(party, {
+    id,
+    name,
+    avatar,
+    accountId: authenticatedAccount?.id,
+  });
   registerPartyParticipant(party, id);
 
   if (accountToken && authenticatedAccount) {
@@ -4491,6 +4611,7 @@ addedById: typeof addedById === "string" && addedById.trim()
   : undefined,
   addedByAccountId: authenticatedAccount?.id,
   voters: [],
+  voterIds: [],
 
   played:false,
 
@@ -4623,7 +4744,28 @@ app.post("/party/:code/song/:index/vote",(req,res)=>{
 
 
 
-  const name = req.body.name?.trim().toLowerCase();
+  const rawName = String(req.body.name || "").trim();
+  const name = rawName.toLowerCase();
+  const participantId = String(req.body.participantId || "").trim();
+  const requestedAvatar =
+    typeof req.body.avatar === "string" ? req.body.avatar : undefined;
+  const accountToken = readBearerToken(req);
+  const authenticatedAccount = accountToken ? accountsStore.authenticate(accountToken) : null;
+  const canonicalName = String(authenticatedAccount?.name || rawName).trim();
+  const canonicalAvatar =
+    (typeof authenticatedAccount?.avatar === "string" && authenticatedAccount.avatar
+      ? authenticatedAccount.avatar
+      : requestedAvatar) || undefined;
+
+  if (participantId && canonicalName) {
+    rememberPartyParticipantProfile(party, {
+      id: participantId,
+      name: canonicalName,
+      avatar: canonicalAvatar,
+      accountId: authenticatedAccount?.id,
+    });
+  }
+
 console.log("Vote reçu de :", name);
 console.log("Votants actuels :", song.voters);
 console.log("Nom reçu :", JSON.stringify(name));
@@ -4650,12 +4792,12 @@ console.log("Résultat includes :", song.voters.includes(name));
 
 
   song.voters.push(name);
+  if (!Array.isArray(song.voterIds)) song.voterIds = [];
+  song.voterIds.push(participantId);
 
   song.votes++;
   if (!song.firstVoteAt) song.firstVoteAt = Date.now();
 
-  const accountToken = readBearerToken(req);
-  const authenticatedAccount = accountToken ? accountsStore.authenticate(accountToken) : null;
   if (accountToken && authenticatedAccount) {
     accountsStore.recordVoteGiven(
       accountToken,
@@ -4728,6 +4870,9 @@ app.post("/party/:code/song/:index/downvote", (req, res) => {
   }
 
   song.voters.splice(voterIndex, 1);
+  if (Array.isArray(song.voterIds) && voterIndex < song.voterIds.length) {
+    song.voterIds.splice(voterIndex, 1);
+  }
   song.votes = Math.max(0, Number(song.votes || 0) - 1);
 
   const accountToken = readBearerToken(req);

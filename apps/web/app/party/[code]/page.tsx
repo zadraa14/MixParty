@@ -107,9 +107,11 @@ type Song = {
   coverHeight?: number;
   coverLastCheckedAt?: number;
   addedById?: string;
+  voterIds?: string[];
 };
 
-type Participant = { id: string; name: string; avatar?: string };
+type Participant = { id: string; name: string; avatar?: string; accountId?: string };
+type ParticipantProfile = { id: string; name: string; avatar?: string; accountId?: string };
 
 type DjInteraction = {
   id: string;
@@ -214,6 +216,7 @@ type Party = {
   songs: Song[];
   history: Song[];
   participants: Participant[];
+  participantProfiles?: ParticipantProfile[];
   partyBrainAutoRelayEnabled?: boolean;
   showYoutubeClip?: boolean;
 };
@@ -227,6 +230,16 @@ function normalizeParty(data: Partial<Party> | null | undefined): Party | null {
     songs: Array.isArray(data.songs) ? data.songs : [],
     history: Array.isArray(data.history) ? data.history : [],
     participants: Array.isArray(data.participants) ? data.participants : [],
+    participantProfiles: Array.isArray(data.participantProfiles)
+      ? data.participantProfiles
+      : Array.isArray(data.participants)
+        ? data.participants.map(({ id, name, avatar, accountId }) => ({
+            id,
+            name,
+            avatar,
+            accountId,
+          }))
+        : [],
     partyBrainAutoRelayEnabled: Boolean(data.partyBrainAutoRelayEnabled),
     showYoutubeClip: Boolean(data.showYoutubeClip),
   };
@@ -2084,6 +2097,8 @@ async function removeSong(index: number, song: Song) {
         },
         body: JSON.stringify({
           name: playerName,
+          participantId,
+          avatar: participantAvatar || undefined,
         }),
       },
     );
@@ -2580,7 +2595,12 @@ async function removeSong(index: number, song: Song) {
 
   function avatarForInteraction(name: string, participantIdHint?: string) {
     const normalizedName = String(name || "").trim().toLocaleLowerCase("fr-FR");
-    const participant = (party?.participants || []).find((item) =>
+    const knownProfiles = [
+      ...(party?.participantProfiles || []),
+      ...(party?.participants || []),
+    ];
+
+    const participant = knownProfiles.find((item) =>
       item.id === participantIdHint ||
       String(item.name || "").trim().toLocaleLowerCase("fr-FR") === normalizedName
     );
@@ -2620,20 +2640,21 @@ async function removeSong(index: number, song: Song) {
           id: `add-${songKey}`,
           kind: "add",
           name: song.addedBy || "Un invité",
-          avatar: avatarForInteraction(song.addedBy || "Un invité"),
+          avatar: avatarForInteraction(song.addedBy || "Un invité", song.addedById),
           detail: `a ajouté ${song.title}`,
           at: Number(song.addedAt || now),
         });
       }
 
-      for (const voter of song.voters || []) {
-        const voteKey = `${songKey}-${voter}`;
+      for (const [voterIndex, voter] of (song.voters || []).entries()) {
+        const voterId = song.voterIds?.[voterIndex];
+        const voteKey = `${songKey}-${voterId || voter}`;
         if (!snapshot.voters.has(voteKey)) {
           nextInteractions.push({
             id: `vote-${voteKey}-${now}`,
             kind: "vote",
             name: voter,
-            avatar: avatarForInteraction(voter),
+            avatar: avatarForInteraction(voter, voterId),
             detail: `a voté pour ${song.title}`,
             at: now,
           });
@@ -2643,7 +2664,14 @@ async function removeSong(index: number, song: Song) {
 
     snapshot.participants = new Set((party.participants || []).map((participant) => participant.id));
     snapshot.songs = new Set((party.songs || []).map((song) => `${song.videoId}-${song.addedAt}`));
-    snapshot.voters = new Set((party.songs || []).flatMap((song) => (song.voters || []).map((voter) => `${song.videoId}-${song.addedAt}-${voter}`)));
+    snapshot.voters = new Set(
+      (party.songs || []).flatMap((song) =>
+        (song.voters || []).map(
+          (voter, voterIndex) =>
+            `${song.videoId}-${song.addedAt}-${song.voterIds?.[voterIndex] || voter}`,
+        ),
+      ),
+    );
 
     if (nextInteractions.length) {
       setDjInteractions((current) => [...nextInteractions.reverse(), ...current].slice(0, 12));
@@ -4511,6 +4539,12 @@ async function removeSong(index: number, song: Song) {
                       <div className="space-y-2.5">
                         {queue.slice(0, 3).map((song, index) => {
                           const owner =
+                            (party.participantProfiles || []).find(
+                              (participant) => participant.id === song.addedById,
+                            ) ||
+                            (party.participantProfiles || []).find(
+                              (participant) => participant.name === song.addedBy,
+                            ) ||
                             party.participants.find(
                               (participant) => participant.id === song.addedById,
                             ) ||
@@ -4748,7 +4782,7 @@ async function removeSong(index: number, song: Song) {
                           id: `fallback-add-${index}`,
                           kind: "add" as const,
                           name: song.addedBy || "Un invité",
-                          avatar: avatarForInteraction(song.addedBy || "Un invité"),
+                          avatar: avatarForInteraction(song.addedBy || "Un invité", song.addedById),
                           detail: `a ajouté ${song.title}`,
                           at: song.addedAt,
                         })),
@@ -5185,7 +5219,7 @@ const hasVoted = Boolean(
                           <div className="v53-queue-added min-w-0 max-w-full overflow-hidden">
                             <span className="v53-queue-avatar shrink-0">
                               <img
-                                src={party.participants.find((participant) => participant.name === song.addedBy)?.avatar || defaultAvatarForParticipant(song.addedBy)}
+                                src={avatarForInteraction(song.addedBy, song.addedById)}
                                 alt=""
                               />
                             </span>
