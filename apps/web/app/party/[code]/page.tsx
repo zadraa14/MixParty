@@ -4900,105 +4900,7 @@ const canRemove =
 
             </section>
 
-            <section className="v6-intelligence-suite hidden overflow-hidden rounded-[32px] border border-cyan-300/15 bg-gradient-to-br from-cyan-400/[0.08] via-purple-500/[0.08] to-pink-500/[0.07] p-4 shadow-[0_28px_90px_rgba(0,0,0,0.28)] backdrop-blur-2xl sm:p-6 md:block">
-              <div className="v6-suite-header">
-                <div className="flex items-start gap-3">
-                  <div className={`partybrain-orb ${loadingSuggestions ? "partybrain-orb--thinking" : ""}`}>
-                    <BrainCircuit className="h-6 w-6 text-cyan-100" />
-                    <span className="partybrain-orb__ring" aria-hidden="true" />
-                  </div>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-300">PartyBrain V2</p>
-                      <span className="partybrain-status"><span className="partybrain-status__dot" />{loadingSuggestions ? "Analyse en cours" : "Analyse temps réel"}</span>
-                    </div>
-                    <h2 className="mt-1 text-2xl font-black">Le cerveau de la soirée</h2>
-                    <p className="mt-2 max-w-2xl text-sm text-white/42">Analyse les styles, l’énergie, les votes, la participation et la prochaine transition.</p>
-                  </div>
-                </div>
-                <div className="v6-confidence"><span>{moodConfidence || "—"}</span><small>% confiance</small></div>
-              </div>
-
-              <div className="v6-metrics-grid">
-                <article className="v6-metric-card v6-metric-card--mood">
-                  <div className="v6-metric-icon"><Activity className="h-5 w-5" /></div>
-                  <p>Ambiance détectée</p>
-                  <strong>{partyBrainMood}</strong>
-                  <span>Secondaire : {partyBrainSecondaryMood}</span>
-                </article>
-                <article className="v6-metric-card v6-metric-card--energy">
-                  <div className="flex items-center justify-between"><div className="v6-metric-icon"><Gauge className="h-5 w-5" /></div><b>{partyBrainEnergy || "—"}%</b></div>
-                  <p>Énergie</p>
-                  <strong>{energyLabel}</strong>
-                  <div className="partybrain-energy"><span style={{ width: `${partyBrainEnergy}%` }} /></div>
-                  <span className={energyTrend >= 0 ? "text-emerald-300" : "text-orange-300"}>{energyTrend >= 0 ? "+" : ""}{energyTrend}% sur la dynamique récente</span>
-                </article>
-                <article className="v6-metric-card v6-metric-card--people">
-                  <div className="v6-metric-icon"><UsersRound className="h-5 w-5" /></div>
-                  <p>Participation</p>
-                  <strong>{participationRate}% active</strong>
-                  <span>{party.participants.length} invité{party.participants.length > 1 ? "s" : ""} · {totalSessionVotes} votes</span>
-                </article>
-                <article className="v6-metric-card v6-metric-card--transition">
-                  <div className="flex items-center justify-between"><div className="v6-metric-icon"><Route className="h-5 w-5" /></div><b>{queue[0] ? `${nextTransitionScore}%` : "—"}</b></div>
-                  <p>Transition suivante</p>
-                  <strong>{currentStyle} → {nextStyle}</strong>
-                  <span>{transitionMessage}</span>
-                </article>
-              </div>
-
-              <div className="v6-mixmate-grid">
-                <article className="v6-mixmate-card">
-                  <div className="v6-mixmate-avatar"><img src="/branding/icon.png" alt="" /><span /></div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-black text-white">MixMate</p><span className="v6-ai-badge">Assistant IA</span></div>
-                    <p className="mt-2 text-base font-semibold leading-7 text-white/80">{mixMateAdvice}</p>
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <span className="v6-advice-chip"><Zap className="h-3.5 w-3.5" /> Conseil DJ</span>
-                      <span className="v6-advice-chip"><TrendingUp className="h-3.5 w-3.5" /> {energyTrend >= 0 ? "Dynamique positive" : "Relance conseillée"}</span>
-                    </div>
-                  </div>
-                </article>
-
-                <article className="v6-session-card">
-                  <div className="flex items-center gap-2"><MessageCircle className="h-4 w-4 text-purple-300" /><p className="text-xs font-black uppercase tracking-[0.16em] text-white/45">Analyse de soirée</p></div>
-                  <div className="v6-session-stats">
-                    <div><strong>{party.history?.length || 0}</strong><span>titres joués</span></div>
-                    <div><strong>{sessionDurationMinutes ? `${sessionDurationMinutes} min` : "—"}</strong><span>session</span></div>
-                    <div><strong>{totalSessionVotes}</strong><span>votes</span></div>
-                  </div>
-                  <p>{party.currentSong ? `Style dominant : ${partyBrainMood}. ${energyLabel === "Très forte" ? "Le pic d’ambiance est en cours." : "PartyBrain continue d’apprendre de la soirée."}` : "L’analyse démarre avec le premier morceau."}</p>
-                </article>
-              </div>
-
-              <div className="v6-recommendations-head">
-                <div><p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-300">Suggestions personnalisées</p><h3 className="mt-1 text-xl font-black">À mettre maintenant</h3></div>
-                <div className="partybrain-thinking" aria-hidden="true"><div className="partybrain-thinking__core"><WandSparkles className="h-6 w-6" /></div><p>{loadingSuggestions ? "MixMate réfléchit…" : `${suggestions.length} choix préparé${suggestions.length > 1 ? "s" : ""}`}</p></div>
-              </div>
-
-              {loadingSuggestions ? (
-                <div className="mt-5 grid gap-3 md:grid-cols-2">{[0,1,2,3].map((item) => <div key={item} className="h-28 animate-pulse rounded-[22px] border border-white/[0.06] bg-white/[0.035]" />)}</div>
-              ) : suggestions.length > 0 ? (
-                <div className="mt-5 grid gap-3 md:grid-cols-2">
-                  {suggestions.map((video, index) => {
-                    const suggestionStyle = detectPartyStyle(`${video.title || ""} ${video.artistName || ""} ${video.channelTitle || ""}`).name;
-                    const compatibility = transitionScore(currentStyle, suggestionStyle) - Math.min(8, index * 2);
-                    return (
-                      <article key={video.id} className="suggestion-card v6-suggestion-card group relative flex gap-3 overflow-hidden rounded-[22px] border border-white/[0.08] bg-black/25 p-3">
-                        <div className="absolute right-3 top-3 rounded-full border border-cyan-300/15 bg-cyan-950/70 px-2.5 py-1 text-[10px] font-black text-cyan-200">{compatibility}% compatible</div>
-                        <img src={video.thumbnail} alt={video.title} className="h-24 w-32 shrink-0 rounded-2xl object-cover" />
-                        <div className="flex min-w-0 flex-1 flex-col justify-between py-1 pr-1">
-                          <div><p className="line-clamp-2 pr-20 text-sm font-black leading-snug">{video.title}</p><p className="mt-1 text-xs text-white/35">{suggestionStyle} · Choix #{index + 1}</p></div>
-                          <button onClick={() => addYoutubeSong(video, "partybrain_suggestion")} disabled={addingVideoId === video.id} className="suggestion-add mt-3 w-fit rounded-xl px-4 py-2 text-xs font-black"><Plus className="h-3.5 w-3.5" />{addingVideoId === video.id ? "Ajout…" : "Ajouter à la file"}</button>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="mt-5 rounded-[22px] border border-dashed border-white/10 bg-black/20 px-5 py-8 text-center"><WandSparkles className="mx-auto h-6 w-6 text-purple-300" /><p className="mt-3 font-black">Lance un morceau pour réveiller PartyBrain V2.</p><p className="mt-1 text-sm text-white/35">MixMate analysera ensuite l’ambiance et guidera le DJ.</p></div>
-              )}
-            </section>
+            
 
                         {/* =====================================================
                 MOBILE — RECHERCHE MUSIQUE V1
@@ -5513,7 +5415,487 @@ const canRemove =
               </div>
             </section>
 
-<section className="hidden premium-glass-card rounded-[24px] border border-white/10 bg-white/[0.045] p-3 backdrop-blur-xl sm:p-6 md:block md:rounded-[30px]">
+
+            {!karaokeMode ? (
+              <section
+                className="hidden space-y-4 md:block"
+                aria-label="Rechercher une musique"
+              >
+                <div className="mb-1 flex items-end justify-between gap-4 px-1">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.2em] text-fuchsia-300">
+                      Recherche & inspiration
+                    </p>
+                    <h2 className="mt-1 text-2xl font-black text-white">
+                      Ajoute la prochaine musique
+                    </h2>
+                  </div>
+                  <span className="rounded-full border border-emerald-300/10 bg-emerald-500/[0.05] px-3 py-1.5 text-[9px] font-black uppercase tracking-[.12em] text-emerald-300">
+                    MusicBrain
+                  </span>
+                </div>
+              {/* Recherche */}
+              <div className="rounded-[28px] border border-white/[0.08] bg-[radial-gradient(circle_at_100%_0%,rgba(236,72,153,.10),transparent_34%),linear-gradient(145deg,rgba(17,11,29,.96),rgba(8,7,14,.98))] p-5 shadow-[0_20px_60px_rgba(0,0,0,.28)] xl:p-6">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[8px] font-black uppercase tracking-[.17em] text-fuchsia-300">
+                      Ajouter un morceau
+                    </p>
+                    <h2 className="mt-1 font-[family:var(--font-exo-2)] text-2xl font-black text-white">
+                      Trouve le son parfait
+                    </h2>
+                  </div>
+                  <span className="rounded-full border border-emerald-300/10 bg-emerald-500/[0.05] px-2.5 py-1 text-[7px] font-black text-emerald-300">
+                    MusicBrain
+                  </span>
+                </div>
+
+                <div className="relative mt-3">
+                  <Search className="pointer-events-none absolute left-4 top-1/2 h-4.5 w-4.5 -translate-y-1/2 text-white/30" />
+                  <input
+                    value={search}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      setActiveSearchCategory(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        void searchYoutube();
+                      }
+                    }}
+                    placeholder="Rechercher un titre ou un artiste"
+                    autoComplete="off"
+                    className="h-14 w-full rounded-[18px] border border-white/[0.09] bg-black/25 pl-12 pr-14 text-[14px] font-semibold text-white outline-none placeholder:text-white/25 focus:border-fuchsia-300/35"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void searchYoutube()}
+                    disabled={!search.trim() || searching}
+                    className="absolute right-2 top-1/2 grid h-10 w-10 -translate-y-1/2 place-items-center rounded-[13px] border border-fuchsia-300/15 bg-fuchsia-500/[0.10] text-fuchsia-200 disabled:opacity-30"
+                    aria-label="Rechercher"
+                  >
+                    <Search className={`h-4 w-4 ${searching ? "animate-pulse" : ""}`} />
+                  </button>
+
+                  {search.trim().length >= 1 ? (
+                    <div className="absolute left-0 right-0 top-[54px] z-40 overflow-hidden rounded-[18px] border border-fuchsia-300/[0.14] bg-[#0b0914]/[0.985] shadow-[0_18px_50px_rgba(0,0,0,.52)] backdrop-blur-xl">
+                      <div className="flex items-center justify-between border-b border-white/[0.06] px-3 py-2">
+                        <span className="text-[7px] font-black uppercase tracking-[.13em] text-fuchsia-300">
+                          Artistes
+                        </span>
+                        <span className="text-[6.5px] font-bold text-emerald-300/55">
+                          MusicBrain · 0 quota YouTube
+                        </span>
+                      </div>
+
+                      {artistSuggestionsLoading ? (
+                        <div className="px-3 py-3 text-[9px] font-bold text-white/35">
+                          Recherche d’artistes…
+                        </div>
+                      ) : artistSuggestions.length > 0 ? (
+                        <div className="max-h-[250px] overflow-y-auto p-1.5">
+                          {artistSuggestions.slice(0, 8).map((artist) => (
+                            <button
+                              key={`artist-autocomplete-${artist.id}`}
+                              type="button"
+                              onClick={() => void searchYoutube(artist.name)}
+                              className="flex w-full items-center gap-2.5 rounded-[13px] px-2 py-2 text-left active:bg-white/[0.06]"
+                            >
+                              <span className="grid h-9 w-9 shrink-0 place-items-center overflow-hidden rounded-full border border-fuchsia-300/20 bg-[linear-gradient(145deg,rgba(124,58,237,.28),rgba(236,72,153,.18))]">
+                                {artist.imageUrl ? (
+                                  <img
+                                    src={artist.imageUrl}
+                                    alt=""
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  <span className="font-[family:var(--font-exo-2)] text-sm font-black text-white/80">
+                                    {artist.name.slice(0, 1).toUpperCase()}
+                                  </span>
+                                )}
+                              </span>
+
+                              <span className="min-w-0 flex-1">
+                                <span className="block truncate text-[11px] font-black text-white">
+                                  {artist.name}
+                                </span>
+                                <span className="mt-0.5 block text-[7px] font-semibold text-white/28">
+                                  Voir les morceaux
+                                </span>
+                              </span>
+
+                              <span className="text-[14px] text-white/20">›</span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="px-3 py-3 text-[9px] font-bold text-white/30">
+                          Aucun artiste commençant par « {search.trim()} »
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <p className="text-[7px] font-semibold leading-3 text-white/28">
+                    Les suggestions d’artistes n’utilisent aucun quota YouTube.
+                  </p>
+                  {search.trim() ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearch("");
+                        setResults([]);
+                        setSearchInsight(null);
+                        setMobileSearchError("");
+                        setActiveSearchCategory(null);
+                      }}
+                      className="shrink-0 text-[7px] font-black text-white/35"
+                    >
+                      Effacer
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Catégories rapides */}
+              <div data-mixparty-horizontal-scroll="true" className="no-scrollbar flex gap-2 overflow-x-auto pb-0.5">
+                {[
+                  { label: "🔥 Hits", query: "hits france" },
+                  { label: "🎤 Rap FR", query: "rap français" },
+                  { label: "💿 2000", query: "hits années 2000" },
+                  { label: "🌍 Afro", query: "afro hits" },
+                  { label: "✨ Pop", query: "pop hits" },
+                  { label: "🕺 Dance", query: "dance party hits" },
+                  { label: "🌿 Reggae", query: "reggae hits" },
+                  { label: "🇫🇷 Français", query: "chansons françaises populaires" },
+                ].map((category, index) => {
+                  const normalizedCategoryLabel = category.label.replace(/^[^A-Za-zÀ-ÿ0-9]+\s*/u, "");
+                  const categoryActive =
+                    activeSearchCategory === normalizedCategoryLabel;
+
+                  return (
+                    <button
+                      key={category.label}
+                      type="button"
+                      onClick={() =>
+                        void searchYoutube(category.query, {
+                          updateInput: false,
+                          categoryLabel: normalizedCategoryLabel,
+                        })
+                      }
+                      className={`shrink-0 rounded-full border px-4 py-2.5 text-[10px] font-black transition ${
+                        categoryActive
+                          ? "border-fuchsia-200/45 bg-[linear-gradient(135deg,rgba(124,58,237,.95),rgba(236,72,153,.92)_55%,rgba(249,115,22,.88))] text-white shadow-[0_0_0_1px_rgba(255,255,255,.05),0_0_22px_rgba(236,72,153,.24)]"
+                          : index === 0
+                            ? "border-orange-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.15),rgba(249,115,22,.12))] text-orange-100"
+                            : "border-white/[0.08] bg-white/[0.035] text-white/58"
+                      }`}
+                      aria-pressed={categoryActive}
+                    >
+                      <span className="inline-flex items-center gap-1.5">
+                        {categoryActive ? (
+                          <span className="h-1.5 w-1.5 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,.9)]" />
+                        ) : null}
+                        {category.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Suggestions d'artistes */}
+              {search.trim().length === 0 ? (
+                <div className="rounded-[24px] border border-white/[0.07] bg-[#0a0912]/86 p-3.5">
+                  {(() => {
+                    const categoryArtists = activeSearchCategory
+                      ? Array.from(
+                          new Map(
+                            results
+                              .filter(
+                                (video) =>
+                                  isUsableDisplayedArtistName(video?.artistName) &&
+                                  !isCompilationLikeDisplayedResult(video),
+                              )
+                              .map((video) => [
+                                String(video.artistName).trim().toLowerCase(),
+                                {
+                                  id: `category:${String(video.artistName).trim().toLowerCase()}`,
+                                  name: String(video.artistName).trim(),
+                                  imageUrl: video.thumbnail,
+                                  source: "MUSICBRAIN" as const,
+                                },
+                              ]),
+                          ).values(),
+                        ).slice(0, 10)
+                      : [];
+
+                    const displayedArtists = activeSearchCategory
+                      ? categoryArtists
+                      : artistSuggestions;
+
+                    return (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="font-[family:var(--font-exo-2)] text-sm font-black text-white">
+                              {activeSearchCategory
+                                ? `Artistes · ${activeSearchCategory}`
+                                : "Suggestions d’artistes"}
+                            </p>
+                            <p className="mt-0.5 text-[7px] font-semibold text-emerald-300/55">
+                              {activeSearchCategory
+                                ? "Artistes présents dans cette sélection"
+                                : "MusicBrain + MusicBrainz · 0 quota YouTube"}
+                            </p>
+                          </div>
+                          {artistSuggestionsLoading && !activeSearchCategory ? (
+                            <span className="text-[7px] font-black text-white/25">
+                              Recherche…
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {displayedArtists.length > 0 ? (
+                          <div data-mixparty-horizontal-scroll="true" className="no-scrollbar mt-3 flex gap-3 overflow-x-auto pb-1">
+                            {displayedArtists.map((artist, index) => (
+                              <button
+                                key={artist.id}
+                                type="button"
+                                onClick={() => void searchYoutube(artist.name)}
+                                className="w-[70px] shrink-0 text-center"
+                              >
+                                <span className="relative mx-auto grid h-[58px] w-[58px] place-items-center overflow-hidden rounded-full border border-fuchsia-300/25 bg-[linear-gradient(145deg,rgba(124,58,237,.30),rgba(236,72,153,.20),rgba(249,115,22,.18))] shadow-[0_0_18px_rgba(217,70,239,.08)]">
+                                  {artist.imageUrl ? (
+                                    <img
+                                      src={artist.imageUrl}
+                                      alt=""
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : (
+                                    <span className="font-[family:var(--font-exo-2)] text-lg font-black text-white/80">
+                                      {artist.name.slice(0, 1).toUpperCase()}
+                                    </span>
+                                  )}
+                                  {index < 3 && !activeSearchCategory ? (
+                                    <span className="absolute bottom-0 right-0 grid h-4 w-4 place-items-center rounded-full border border-[#0a0912] bg-fuchsia-500 text-[5px] font-black text-white">
+                                      {index + 1}
+                                    </span>
+                                  ) : null}
+                                </span>
+                                <span className="mt-1.5 block truncate text-[8px] font-black text-white/65">
+                                  {artist.name}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="mt-3 rounded-[16px] border border-dashed border-white/[0.08] bg-black/15 px-3 py-4 text-center">
+                            <p className="text-[9px] font-bold text-white/32">
+                              {artistSuggestionsLoading
+                                ? "MusicBrain cherche les artistes…"
+                                : "Les artistes apparaîtront ici."}
+                            </p>
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              ) : null}
+
+              {/* Résultats */}
+              {searching ? (
+                <div className="rounded-[22px] border border-fuchsia-300/[0.10] bg-[linear-gradient(145deg,rgba(124,58,237,.07),rgba(236,72,153,.035),rgba(255,255,255,.02))] p-3.5">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-fuchsia-400 opacity-45" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-fuchsia-400" />
+                    </span>
+                    <p className="text-[9px] font-black text-white/55">
+                      MixParty cherche les meilleurs résultats…
+                    </p>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {[0, 1, 2].map((item) => (
+                      <div key={item} className="flex items-center gap-2.5 rounded-[15px] border border-white/[0.05] bg-black/10 p-2">
+                        <div className="h-11 w-11 shrink-0 animate-pulse rounded-[11px] bg-white/[0.06]" />
+                        <div className="min-w-0 flex-1">
+                          <div className="h-2.5 w-3/4 animate-pulse rounded-full bg-white/[0.07]" />
+                          <div className="mt-2 h-2 w-1/2 animate-pulse rounded-full bg-white/[0.04]" />
+                        </div>
+                        <div className="h-8 w-16 animate-pulse rounded-full bg-fuchsia-500/[0.07]" />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : mobileSearchError ? (
+                <div className="rounded-[20px] border border-orange-300/[0.12] bg-orange-500/[0.045] px-4 py-4">
+                  <div className="flex items-start gap-3">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[13px] border border-orange-300/15 bg-orange-400/[0.08] text-orange-200">
+                      <Search className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-black text-white/65">Pas de résultat pour l’instant</p>
+                      <p className="mt-1 text-[8px] font-semibold leading-4 text-white/32">{mobileSearchError}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : results.length > 0 ? (
+                <div className="rounded-[24px] border border-white/[0.07] bg-[#0a0912]/88 p-3">
+                  <div className="mb-2.5 flex items-center justify-between">
+                    <h3 className="font-[family:var(--font-exo-2)] text-sm font-black text-white">
+                      Résultats
+                    </h3>
+                    <span className="text-[7px] font-black text-white/24">
+                      {results.length} morceau{results.length > 1 ? "x" : ""}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {results.map((video) => {
+                      const alreadyAdded =
+                        party.currentSong?.videoId === video.id ||
+                        (party.songs || []).some(
+                          (song) => !song.played && song.videoId === video.id,
+                        );
+                      const justAdded = recentlyAddedVideoId === video.id;
+
+                      return (
+                      <div
+                        key={`mobile-search-result-${video.id}`}
+                        className={`flex items-center gap-2.5 rounded-[17px] border p-2 transition ${
+                          alreadyAdded || justAdded
+                            ? "border-emerald-300/[0.12] bg-emerald-500/[0.035]"
+                            : "border-white/[0.06] bg-white/[0.025]"
+                        }`}
+                      >
+                        <img
+                          src={video.thumbnail}
+                          alt=""
+                          className="h-12 w-12 shrink-0 rounded-[12px] object-cover"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[11px] font-black text-white">
+                            {video.title}
+                          </p>
+                          <p className="mt-0.5 truncate text-[8px] font-semibold text-white/34">
+                            {video.artistName || video.channelTitle || "Artiste"}
+                          </p>
+                        </div>
+                        {video.durationSeconds ? (
+                          <span className="shrink-0 text-[7.5px] font-black tabular-nums text-white/30">
+                            {formatPlaybackTime(video.durationSeconds)}
+                          </span>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void addYoutubeSong(video)}
+                          disabled={alreadyAdded || justAdded || addingVideoId === video.id}
+                          className={`inline-flex h-9 shrink-0 items-center gap-1 rounded-full border px-3 text-[8px] font-black transition disabled:cursor-default ${
+                            alreadyAdded || justAdded
+                              ? "border-emerald-300/20 bg-emerald-500/[0.08] text-emerald-200"
+                              : "border-pink-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.13),rgba(249,115,22,.09))] text-white disabled:opacity-45"
+                          }`}
+                        >
+                          {alreadyAdded || justAdded ? (
+                            <Check className="h-3.5 w-3.5" />
+                          ) : (
+                            <Plus className="h-3.5 w-3.5" />
+                          )}
+                          {alreadyAdded || justAdded
+                            ? "Dans la file"
+                            : addingVideoId === video.id
+                              ? "Ajout…"
+                              : "Ajouter"}
+                        </button>
+                      </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* PartyBrain suggestions */}
+              {loadingSuggestions && suggestions.length === 0 ? (
+                <div className="rounded-[22px] border border-fuchsia-300/[0.10] bg-fuchsia-500/[0.035] p-3">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-10 w-10 place-items-center rounded-[15px] border border-fuchsia-300/15 bg-fuchsia-500/[0.08]">
+                      <Bot className="h-4 w-4 animate-pulse text-fuchsia-200" />
+                    </span>
+                    <div>
+                      <p className="text-[10px] font-black text-white/58">PartyBrain analyse l’ambiance…</p>
+                      <p className="mt-0.5 text-[7px] font-semibold text-white/28">Suggestions adaptées à la soirée en cours</p>
+                    </div>
+                  </div>
+                </div>
+              ) : suggestions.length > 0 ? (
+                <div className="overflow-hidden rounded-[22px] border border-fuchsia-300/[0.12] bg-[radial-gradient(circle_at_0%_50%,rgba(168,85,247,.16),transparent_38%),linear-gradient(135deg,rgba(28,14,43,.94),rgba(11,9,20,.97))] p-3 shadow-[0_12px_32px_rgba(0,0,0,.20)]">
+                  <div className="flex items-center gap-3">
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[16px] border border-fuchsia-300/20 bg-fuchsia-500/[0.10] text-fuchsia-200">
+                      <Bot className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-[family:var(--font-exo-2)] text-sm font-black text-white">
+                          PartyBrain
+                        </h3>
+                        <span className="rounded-full border border-fuchsia-300/15 bg-fuchsia-500/[0.10] px-2 py-0.5 text-[6px] font-black uppercase tracking-[.12em] text-fuchsia-200">
+                          AI
+                        </span>
+                      </div>
+                      <p className="mt-0.5 text-[8px] leading-3 text-white/34">
+                        Selon l’ambiance actuelle.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="no-scrollbar mt-3 flex gap-3 overflow-x-auto pb-1">
+                    {suggestions.slice(0, 3).map((video) => (
+                      <div
+                        key={`mobile-search-partybrain-${video.id}`}
+                        className="flex min-w-[210px] items-center gap-2 rounded-[14px] border border-white/[0.06] bg-black/15 p-2"
+                      >
+                        <img
+                          src={video.thumbnail}
+                          alt=""
+                          className="h-10 w-10 shrink-0 rounded-[11px] object-cover"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-[10px] font-black text-white">
+                            {video.title}
+                          </p>
+                          <p className="mt-0.5 truncate text-[7.5px] font-semibold text-white/32">
+                            {video.artistName || video.channelTitle || "MixParty"}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void addYoutubeSong(video, "partybrain_suggestion")}
+                          disabled={addingVideoId === video.id}
+                          className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-orange-300/25 bg-[linear-gradient(135deg,rgba(236,72,153,.14),rgba(249,115,22,.12))] text-orange-100 disabled:opacity-40"
+                          aria-label={`Ajouter ${video.title}`}
+                        >
+                          <Plus className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+
+              <div className="flex items-start gap-2.5 rounded-[18px] border border-violet-300/[0.08] bg-violet-500/[0.035] px-3 py-3">
+                <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-violet-300" />
+                <p className="text-[8px] leading-4 text-white/35">
+                  Les recherches d’artistes sont servies par MusicBrain. YouTube reste seulement le secours ciblé pour trouver un morceau absent du catalogue connu.
+                </p>
+              </div>
+              </section>
+            ) : null}
+
+<section className={`${karaokeMode ? "hidden md:block" : "hidden"} premium-glass-card rounded-[24px] border border-white/10 bg-white/[0.045] p-3 backdrop-blur-xl sm:p-6 md:rounded-[30px]`}>
 
               <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div>
@@ -5844,6 +6226,109 @@ const canRemove =
 
               </section>
             )}
+
+
+            {/* PartyBrain desktop — volontairement placé tout en bas de la colonne principale */}
+<section className="v6-intelligence-suite hidden overflow-hidden rounded-[32px] border border-cyan-300/15 bg-gradient-to-br from-cyan-400/[0.08] via-purple-500/[0.08] to-pink-500/[0.07] p-4 shadow-[0_28px_90px_rgba(0,0,0,0.28)] backdrop-blur-2xl sm:p-6 md:block">
+              <div className="v6-suite-header">
+                <div className="flex items-start gap-3">
+                  <div className={`partybrain-orb ${loadingSuggestions ? "partybrain-orb--thinking" : ""}`}>
+                    <BrainCircuit className="h-6 w-6 text-cyan-100" />
+                    <span className="partybrain-orb__ring" aria-hidden="true" />
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-300">PartyBrain V2</p>
+                      <span className="partybrain-status"><span className="partybrain-status__dot" />{loadingSuggestions ? "Analyse en cours" : "Analyse temps réel"}</span>
+                    </div>
+                    <h2 className="mt-1 text-2xl font-black">Le cerveau de la soirée</h2>
+                    <p className="mt-2 max-w-2xl text-sm text-white/42">Analyse les styles, l’énergie, les votes, la participation et la prochaine transition.</p>
+                  </div>
+                </div>
+                <div className="v6-confidence"><span>{moodConfidence || "—"}</span><small>% confiance</small></div>
+              </div>
+
+              <div className="v6-metrics-grid">
+                <article className="v6-metric-card v6-metric-card--mood">
+                  <div className="v6-metric-icon"><Activity className="h-5 w-5" /></div>
+                  <p>Ambiance détectée</p>
+                  <strong>{partyBrainMood}</strong>
+                  <span>Secondaire : {partyBrainSecondaryMood}</span>
+                </article>
+                <article className="v6-metric-card v6-metric-card--energy">
+                  <div className="flex items-center justify-between"><div className="v6-metric-icon"><Gauge className="h-5 w-5" /></div><b>{partyBrainEnergy || "—"}%</b></div>
+                  <p>Énergie</p>
+                  <strong>{energyLabel}</strong>
+                  <div className="partybrain-energy"><span style={{ width: `${partyBrainEnergy}%` }} /></div>
+                  <span className={energyTrend >= 0 ? "text-emerald-300" : "text-orange-300"}>{energyTrend >= 0 ? "+" : ""}{energyTrend}% sur la dynamique récente</span>
+                </article>
+                <article className="v6-metric-card v6-metric-card--people">
+                  <div className="v6-metric-icon"><UsersRound className="h-5 w-5" /></div>
+                  <p>Participation</p>
+                  <strong>{participationRate}% active</strong>
+                  <span>{party.participants.length} invité{party.participants.length > 1 ? "s" : ""} · {totalSessionVotes} votes</span>
+                </article>
+                <article className="v6-metric-card v6-metric-card--transition">
+                  <div className="flex items-center justify-between"><div className="v6-metric-icon"><Route className="h-5 w-5" /></div><b>{queue[0] ? `${nextTransitionScore}%` : "—"}</b></div>
+                  <p>Transition suivante</p>
+                  <strong>{currentStyle} → {nextStyle}</strong>
+                  <span>{transitionMessage}</span>
+                </article>
+              </div>
+
+              <div className="v6-mixmate-grid">
+                <article className="v6-mixmate-card">
+                  <div className="v6-mixmate-avatar"><img src="/branding/icon.png" alt="" /><span /></div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-black text-white">MixMate</p><span className="v6-ai-badge">Assistant IA</span></div>
+                    <p className="mt-2 text-base font-semibold leading-7 text-white/80">{mixMateAdvice}</p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <span className="v6-advice-chip"><Zap className="h-3.5 w-3.5" /> Conseil DJ</span>
+                      <span className="v6-advice-chip"><TrendingUp className="h-3.5 w-3.5" /> {energyTrend >= 0 ? "Dynamique positive" : "Relance conseillée"}</span>
+                    </div>
+                  </div>
+                </article>
+
+                <article className="v6-session-card">
+                  <div className="flex items-center gap-2"><MessageCircle className="h-4 w-4 text-purple-300" /><p className="text-xs font-black uppercase tracking-[0.16em] text-white/45">Analyse de soirée</p></div>
+                  <div className="v6-session-stats">
+                    <div><strong>{party.history?.length || 0}</strong><span>titres joués</span></div>
+                    <div><strong>{sessionDurationMinutes ? `${sessionDurationMinutes} min` : "—"}</strong><span>session</span></div>
+                    <div><strong>{totalSessionVotes}</strong><span>votes</span></div>
+                  </div>
+                  <p>{party.currentSong ? `Style dominant : ${partyBrainMood}. ${energyLabel === "Très forte" ? "Le pic d’ambiance est en cours." : "PartyBrain continue d’apprendre de la soirée."}` : "L’analyse démarre avec le premier morceau."}</p>
+                </article>
+              </div>
+
+              <div className="v6-recommendations-head">
+                <div><p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-300">Suggestions personnalisées</p><h3 className="mt-1 text-xl font-black">À mettre maintenant</h3></div>
+                <div className="partybrain-thinking" aria-hidden="true"><div className="partybrain-thinking__core"><WandSparkles className="h-6 w-6" /></div><p>{loadingSuggestions ? "MixMate réfléchit…" : `${suggestions.length} choix préparé${suggestions.length > 1 ? "s" : ""}`}</p></div>
+              </div>
+
+              {loadingSuggestions ? (
+                <div className="mt-5 grid gap-3 md:grid-cols-2">{[0,1,2,3].map((item) => <div key={item} className="h-28 animate-pulse rounded-[22px] border border-white/[0.06] bg-white/[0.035]" />)}</div>
+              ) : suggestions.length > 0 ? (
+                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                  {suggestions.map((video, index) => {
+                    const suggestionStyle = detectPartyStyle(`${video.title || ""} ${video.artistName || ""} ${video.channelTitle || ""}`).name;
+                    const compatibility = transitionScore(currentStyle, suggestionStyle) - Math.min(8, index * 2);
+                    return (
+                      <article key={video.id} className="suggestion-card v6-suggestion-card group relative flex gap-3 overflow-hidden rounded-[22px] border border-white/[0.08] bg-black/25 p-3">
+                        <div className="absolute right-3 top-3 rounded-full border border-cyan-300/15 bg-cyan-950/70 px-2.5 py-1 text-[10px] font-black text-cyan-200">{compatibility}% compatible</div>
+                        <img src={video.thumbnail} alt={video.title} className="h-24 w-32 shrink-0 rounded-2xl object-cover" />
+                        <div className="flex min-w-0 flex-1 flex-col justify-between py-1 pr-1">
+                          <div><p className="line-clamp-2 pr-20 text-sm font-black leading-snug">{video.title}</p><p className="mt-1 text-xs text-white/35">{suggestionStyle} · Choix #{index + 1}</p></div>
+                          <button onClick={() => addYoutubeSong(video, "partybrain_suggestion")} disabled={addingVideoId === video.id} className="suggestion-add mt-3 w-fit rounded-xl px-4 py-2 text-xs font-black"><Plus className="h-3.5 w-3.5" />{addingVideoId === video.id ? "Ajout…" : "Ajouter à la file"}</button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="mt-5 rounded-[22px] border border-dashed border-white/10 bg-black/20 px-5 py-8 text-center"><WandSparkles className="mx-auto h-6 w-6 text-purple-300" /><p className="mt-3 font-black">Lance un morceau pour réveiller PartyBrain V2.</p><p className="mt-1 text-sm text-white/35">MixMate analysera ensuite l’ambiance et guidera le DJ.</p></div>
+              )}
+            </section>
+
 
           </div>
 
@@ -7091,6 +7576,28 @@ const canRemove =
 
         .v53-queue-actions {
           flex-shrink: 0;
+        }
+
+        /* =========================================================
+           DESKTOP — RECHERCHE & INSPIRATION UNIFIEE AVEC MOBILE
+           ========================================================= */
+        @media (min-width: 768px) {
+          .desktop-main-column [aria-label="Rechercher une musique"] {
+            width: 100%;
+            min-width: 0;
+          }
+
+          .desktop-main-column [aria-label="Rechercher une musique"] input {
+            min-height: 54px;
+          }
+
+          .desktop-main-column [aria-label="Rechercher une musique"] button {
+            -webkit-tap-highlight-color: transparent;
+          }
+
+          .desktop-main-column [aria-label="Rechercher une musique"] button:active {
+            transform: scale(.985);
+          }
         }
 
         /* =========================================================
