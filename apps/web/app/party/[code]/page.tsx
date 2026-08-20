@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { QRCodeCanvas } from "qrcode.react";
 import { io } from "socket.io-client";
@@ -120,11 +120,18 @@ type DjInteraction = {
   at: number;
 };
 
+type FloatingPlayerPosition = {
+  x: number;
+  y: number;
+};
+
 const MIXPARTY_DEFAULT_COVER = "/branding/icon.png";
 const MIXPARTY_CAST_APP_ID = "111703F0";
 const MIXPARTY_CAST_NAMESPACE = "urn:x-cast:fr.mixparty.display";
 
 const MIXPARTY_ACCOUNT_TOKEN_KEY = "mixparty.account.token.v1";
+const MIXPARTY_MOBILE_FLOATING_PLAYER_POSITION_KEY =
+  "mixparty.mobile.djFloatingPlayer.position.v1";
 
 function mixPartyAccountAuthHeader(): Record<string, string> {
   if (typeof window === "undefined") return {};
@@ -362,6 +369,8 @@ export default function PartyPage() {
   const [batteryLevel, setBatteryLevel] = useState<number | null>(null);
   const [resumeRequired, setResumeRequired] = useState(false);
   const [playerHostElement, setPlayerHostElement] = useState<HTMLDivElement | null>(null);
+  const [floatingPlayerPosition, setFloatingPlayerPosition] =
+    useState<FloatingPlayerPosition | null>(null);
   const [playerAudit, setPlayerAudit] = useState<Array<{ at: number; event: string; detail?: string }>>([]);
   const [djInteractions, setDjInteractions] = useState<DjInteraction[]>([]);
   const interactionSnapshotRef = useRef({ participants: new Set<string>(), songs: new Set<string>(), voters: new Set<string>() });
@@ -381,6 +390,129 @@ export default function PartyPage() {
   const castContextRef = useRef<any>(null);
   const castDisplayModeRef = useRef<"tv" | "karaoke">("tv");
   const castPlaybackRef = useRef({ time: 0, duration: 0, state: 2, videoId: "" });
+  const mobileFloatingPlayerRef = useRef<HTMLElement | null>(null);
+  const floatingPlayerPositionRef = useRef<FloatingPlayerPosition | null>(null);
+  const floatingPlayerDragRef = useRef<{
+    pointerId: number;
+    offsetX: number;
+    offsetY: number;
+  } | null>(null);
+
+  const mobileFloatingPlayerActive = Boolean(
+    activeMobileTab !== "playback" &&
+      isPlaybackController &&
+      party?.currentSong,
+  );
+
+  const mobileFloatingPlayerStyle =
+    mobileFloatingPlayerActive && floatingPlayerPosition
+      ? ({
+          "--mixparty-floating-left": `${floatingPlayerPosition.x}px`,
+          "--mixparty-floating-top": `${floatingPlayerPosition.y}px`,
+        } as CSSProperties)
+      : undefined;
+
+  function clampMobileFloatingPlayerPosition(
+    x: number,
+    y: number,
+  ): FloatingPlayerPosition {
+    if (typeof window === "undefined") return { x, y };
+
+    const element = mobileFloatingPlayerRef.current;
+    const width = element?.offsetWidth || (window.innerWidth <= 359 ? 200 : 220);
+    const height = element?.offsetHeight || 200;
+    const viewportWidth = window.visualViewport?.width || window.innerWidth;
+    const viewportHeight = window.visualViewport?.height || window.innerHeight;
+
+    // La poignée reste toujours visible en haut et la navigation mobile
+    // reste accessible en bas : impossible de perdre le player hors écran.
+    const sideMargin = 8;
+    const topMargin = 38;
+    const bottomReserved = 82;
+    const maxX = Math.max(sideMargin, viewportWidth - width - sideMargin);
+    const maxY = Math.max(topMargin, viewportHeight - height - bottomReserved);
+
+    return {
+      x: Math.min(Math.max(x, sideMargin), maxX),
+      y: Math.min(Math.max(y, topMargin), maxY),
+    };
+  }
+
+  function applyMobileFloatingPlayerPosition(position: FloatingPlayerPosition) {
+    floatingPlayerPositionRef.current = position;
+    setFloatingPlayerPosition(position);
+  }
+
+  function saveMobileFloatingPlayerPosition(position: FloatingPlayerPosition | null) {
+    if (!position || typeof window === "undefined") return;
+    try {
+      localStorage.setItem(
+        MIXPARTY_MOBILE_FLOATING_PLAYER_POSITION_KEY,
+        JSON.stringify(position),
+      );
+    } catch {
+      // La position reste conservée en mémoire même si le stockage local est indisponible.
+    }
+  }
+
+  function startMobileFloatingPlayerDrag(
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) {
+    if (!mobileFloatingPlayerActive) return;
+
+    const element = mobileFloatingPlayerRef.current;
+    if (!element) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const rect = element.getBoundingClientRect();
+    const current = clampMobileFloatingPlayerPosition(rect.left, rect.top);
+    applyMobileFloatingPlayerPosition(current);
+
+    floatingPlayerDragRef.current = {
+      pointerId: event.pointerId,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    };
+
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Pointer capture non disponible : les événements standards continuent de fonctionner.
+    }
+  }
+
+  function moveMobileFloatingPlayer(
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) {
+    const drag = floatingPlayerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    event.preventDefault();
+    const next = clampMobileFloatingPlayerPosition(
+      event.clientX - drag.offsetX,
+      event.clientY - drag.offsetY,
+    );
+    applyMobileFloatingPlayerPosition(next);
+  }
+
+  function stopMobileFloatingPlayerDrag(
+    event: ReactPointerEvent<HTMLButtonElement>,
+  ) {
+    const drag = floatingPlayerDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+
+    event.preventDefault();
+    floatingPlayerDragRef.current = null;
+    saveMobileFloatingPlayerPosition(floatingPlayerPositionRef.current);
+
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // Rien à libérer sur les navigateurs qui n'exposent pas pointer capture.
+    }
+  }
 
   function addPlayerAudit(event: string, detail?: string) {
     const entry = { at: Date.now(), event, detail };
@@ -450,6 +582,61 @@ export default function PartyPage() {
   useEffect(() => {
     djModeActiveRef.current = djModeActive;
   }, [djModeActive]);
+
+  useEffect(() => {
+    if (!mobileFloatingPlayerActive || typeof window === "undefined") return;
+
+    const frame = window.requestAnimationFrame(() => {
+      let restored = floatingPlayerPositionRef.current;
+
+      if (!restored) {
+        try {
+          const raw = localStorage.getItem(
+            MIXPARTY_MOBILE_FLOATING_PLAYER_POSITION_KEY,
+          );
+          const parsed = raw ? JSON.parse(raw) : null;
+          if (
+            parsed &&
+            Number.isFinite(Number(parsed.x)) &&
+            Number.isFinite(Number(parsed.y))
+          ) {
+            restored = { x: Number(parsed.x), y: Number(parsed.y) };
+          }
+        } catch {
+          restored = null;
+        }
+      }
+
+      if (!restored) {
+        const rect = mobileFloatingPlayerRef.current?.getBoundingClientRect();
+        if (rect) restored = { x: rect.left, y: rect.top };
+      }
+
+      if (restored) {
+        applyMobileFloatingPlayerPosition(
+          clampMobileFloatingPlayerPosition(restored.x, restored.y),
+        );
+      }
+    });
+
+    const keepPlayerInsideViewport = () => {
+      const current = floatingPlayerPositionRef.current;
+      if (!current) return;
+      const next = clampMobileFloatingPlayerPosition(current.x, current.y);
+      applyMobileFloatingPlayerPosition(next);
+      saveMobileFloatingPlayerPosition(next);
+    };
+
+    window.addEventListener("resize", keepPlayerInsideViewport);
+    window.visualViewport?.addEventListener("resize", keepPlayerInsideViewport);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", keepPlayerInsideViewport);
+      window.visualViewport?.removeEventListener("resize", keepPlayerInsideViewport);
+      floatingPlayerDragRef.current = null;
+    };
+  }, [mobileFloatingPlayerActive]);
 
   // Écran externe / Google Cast :
   // quand la page est ouverte avec ?display=tv, on réutilise exactement
@@ -3882,15 +4069,41 @@ async function removeSong(index: number, song: Song) {
                 Tout le moteur de lecture existant est conservé.
                ===================================================== */}
             <section
+              ref={mobileFloatingPlayerRef}
               className={`${
                 activeMobileTab === "playback"
                   ? "!block"
                   : isPlaybackController && party.currentSong
-                    ? "!block v54-mobile-playback-floating"
+                    ? `!block v54-mobile-playback-floating ${
+                        floatingPlayerPosition
+                          ? "v54-mobile-playback-floating--positioned"
+                          : ""
+                      }`
                     : "!hidden"
               } v54-mobile-playback-section md:!hidden`}
+              style={mobileFloatingPlayerStyle}
               aria-label="Lecture en cours"
             >
+              {mobileFloatingPlayerActive ? (
+                <button
+                  type="button"
+                  className="v54-mobile-floating-drag-handle"
+                  aria-label="Déplacer le lecteur vidéo"
+                  title="Déplacer le lecteur"
+                  onPointerDown={startMobileFloatingPlayerDrag}
+                  onPointerMove={moveMobileFloatingPlayer}
+                  onPointerUp={stopMobileFloatingPlayerDrag}
+                  onPointerCancel={stopMobileFloatingPlayerDrag}
+                >
+                  <span className="v54-mobile-floating-drag-grip" aria-hidden="true">
+                    <i />
+                    <i />
+                    <i />
+                  </span>
+                  <span>Déplacer</span>
+                </button>
+              ) : null}
+
               {party.currentSong ? (
                 <div className="v54-mobile-playback-stack space-y-2.5">
                   {/* PLAYER YOUTUBE — volontairement nu : aucun overlay au-dessus */}
@@ -8113,6 +8326,59 @@ const hasVoted = Boolean(
             padding: 0 !important;
             overflow: visible !important;
             isolation: isolate;
+          }
+
+          .v54-mobile-playback-floating.v54-mobile-playback-floating--positioned {
+            left: var(--mixparty-floating-left) !important;
+            top: var(--mixparty-floating-top) !important;
+            right: auto !important;
+            bottom: auto !important;
+          }
+
+          .v54-mobile-floating-drag-handle {
+            position: absolute;
+            top: -32px;
+            right: 0;
+            z-index: 4;
+            display: inline-flex;
+            height: 27px;
+            align-items: center;
+            gap: 6px;
+            border: 1px solid rgba(255,255,255,.12);
+            border-radius: 999px;
+            background: rgba(13,10,24,.94);
+            padding: 0 9px;
+            color: rgba(255,255,255,.78);
+            font-size: 10px;
+            font-weight: 900;
+            letter-spacing: .02em;
+            box-shadow: 0 8px 24px rgba(0,0,0,.34);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            touch-action: none;
+            user-select: none;
+            -webkit-user-select: none;
+            cursor: grab;
+          }
+
+          .v54-mobile-floating-drag-handle:active {
+            cursor: grabbing;
+            transform: scale(.98);
+          }
+
+          .v54-mobile-floating-drag-grip {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+          }
+
+          .v54-mobile-floating-drag-grip i {
+            display: block;
+            width: 3px;
+            height: 3px;
+            border-radius: 999px;
+            background: currentColor;
+            opacity: .72;
           }
 
           .v54-mobile-playback-floating .v54-mobile-playback-stack {
