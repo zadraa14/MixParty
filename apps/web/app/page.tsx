@@ -81,7 +81,7 @@ type MixPartyAccount = {
   avatar?: string;
 };
 
-type OnboardingIntent = "create" | "join" | null;
+type OnboardingIntent = "create" | "join" | "account" | null;
 type AuthMode = "register" | "login";
 
 const STEPS = [
@@ -360,6 +360,19 @@ export default function Home() {
     router.push(`/party/${lastParty.code}`);
   }
 
+  function openMobileProfileMenu() {
+    if (account) {
+      router.push("/profile");
+      return;
+    }
+
+    setAuthMode("register");
+    setEmailFormOpen(false);
+    setAuthError("");
+    setSocialNotice("");
+    setOnboardingIntent("account");
+  }
+
   function closeOnboarding() {
     if (authBusy) return;
     setOnboardingIntent(null);
@@ -416,6 +429,8 @@ export default function Home() {
       window.setTimeout(() => void createPartyDirect(), 0);
     } else if (intent === "join") {
       window.setTimeout(() => joinPartyDirect(), 0);
+    } else if (intent === "account") {
+      window.setTimeout(() => router.push("/profile"), 0);
     }
   }
 
@@ -661,9 +676,9 @@ export default function Home() {
 
               <button
                 type="button"
-                onClick={() => router.push(account ? "/profile" : "/")}
+                onClick={openMobileProfileMenu}
                 className="grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-white/[0.04] text-white/68"
-                aria-label="Menu"
+                aria-label="Profil"
               >
                 <Menu className="h-4 w-4" />
               </button>
@@ -1400,10 +1415,12 @@ export default function Home() {
                 Compte MixParty
               </p>
               <h2 className="mt-2 font-[family:var(--font-exo-2)] text-2xl font-black">
-                Garde ta progression
+                {onboardingIntent === "account" ? "Crée ton compte MixParty" : "Garde ta progression"}
               </h2>
               <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-white/40">
-                Crée ton compte pour conserver badges, statistiques et historique. Tu peux aussi continuer immédiatement sans compte permanent.
+                {onboardingIntent === "account"
+                  ? "Crée ton compte pour retrouver ton profil, tes badges, tes statistiques et ton historique sur tous tes appareils."
+                  : "Crée ton compte pour conserver badges, statistiques et historique. Tu peux aussi continuer immédiatement sans compte permanent."}
               </p>
             </div>
 
@@ -1476,7 +1493,9 @@ export default function Home() {
               className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-emerald-300/15 bg-emerald-500/[0.06] px-4 text-sm font-black text-emerald-100 transition hover:border-emerald-300/25 hover:bg-emerald-500/[0.10]"
             >
               <UsersRound className="h-4 w-4" />
-              Non merci — continuer en profil éphémère
+              {onboardingIntent === "account"
+                ? "Pas maintenant"
+                : "Non merci — continuer en profil éphémère"}
             </button>
           </section>
         </div>
