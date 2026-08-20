@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, BarChart3, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Clock3, Database, KeyRound, Mic2, Music2, Network, RefreshCw, Search, ShieldCheck, Sparkles, ThumbsUp, Timer, Trash2, Upload, UsersRound, Wifi, type LucideIcon } from "lucide-react";
+import { Activity, AlertTriangle, BarChart3, BookOpen, BrainCircuit, CalendarDays, CheckCircle2, Clock3, Database, KeyRound, Mic2, Music2, Network, PencilLine, RefreshCw, Search, ShieldCheck, Sparkles, ThumbsUp, Timer, Trash2, Upload, UsersRound, Wifi, type LucideIcon } from "lucide-react";
 import { getApiBaseUrl } from "../../../lib/config";
 
 type Stats = {
@@ -371,6 +371,58 @@ type KaraokeLyricsAuditData = {
   };
 };
 
+
+type MusicBrainRenameIssue =
+  | "titre_youtube_brut"
+  | "titre_avec_balise_video"
+  | "artiste_dans_le_titre"
+  | "artiste_suspect"
+  | "metadata_faible"
+  | "query_fallback"
+  | "correction_suggeree";
+
+type MusicBrainRenameItem = {
+  videoId: string;
+  title: string;
+  rawTitle: string;
+  artistName: string;
+  channelTitle: string;
+  thumbnail: string;
+  youtubeThumbnail: string;
+  albumName?: string;
+  metadataSource?: string | null;
+  metadataConfidence: number;
+  searchCount: number;
+  addedCount: number;
+  playedCount: number;
+  voteCount: number;
+  issues: MusicBrainRenameIssue[];
+  proposedTitle: string;
+  proposedArtistName: string;
+  artistProposalConfidence: number;
+  artistProposalSource: string;
+  manuallyRenamed: boolean;
+  manualRenamedAt: number;
+};
+
+type MusicBrainRenameResponse = {
+  generatedAt: number;
+  filter: "issues" | "all" | "renamed";
+  query: string;
+  total: number;
+  returned: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  nextOffset?: number | null;
+  summary: {
+    totalSongs: number;
+    issues: number;
+    renamed: number;
+  };
+  items: MusicBrainRenameItem[];
+};
+
 type CoverFilter =
   | "downloaded"
   | "pending"
@@ -508,10 +560,22 @@ export default function MusicBrainAdminPage() {
   const [autoAcceptV35Message, setAutoAcceptV35Message] = useState("");
   const [autoAcceptV35Error, setAutoAcceptV35Error] = useState("");
 
+  const [renameData, setRenameData] = useState<MusicBrainRenameResponse | null>(null);
+  const [renameLoading, setRenameLoading] = useState(false);
+  const [renameError, setRenameError] = useState("");
+  const [renameMessage, setRenameMessage] = useState("");
+  const [renameFilter, setRenameFilter] = useState<"issues" | "all" | "renamed">("issues");
+  const [renameSearch, setRenameSearch] = useState("");
+  const [renameDrafts, setRenameDrafts] = useState<
+    Record<string, { title: string; artistName: string }>
+  >({});
+  const [renameSavingVideoId, setRenameSavingVideoId] = useState("");
+
   const [activeAdminTab, setActiveAdminTab] = useState<
     | "overview"
     | "catalog"
     | "quality"
+    | "rename"
     | "karaoke"
     | "covers"
     | "academy"
@@ -786,6 +850,139 @@ export default function MusicBrainAdminPage() {
       setAutoFixLoading(false);
     }
   }
+
+  async function loadRenameItems(
+    nextFilter = renameFilter,
+    nextSearch = renameSearch
+  ) {
+    setRenameLoading(true);
+    setRenameError("");
+
+    try {
+      const params = new URLSearchParams({
+        filter: nextFilter,
+        limit: "300",
+      });
+      if (nextSearch.trim()) params.set("q", nextSearch.trim());
+
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/musicbrain-renaming/items?${params.toString()}`,
+        { cache: "no-store" }
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.error || "Outil de renommage MusicBrain indisponible.");
+      }
+
+      setRenameData(data);
+      setRenameDrafts((current) => {
+        const next = { ...current };
+        for (const item of data?.items || []) {
+          if (!next[item.videoId]) {
+            next[item.videoId] = {
+              title: item.proposedTitle || item.title,
+              artistName: item.proposedArtistName || item.artistName,
+            };
+          }
+        }
+        return next;
+      });
+    } catch (err) {
+      setRenameError(
+        err instanceof Error ? err.message : "Outil de renommage MusicBrain indisponible."
+      );
+    } finally {
+      setRenameLoading(false);
+    }
+  }
+
+  function updateRenameDraft(
+    videoId: string,
+    field: "title" | "artistName",
+    value: string
+  ) {
+    setRenameDrafts((current) => ({
+      ...current,
+      [videoId]: {
+        title: current[videoId]?.title || "",
+        artistName: current[videoId]?.artistName || "",
+        [field]: value,
+      },
+    }));
+  }
+
+  function useRenameSuggestion(item: MusicBrainRenameItem) {
+    setRenameDrafts((current) => ({
+      ...current,
+      [item.videoId]: {
+        title: item.proposedTitle || item.title,
+        artistName: item.proposedArtistName || item.artistName,
+      },
+    }));
+  }
+
+  async function saveRenameItem(item: MusicBrainRenameItem) {
+    if (!adminToken.trim()) {
+      setRenameError(
+        "Entre le code administrateur Railway dans Maintenance avant d’enregistrer une correction."
+      );
+      return;
+    }
+
+    const draft = renameDrafts[item.videoId] || {
+      title: item.title,
+      artistName: item.artistName,
+    };
+
+    if (!draft.title.trim() || !draft.artistName.trim()) {
+      setRenameError("Le titre et l’artiste sont obligatoires.");
+      return;
+    }
+
+    setRenameSavingVideoId(item.videoId);
+    setRenameError("");
+    setRenameMessage("");
+
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/maintenance/musicbrain-renaming/${encodeURIComponent(item.videoId)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-partybrain-admin-token": adminToken.trim(),
+          },
+          body: JSON.stringify({
+            title: draft.title.trim(),
+            artistName: draft.artistName.trim(),
+          }),
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Impossible d’enregistrer cette correction.");
+      }
+
+      setRenameMessage(data?.message || "Correction enregistrée.");
+      setRenameDrafts((current) => {
+        const next = { ...current };
+        delete next[item.videoId];
+        return next;
+      });
+
+      await loadRenameItems(renameFilter, renameSearch);
+      await loadStats();
+    } catch (err) {
+      setRenameError(
+        err instanceof Error ? err.message : "Impossible d’enregistrer cette correction."
+      );
+    } finally {
+      setRenameSavingVideoId("");
+    }
+  }
+
 
   async function loadPublicationQuality(
     status = publicationQualityFilter,
@@ -1672,6 +1869,13 @@ export default function MusicBrainAdminPage() {
   }, [activeAdminTab, publicationQualityFilter, selectedDiagnosticCategory]);
 
   useEffect(() => {
+    if (activeAdminTab === "rename") {
+      void loadRenameItems(renameFilter, renameSearch);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAdminTab, renameFilter]);
+
+  useEffect(() => {
     const refreshDelay = stats?.academy.running ? 5_000 : 60_000;
     const timer = window.setInterval(() => {
       void loadStats();
@@ -1723,6 +1927,7 @@ export default function MusicBrainAdminPage() {
       | "overview"
       | "catalog"
       | "quality"
+      | "rename"
       | "karaoke"
       | "covers"
       | "academy"
@@ -1735,7 +1940,7 @@ export default function MusicBrainAdminPage() {
     { key: "overview", label: "Vue d’ensemble", icon: BrainCircuit, description: "Santé générale de MusicBrain" },
     { key: "catalog", label: "Catalogue", icon: Database, description: "Artistes et morceaux appris" },
     { key: "quality", label: "Qualité", icon: ShieldCheck, description: "Entrées incertaines et réparations" },
-    { key: "karaoke", label: "Karaoké", icon: Mic2, description: "Audio officiel et LRCLIB" },
+    { key: "rename", label: "Renommage", icon: PencilLine, description: "Corriger proprement les titres et artistes" },
     { key: "covers", label: "Jaquettes", icon: Sparkles, description: "Bibliothèque HD Covers" },
     { key: "academy", label: "Academy", icon: BookOpen, description: "Apprentissage automatique" },
     { key: "activity", label: "Activité", icon: Activity, description: "Utilisateurs et soirées" },
@@ -1853,7 +2058,7 @@ export default function MusicBrainAdminPage() {
           <>
             <nav className="sticky top-3 z-40 mb-7 rounded-[24px] border border-white/10 bg-[#0b0714]/90 p-2 shadow-[0_18px_50px_rgba(0,0,0,.35)] backdrop-blur-2xl">
               <div className="flex gap-2 overflow-x-auto">
-                {adminTabs.filter((tab) => KARAOKE_ENABLED || tab.key !== "karaoke").map((tab) => {
+                {adminTabs.map((tab) => {
                   const Icon = tab.icon;
                   const selected = activeAdminTab === tab.key;
                   return (
@@ -3325,6 +3530,296 @@ export default function MusicBrainAdminPage() {
 
               </>
             ) : null}
+
+
+{activeAdminTab === "rename" ? (
+  <>
+    <section className="mb-7 overflow-hidden rounded-[30px] border border-violet-300/15 bg-[radial-gradient(circle_at_0%_0%,rgba(168,85,247,.14),transparent_34%),radial-gradient(circle_at_100%_0%,rgba(34,211,238,.10),transparent_30%),linear-gradient(145deg,rgba(18,11,31,.97),rgba(8,7,15,.99))] p-5 shadow-[0_26px_80px_rgba(0,0,0,.30)] backdrop-blur-xl sm:p-7">
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+        <div className="max-w-3xl">
+          <div className="flex items-center gap-3">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl border border-violet-300/15 bg-violet-500/10 text-violet-200">
+              <PencilLine className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-xs font-black uppercase tracking-[.24em] text-violet-300">
+                MusicBrain Renaming
+              </p>
+              <h2 className="mt-1 text-2xl font-black sm:text-3xl">
+                Nettoyer les noms de morceaux
+              </h2>
+            </div>
+          </div>
+          <p className="mt-4 max-w-2xl text-sm leading-6 text-white/50">
+            Corrige ici les titres et artistes mal nommés sans toucher au videoId, aux votes,
+            aux statistiques ni aux jaquettes. MusicBrain propose une correction, mais c’est toi qui la valides.
+          </p>
+        </div>
+
+        <div className="grid min-w-[300px] grid-cols-3 gap-2">
+          {[
+            ["À corriger", renameData?.summary.issues ?? 0, "text-amber-300"],
+            ["Corrigés", renameData?.summary.renamed ?? 0, "text-emerald-300"],
+            ["Catalogue", renameData?.summary.totalSongs ?? stats.totals.songs, "text-cyan-300"],
+          ].map(([label, value, tone]) => (
+            <div key={String(label)} className="rounded-2xl border border-white/8 bg-black/20 px-3 py-4 text-center">
+              <p className={`text-xl font-black ${tone}`}>{number.format(Number(value))}</p>
+              <p className="mt-1 text-[9px] font-black uppercase tracking-[.12em] text-white/35">{label}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { key: "issues" as const, label: "À corriger" },
+            { key: "all" as const, label: "Tous les morceaux" },
+            { key: "renamed" as const, label: "Déjà corrigés" },
+          ].map((item) => (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => {
+                setRenameFilter(item.key);
+                setRenameMessage("");
+              }}
+              className={`rounded-2xl border px-4 py-2.5 text-xs font-black transition ${
+                renameFilter === item.key
+                  ? "border-violet-300/30 bg-violet-500/15 text-violet-100"
+                  : "border-white/8 bg-black/20 text-white/45 hover:border-white/15 hover:text-white/70"
+              }`}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+
+        <form
+          className="flex min-w-0 flex-1 gap-2 lg:max-w-xl"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void loadRenameItems(renameFilter, renameSearch);
+          }}
+        >
+          <label className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-white/10 bg-black/25 px-4 py-3">
+            <Search className="h-4 w-4 shrink-0 text-white/35" />
+            <input
+              value={renameSearch}
+              onChange={(event) => setRenameSearch(event.target.value)}
+              placeholder="Chercher un titre, artiste ou chaîne…"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-white/25"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={renameLoading}
+            className="grid h-12 w-12 place-items-center rounded-2xl border border-violet-300/20 bg-violet-500/12 text-violet-100 transition hover:bg-violet-500/18 disabled:opacity-50"
+            aria-label="Rechercher"
+          >
+            <RefreshCw className={`h-4 w-4 ${renameLoading ? "animate-spin" : ""}`} />
+          </button>
+        </form>
+      </div>
+
+      {renameError ? (
+        <div className="mt-4 rounded-2xl border border-red-400/20 bg-red-500/10 p-4 text-sm font-bold text-red-100">
+          {renameError}
+        </div>
+      ) : null}
+      {renameMessage ? (
+        <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm font-bold text-emerald-100">
+          {renameMessage}
+        </div>
+      ) : null}
+    </section>
+
+    <section className="rounded-[30px] border border-white/10 bg-white/[0.04] p-4 backdrop-blur-xl sm:p-6">
+      <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[.22em] text-cyan-300">File de correction</p>
+          <h3 className="mt-1 text-2xl font-black">
+            {renameLoading
+              ? "Analyse du catalogue…"
+              : `${number.format(renameData?.total ?? 0)} morceau(x)`}
+          </h3>
+        </div>
+        <p className="text-xs text-white/35">
+          Les suggestions ne sont jamais enregistrées sans ton clic.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        {(renameData?.items || []).map((item) => {
+          const draft = renameDrafts[item.videoId] || {
+            title: item.proposedTitle || item.title,
+            artistName: item.proposedArtistName || item.artistName,
+          };
+          const titleChanged = draft.title.trim() !== item.title.trim();
+          const artistChanged = draft.artistName.trim() !== item.artistName.trim();
+          const hasChange = titleChanged || artistChanged;
+          const suggestionDiffers =
+            item.proposedTitle.trim() !== item.title.trim() ||
+            item.proposedArtistName.trim() !== item.artistName.trim();
+
+          const issueLabels: Record<MusicBrainRenameIssue, string> = {
+            titre_youtube_brut: "Titre YouTube brut",
+            titre_avec_balise_video: "Balise vidéo",
+            artiste_dans_le_titre: "Artiste répété",
+            artiste_suspect: "Artiste suspect",
+            metadata_faible: "Confiance faible",
+            query_fallback: "Fallback recherche",
+            correction_suggeree: "Suggestion disponible",
+          };
+
+          return (
+            <article
+              key={item.videoId}
+              className="overflow-hidden rounded-[26px] border border-white/[0.08] bg-[linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.018))] p-4 shadow-[0_16px_44px_rgba(0,0,0,.18)]"
+            >
+              <div className="grid gap-5 xl:grid-cols-[180px_minmax(0,.9fr)_minmax(0,1.25fr)]">
+                <div>
+                  <img
+                    src={item.thumbnail || item.youtubeThumbnail}
+                    alt=""
+                    className="aspect-square w-full rounded-[22px] border border-white/8 object-cover shadow-[0_16px_34px_rgba(0,0,0,.30)]"
+                  />
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {item.issues.map((issue) => (
+                      <span
+                        key={issue}
+                        className="rounded-full border border-amber-300/10 bg-amber-500/[0.07] px-2.5 py-1 text-[9px] font-black uppercase tracking-[.08em] text-amber-200/75"
+                      >
+                        {issueLabels[issue]}
+                      </span>
+                    ))}
+                    {item.manuallyRenamed ? (
+                      <span className="rounded-full border border-emerald-300/10 bg-emerald-500/[0.07] px-2.5 py-1 text-[9px] font-black uppercase tracking-[.08em] text-emerald-200/80">
+                        Corrigé manuellement
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black uppercase tracking-[.18em] text-white/30">Actuellement</p>
+                  <h4 className="mt-2 text-lg font-black leading-snug text-white">{item.title}</h4>
+                  <p className="mt-1 text-sm font-bold text-fuchsia-200/75">{item.artistName}</p>
+
+                  <div className="mt-4 space-y-2 rounded-2xl border border-white/7 bg-black/20 p-3 text-xs leading-5">
+                    <div>
+                      <span className="font-black text-white/35">Titre YouTube : </span>
+                      <span className="text-white/55">{item.rawTitle}</span>
+                    </div>
+                    {item.channelTitle ? (
+                      <div>
+                        <span className="font-black text-white/35">Chaîne : </span>
+                        <span className="text-white/55">{item.channelTitle}</span>
+                      </div>
+                    ) : null}
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-white/30">
+                      <span>Confiance {item.metadataConfidence}%</span>
+                      <span>{item.playedCount} lectures</span>
+                      <span>{item.addedCount} ajouts</span>
+                      <span>{item.voteCount} votes</span>
+                    </div>
+                  </div>
+
+                  {suggestionDiffers ? (
+                    <button
+                      type="button"
+                      onClick={() => useRenameSuggestion(item)}
+                      className="mt-3 inline-flex items-center gap-2 rounded-xl border border-cyan-300/15 bg-cyan-500/[0.07] px-3 py-2 text-[11px] font-black text-cyan-100 transition hover:bg-cyan-500/[0.12]"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Utiliser la suggestion MusicBrain
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="rounded-[22px] border border-violet-300/10 bg-violet-500/[0.045] p-4">
+                  <p className="text-[10px] font-black uppercase tracking-[.18em] text-violet-300">
+                    Correction
+                  </p>
+
+                  <label className="mt-3 block">
+                    <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[.12em] text-white/35">
+                      Titre
+                    </span>
+                    <input
+                      value={draft.title}
+                      onChange={(event) => updateRenameDraft(item.videoId, "title", event.target.value)}
+                      className={`h-12 w-full rounded-2xl border bg-black/25 px-4 text-sm font-bold outline-none transition ${
+                        titleChanged
+                          ? "border-violet-300/30 text-violet-100"
+                          : "border-white/10 text-white"
+                      }`}
+                    />
+                  </label>
+
+                  <label className="mt-3 block">
+                    <span className="mb-1.5 block text-[10px] font-black uppercase tracking-[.12em] text-white/35">
+                      Artiste
+                    </span>
+                    <input
+                      value={draft.artistName}
+                      onChange={(event) => updateRenameDraft(item.videoId, "artistName", event.target.value)}
+                      className={`h-12 w-full rounded-2xl border bg-black/25 px-4 text-sm font-bold outline-none transition ${
+                        artistChanged
+                          ? "border-fuchsia-300/30 text-fuchsia-100"
+                          : "border-white/10 text-white"
+                      }`}
+                    />
+                  </label>
+
+                  <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setRenameDrafts((current) => ({
+                          ...current,
+                          [item.videoId]: {
+                            title: item.title,
+                            artistName: item.artistName,
+                          },
+                        }))
+                      }
+                      disabled={!hasChange || renameSavingVideoId === item.videoId}
+                      className="flex-1 rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-xs font-black text-white/55 transition hover:bg-white/[0.07] disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void saveRenameItem(item)}
+                      disabled={!hasChange || renameSavingVideoId === item.videoId}
+                      className="flex-[1.35] rounded-2xl border border-violet-300/20 bg-gradient-to-r from-violet-600/80 to-fuchsia-600/80 px-4 py-3 text-xs font-black text-white shadow-[0_10px_30px_rgba(168,85,247,.18)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"
+                    >
+                      {renameSavingVideoId === item.videoId ? "Enregistrement…" : "Enregistrer"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+
+        {!renameLoading && !(renameData?.items || []).length ? (
+          <div className="rounded-[24px] border border-emerald-300/10 bg-emerald-500/[0.05] p-8 text-center">
+            <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-300" />
+            <p className="mt-3 font-black text-emerald-100">
+              {renameSearch.trim()
+                ? "Aucun morceau ne correspond à cette recherche."
+                : renameFilter === "issues"
+                  ? "Aucun morceau suspect à corriger."
+                  : "Aucun morceau dans cette vue."}
+            </p>
+          </div>
+        ) : null}
+      </div>
+    </section>
+  </>
+) : null}
 
 {activeAdminTab === "catalog" ? (
               <>

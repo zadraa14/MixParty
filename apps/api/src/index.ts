@@ -246,6 +246,11 @@ type MusicBrainSong = {
   autoAcceptedAt?: number;
   autoAcceptReason?: string;
 
+  // MusicBrain Renaming V1 — historique léger de la dernière correction manuelle.
+  manualRenamedAt?: number;
+  manualRenamePreviousTitle?: string;
+  manualRenamePreviousArtistName?: string;
+
   // Karaoké Sync Certified V5
   // Ne sert jamais �  supprimer le morceau de PartyBrain.
   karaokeSyncOffsetSeconds?: number;
@@ -12987,6 +12992,348 @@ app.post("/partybrain/maintenance/musicbrain-auto-accept-v35/run", (req, res) =>
 
 app.get("/partybrain/musicbrain-publication/status", (_req, res) => {
   return res.json(musicBrainPublicationSummary());
+});
+
+
+
+type MusicBrainRenameFilter = "issues" | "all" | "renamed";
+
+type MusicBrainRenameIssue =
+  | "titre_youtube_brut"
+  | "titre_avec_balise_video"
+  | "artiste_dans_le_titre"
+  | "artiste_suspect"
+  | "metadata_faible"
+  | "query_fallback"
+  | "correction_suggeree";
+
+function musicBrainRenameSuggestion(song: MusicBrainSong) {
+  const currentArtist = cleanArtistName(song.artistName || "");
+  const artistProposal = proposeMusicBrainArtistRepair(song);
+  const proposedArtist =
+    artistProposal?.proposedArtistName
+      ? cleanArtistName(artistProposal.proposedArtistName)
+      : currentArtist;
+
+  const cleanedFromRaw = cleanTrackTitle(
+    song.rawTitle || song.title || "",
+    proposedArtist || currentArtist
+  );
+  const proposedTitle = cleanDisplayTitle(cleanedFromRaw || song.title || "");
+
+  return {
+    proposedTitle: proposedTitle || cleanDisplayTitle(song.title || ""),
+    proposedArtistName: proposedArtist || currentArtist,
+    artistProposalConfidence: Number(artistProposal?.confidence || 0),
+    artistProposalSource: String(artistProposal?.sourceLabel || ""),
+  };
+}
+
+function musicBrainRenameIssues(song: MusicBrainSong): MusicBrainRenameIssue[] {
+  const issues: MusicBrainRenameIssue[] = [];
+  const rawTitle = String(song.rawTitle || song.title || "").trim();
+  const currentTitle = String(song.title || "").trim();
+  const artist = String(song.artistName || "").trim();
+
+  const suggestion = musicBrainRenameSuggestion(song);
+  const normalizedCurrentTitle = normalizeMusicQuery(currentTitle);
+  const normalizedSuggestedTitle = normalizeMusicQuery(suggestion.proposedTitle);
+  const normalizedArtist = normalizeMusicQuery(artist);
+  const normalizedRawTitle = normalizeMusicQuery(rawTitle);
+
+  if (rawTitle && currentTitle && normalizeMusicQuery(rawTitle) === normalizeMusicQuery(currentTitle)) {
+    if (
+      /\b(official\s*(music\s*)?video|official\s*audio|lyrics?|clip\s*officiel|audio\s*officiel|visuali[sz]er|4k|hd)\b/i.test(rawTitle)
+    ) {
+      issues.push("titre_youtube_brut");
+    }
+  }
+
+  if (
+    /\b(official\s*(music\s*)?video|official\s*audio|lyrics?|clip\s*officiel|audio\s*officiel|visuali[sz]er)\b/i.test(currentTitle)
+  ) {
+    issues.push("titre_avec_balise_video");
+  }
+
+  if (
+    normalizedArtist &&
+    normalizedCurrentTitle &&
+    normalizedCurrentTitle.startsWith(`${normalizedArtist} `)
+  ) {
+    issues.push("artiste_dans_le_titre");
+  }
+
+  if (isSuspiciousArtistName(artist)) {
+    issues.push("artiste_suspect");
+  }
+
+  if (Number(song.metadataConfidence || 0) < 70) {
+    issues.push("metadata_faible");
+  }
+
+  if (song.metadataSource === "QUERY_FALLBACK") {
+    issues.push("query_fallback");
+  }
+
+  if (
+    (normalizedSuggestedTitle && normalizedSuggestedTitle !== normalizedCurrentTitle) ||
+    (
+      suggestion.proposedArtistName &&
+      normalizeMusicQuery(suggestion.proposedArtistName) !== normalizedArtist
+    )
+  ) {
+    issues.push("correction_suggeree");
+  }
+
+  return [...new Set(issues)];
+}
+
+function musicBrainRenameItem(song: MusicBrainSong) {
+  const suggestion = musicBrainRenameSuggestion(song);
+  const issues = musicBrainRenameIssues(song);
+
+  return {
+    videoId: song.videoId,
+    title: song.title,
+    rawTitle: song.rawTitle || song.title,
+    artistName: song.artistName,
+    channelTitle: song.channelTitle || "",
+    thumbnail: song.coverUrl || song.thumbnail || "",
+    youtubeThumbnail: song.thumbnail || "",
+    albumName: song.albumName || "",
+    metadataSource: song.metadataSource || null,
+    metadataConfidence: Number(song.metadataConfidence || 0),
+    searchCount: Number(song.searchCount || 0),
+    addedCount: Number(song.addedCount || 0),
+    playedCount: Number(song.playedCount || 0),
+    voteCount: Number(song.voteCount || 0),
+    issues,
+    proposedTitle: suggestion.proposedTitle,
+    proposedArtistName: suggestion.proposedArtistName,
+    artistProposalConfidence: suggestion.artistProposalConfidence,
+    artistProposalSource: suggestion.artistProposalSource,
+    manuallyRenamed: Boolean(song.manualRenamedAt),
+    manualRenamedAt: Number(song.manualRenamedAt || 0),
+  };
+}
+
+function updateMusicBrainSongIdentity(
+  song: MusicBrainSong,
+  requestedTitle: unknown,
+  requestedArtistName: unknown
+) {
+  const previousTitle = String(song.title || "").trim();
+  const previousArtistName = String(song.artistName || "").trim();
+  const oldArtistKey = song.artistKey;
+
+  const title = cleanDisplayTitle(String(requestedTitle || "").trim()).slice(0, 240);
+  const artistName = cleanArtistName(String(requestedArtistName || "").trim()).slice(0, 160);
+
+  if (!title) {
+    return { ok: false as const, reason: "titre_requis" };
+  }
+  if (!artistName || isSuspiciousArtistName(artistName)) {
+    return { ok: false as const, reason: "artiste_invalide" };
+  }
+
+  const newArtistKey = normalizeMusicQuery(artistName);
+  if (!newArtistKey) {
+    return { ok: false as const, reason: "artiste_invalide" };
+  }
+
+  const titleChanged = normalizeMusicQuery(title) !== normalizeMusicQuery(previousTitle);
+  const artistChanged = newArtistKey !== oldArtistKey;
+
+  if (!titleChanged && !artistChanged) {
+    return { ok: false as const, reason: "aucun_changement" };
+  }
+
+  if (artistChanged) {
+    const oldArtist = musicBrain.artists[oldArtistKey];
+    if (oldArtist?.songs?.[song.videoId]) {
+      delete oldArtist.songs[song.videoId];
+    }
+
+    const now = Date.now();
+    const targetArtist = musicBrain.artists[newArtistKey] || {
+      key: newArtistKey,
+      name: artistName,
+      aliases: [],
+      collaborators: {},
+      firstSeenAt: song.firstSeenAt || now,
+      lastSeenAt: now,
+      searchCount: 0,
+      songs: {},
+    };
+
+    targetArtist.name = artistName;
+    targetArtist.lastSeenAt = now;
+    targetArtist.songs[song.videoId] = song;
+    musicBrain.artists[newArtistKey] = targetArtist;
+  }
+
+  song.manualRenamePreviousTitle = previousTitle;
+  song.manualRenamePreviousArtistName = previousArtistName;
+  song.manualRenamedAt = Date.now();
+
+  song.title = title;
+  song.artistName = artistName;
+  song.artistKey = newArtistKey;
+  song.metadataConfidence = Math.max(Number(song.metadataConfidence || 0), 95);
+  song.manualValidatedAt = Date.now();
+  song.manualValidationCategory = "manual_rename";
+  song.autoAcceptedAt = undefined;
+  song.autoAcceptReason = undefined;
+  song.lastSeenAt = Date.now();
+
+  if (artistChanged) {
+    const targetArtist = musicBrain.artists[newArtistKey];
+    if (targetArtist) {
+      targetArtist.songs[song.videoId] = song;
+    }
+    removeEmptyMusicBrainArtist(oldArtistKey);
+  } else {
+    const currentArtist = musicBrain.artists[newArtistKey];
+    if (currentArtist) {
+      currentArtist.name = artistName;
+      currentArtist.lastSeenAt = Date.now();
+      currentArtist.songs[song.videoId] = song;
+    }
+  }
+
+  const karaokeEntry = karaokeAudit.entries[song.videoId];
+  if (karaokeEntry) {
+    karaokeEntry.sourceTitle = title;
+    karaokeEntry.sourceArtistName = artistName;
+  }
+
+  return {
+    ok: true as const,
+    previousTitle,
+    previousArtistName,
+    title,
+    artistName,
+  };
+}
+
+app.get("/partybrain/musicbrain-renaming/items", (req, res) => {
+  const requestedFilter = String(req.query?.filter || "issues").trim().toLowerCase();
+  const filter: MusicBrainRenameFilter =
+    requestedFilter === "all" || requestedFilter === "renamed"
+      ? requestedFilter
+      : "issues";
+
+  const query = normalizeMusicQuery(String(req.query?.q || ""));
+  const rawLimit = Number(req.query?.limit || 300);
+  const rawOffset = Number(req.query?.offset || 0);
+  const limit = Math.max(
+    1,
+    Math.min(500, Number.isFinite(rawLimit) ? Math.floor(rawLimit) : 300)
+  );
+  const offset = Math.max(
+    0,
+    Number.isFinite(rawOffset) ? Math.floor(rawOffset) : 0
+  );
+
+  const allItems = Object.values(musicBrain.songs)
+    .map(musicBrainRenameItem)
+    .filter((item) => {
+      if (filter === "issues") return item.issues.length > 0;
+      if (filter === "renamed") return item.manuallyRenamed;
+      return true;
+    })
+    .filter((item) => {
+      if (!query) return true;
+      return normalizeMusicQuery(
+        `${item.title} ${item.rawTitle} ${item.artistName} ${item.channelTitle} ${item.proposedTitle} ${item.proposedArtistName}`
+      ).includes(query);
+    })
+    .sort((a, b) => {
+      if (filter === "renamed") {
+        return b.manualRenamedAt - a.manualRenamedAt;
+      }
+
+      if (a.issues.length !== b.issues.length) {
+        return b.issues.length - a.issues.length;
+      }
+
+      const activityA =
+        a.playedCount * 6 + a.addedCount * 5 + a.voteCount * 4 + a.searchCount * 2;
+      const activityB =
+        b.playedCount * 6 + b.addedCount * 5 + b.voteCount * 4 + b.searchCount * 2;
+
+      return activityB - activityA;
+    });
+
+  const pageItems = allItems.slice(offset, offset + limit);
+
+  return res.json({
+    generatedAt: Date.now(),
+    filter,
+    query: String(req.query?.q || ""),
+    total: allItems.length,
+    returned: pageItems.length,
+    offset,
+    limit,
+    hasMore: offset + pageItems.length < allItems.length,
+    nextOffset:
+      offset + pageItems.length < allItems.length
+        ? offset + pageItems.length
+        : null,
+    summary: {
+      totalSongs: Object.keys(musicBrain.songs).length,
+      issues: Object.values(musicBrain.songs).filter(
+        (song) => musicBrainRenameIssues(song).length > 0
+      ).length,
+      renamed: Object.values(musicBrain.songs).filter(
+        (song) => Boolean(song.manualRenamedAt)
+      ).length,
+    },
+    items: pageItems,
+  });
+});
+
+app.patch("/partybrain/maintenance/musicbrain-renaming/:videoId", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  const videoId = String(req.params.videoId || "").trim();
+  const song = musicBrain.songs[videoId];
+
+  if (!song) {
+    return res.status(404).json({ error: "Morceau MusicBrain introuvable." });
+  }
+
+  const result = updateMusicBrainSongIdentity(
+    song,
+    req.body?.title,
+    req.body?.artistName
+  );
+
+  if (!result.ok) {
+    const messages: Record<string, string> = {
+      titre_requis: "Le titre est obligatoire.",
+      artiste_invalide: "Le nom d’artiste est invalide.",
+      aucun_changement: "Aucune modification à enregistrer.",
+    };
+    return res.status(400).json({
+      error: messages[result.reason] || "Correction impossible.",
+      reason: result.reason,
+    });
+  }
+
+  musicBrain.updatedAt = Date.now();
+  saveMusicBrain();
+  saveKaraokeAudit();
+
+  return res.json({
+    ok: true,
+    item: musicBrainRenameItem(song),
+    previous: {
+      title: result.previousTitle,
+      artistName: result.previousArtistName,
+    },
+    message: `« ${result.previousArtistName} — ${result.previousTitle} » devient « ${result.artistName} — ${result.title} ».`,
+  });
 });
 
 
