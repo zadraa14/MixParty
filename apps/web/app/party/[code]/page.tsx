@@ -7620,6 +7620,202 @@ const hasVoted = Boolean(
         }
 
         /* =========================================================
+           DESKTOP — GLOWUP V9
+           Console DJ / File / Recherche / PartyBrain / Sidebar
+           ========================================================= */
+        @media (min-width: 1024px) {
+          .desktop-main-column,
+          .desktop-side-column {
+            position: relative;
+          }
+
+          /* Profondeur générale */
+          .desktop-main-column > section,
+          .desktop-main-column > div,
+          .desktop-side-column > section,
+          .desktop-side-column > div {
+            transition:
+              border-color .22s ease,
+              background-color .22s ease,
+              box-shadow .22s ease,
+              transform .22s ease;
+          }
+
+          /* Console DJ */
+          .dj-console-shell {
+            position: relative;
+            overflow: hidden;
+            border-color: rgba(255,255,255,.10) !important;
+            background:
+              radial-gradient(circle at 18% 0%, rgba(168,85,247,.16), transparent 34%),
+              radial-gradient(circle at 88% 12%, rgba(236,72,153,.10), transparent 32%),
+              linear-gradient(145deg, rgba(22,14,38,.97), rgba(9,7,18,.985)) !important;
+            box-shadow:
+              0 28px 80px rgba(0,0,0,.34),
+              inset 0 1px 0 rgba(255,255,255,.055);
+          }
+
+          .dj-console-shell::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background:
+              linear-gradient(120deg, transparent 0 28%, rgba(255,255,255,.035) 38%, transparent 48% 100%);
+            opacity: .5;
+          }
+
+          .dj-console-cover {
+            border: 1px solid rgba(255,255,255,.10);
+            box-shadow:
+              0 22px 60px rgba(0,0,0,.34),
+              0 0 40px rgba(168,85,247,.08);
+          }
+
+          /* File d'attente */
+          .desktop-main-column [aria-label="File d’attente"],
+          .desktop-main-column [aria-label="File d'attente"] {
+            border-color: rgba(255,255,255,.085);
+            background:
+              radial-gradient(circle at 92% 0%, rgba(244,63,94,.08), transparent 30%),
+              linear-gradient(145deg, rgba(19,13,31,.97), rgba(10,8,18,.985));
+            box-shadow:
+              0 24px 64px rgba(0,0,0,.28),
+              inset 0 1px 0 rgba(255,255,255,.04);
+          }
+
+          .desktop-main-column [aria-label="File d’attente"] article,
+          .desktop-main-column [aria-label="File d'attente"] article {
+            border-color: rgba(255,255,255,.075) !important;
+            background:
+              linear-gradient(135deg, rgba(255,255,255,.045), rgba(255,255,255,.018)) !important;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+          }
+
+          .desktop-main-column [aria-label="File d’attente"] article:hover,
+          .desktop-main-column [aria-label="File d'attente"] article:hover {
+            transform: translateY(-1px);
+            border-color: rgba(232,121,249,.18) !important;
+            box-shadow:
+              0 14px 34px rgba(0,0,0,.20),
+              inset 0 1px 0 rgba(255,255,255,.04);
+          }
+
+          .desktop-queue-heart {
+            box-shadow:
+              inset 0 1px 0 rgba(255,255,255,.04),
+              0 8px 22px rgba(0,0,0,.22);
+          }
+
+          .desktop-queue-heart:hover {
+            transform: translateY(-1px) scale(1.03);
+          }
+
+          /* Recherche & inspiration */
+          .desktop-unified-search > div:first-child {
+            padding: 0 4px 2px;
+          }
+
+          .desktop-unified-search > section,
+          .desktop-unified-search > div:not(:first-child) {
+            border-color: rgba(255,255,255,.08) !important;
+          }
+
+          .desktop-unified-search input {
+            background:
+              linear-gradient(180deg, rgba(5,5,12,.74), rgba(12,8,22,.82)) !important;
+            border-color: rgba(255,255,255,.095) !important;
+            box-shadow:
+              inset 0 1px 0 rgba(255,255,255,.03),
+              0 12px 30px rgba(0,0,0,.18);
+          }
+
+          .desktop-unified-search input:focus {
+            border-color: rgba(232,121,249,.34) !important;
+            box-shadow:
+              0 0 0 4px rgba(217,70,239,.07),
+              0 18px 40px rgba(0,0,0,.22),
+              inset 0 1px 0 rgba(255,255,255,.04);
+          }
+
+          .desktop-unified-search button {
+            transition:
+              transform .18s ease,
+              border-color .18s ease,
+              background-color .18s ease,
+              box-shadow .18s ease;
+          }
+
+          .desktop-unified-search button:hover {
+            transform: translateY(-1px);
+          }
+
+          .desktop-unified-search img {
+            box-shadow: 0 8px 24px rgba(0,0,0,.24);
+          }
+
+          /* PartyBrain en bas */
+          .v6-intelligence-suite {
+            position: relative;
+            overflow: hidden;
+            border-color: rgba(34,211,238,.14) !important;
+            background:
+              radial-gradient(circle at 0% 0%, rgba(34,211,238,.10), transparent 30%),
+              radial-gradient(circle at 100% 0%, rgba(168,85,247,.12), transparent 34%),
+              linear-gradient(145deg, rgba(10,18,29,.97), rgba(12,8,22,.985)) !important;
+            box-shadow:
+              0 26px 70px rgba(0,0,0,.30),
+              inset 0 1px 0 rgba(255,255,255,.045);
+          }
+
+          .v6-intelligence-suite::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background:
+              linear-gradient(110deg, transparent 0 42%, rgba(255,255,255,.025) 50%, transparent 58% 100%);
+          }
+
+          /* Sidebar */
+          .desktop-side-column > * {
+            border-color: rgba(255,255,255,.08) !important;
+            box-shadow:
+              0 22px 56px rgba(0,0,0,.25),
+              inset 0 1px 0 rgba(255,255,255,.035);
+          }
+
+          .desktop-side-column > *:hover {
+            border-color: rgba(232,121,249,.14) !important;
+          }
+
+          /* Micro-interactions */
+          .desktop-main-column button,
+          .desktop-side-column button,
+          .desktop-main-column a,
+          .desktop-side-column a {
+            -webkit-tap-highlight-color: transparent;
+          }
+
+          .desktop-main-column button:active,
+          .desktop-side-column button:active,
+          .desktop-main-column a:active,
+          .desktop-side-column a:active {
+            transform: scale(.985);
+          }
+        }
+
+        @media (min-width: 1440px) {
+          .desktop-main-column {
+            gap: 28px;
+          }
+
+          .desktop-side-column {
+            gap: 24px;
+          }
+        }
+
+        /* =========================================================
            DESKTOP — RECHERCHE & INSPIRATION UNIFIEE AVEC MOBILE
            ========================================================= */
         @media (min-width: 768px) {
