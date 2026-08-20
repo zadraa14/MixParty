@@ -7085,6 +7085,152 @@ const canRemove =
         }
 
         /* =========================================================
+           MOBILE — POLISH FINAL / APP NATIVE UNIFIEE
+           Lecture / Ajouter / File / Classement / Profil
+           ========================================================= */
+        @media (max-width: 767px) {
+          .v54-mobile-tab-shell {
+            width: 100%;
+            min-width: 0;
+            max-width: 100%;
+            animation: v54-native-tab-in 220ms cubic-bezier(.22,1,.36,1) both;
+          }
+
+          .v54-mobile-tab-shell > * {
+            min-width: 0;
+            max-width: 100%;
+          }
+
+          .v54-mobile-tab-shell :is(
+            article,
+            section,
+            .premium-glass-card,
+            [class*="rounded-[2"],
+            [class*="rounded-[3"]
+          ) {
+            -webkit-tap-highlight-color: transparent;
+          }
+
+          /* Même respiration verticale d'un onglet à l'autre. */
+          .v54-mobile-playback-section,
+          .v54-mobile-add-section,
+          .v54-mobile-queue-section,
+          .v54-mobile-ranking-section,
+          .v54-mobile-profile-section {
+            padding-top: 2px;
+            padding-bottom: 4px;
+          }
+
+          /* Cartes principales : même rayon, bordure et profondeur. */
+          .v54-mobile-tab-shell .premium-glass-card,
+          .v54-mobile-tab-shell [class*="rounded-[28px]"],
+          .v54-mobile-tab-shell [class*="rounded-[30px]"] {
+            border-color: rgba(255,255,255,.075);
+            box-shadow:
+              0 18px 48px rgba(0,0,0,.26),
+              inset 0 1px 0 rgba(255,255,255,.045);
+          }
+
+          /* Boutons tactiles : gabarit cohérent et réponse "native". */
+          .v54-mobile-tab-shell button:not([class*="h-[54px]"]):not([class*="h-[48px]"]),
+          .v54-mobile-tab-shell a[role="button"] {
+            min-height: 44px;
+          }
+
+          .v54-mobile-tab-shell button,
+          .v54-mobile-tab-shell a {
+            -webkit-tap-highlight-color: transparent;
+          }
+
+          .v54-mobile-tab-shell button:active,
+          .v54-mobile-tab-shell a:active {
+            transform: scale(.985);
+          }
+
+          /* Titres/labels : même rythme typographique. */
+          .v54-mobile-tab-shell h1,
+          .v54-mobile-tab-shell h2,
+          .v54-mobile-tab-shell h3 {
+            letter-spacing: -.018em;
+          }
+
+          .v54-mobile-tab-shell p,
+          .v54-mobile-tab-shell span {
+            text-rendering: optimizeLegibility;
+          }
+
+          /* Champs de recherche / inputs : même sensation d'interface. */
+          .v54-mobile-tab-shell input,
+          .v54-mobile-tab-shell textarea,
+          .v54-mobile-tab-shell select {
+            min-height: 46px;
+            border-radius: 16px;
+            border-color: rgba(255,255,255,.09);
+            background-color: rgba(7,6,15,.46);
+            box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+          }
+
+          .v54-mobile-tab-shell input:focus,
+          .v54-mobile-tab-shell textarea:focus,
+          .v54-mobile-tab-shell select:focus {
+            outline: none;
+            border-color: rgba(216,180,254,.32);
+            box-shadow:
+              0 0 0 3px rgba(168,85,247,.08),
+              inset 0 1px 0 rgba(255,255,255,.035);
+          }
+
+          /* Les rails horizontaux ont le même "snap" visuel. */
+          .v54-mobile-tab-shell [data-mixparty-horizontal-scroll="true"] {
+            scrollbar-width: none;
+            -webkit-overflow-scrolling: touch;
+            scroll-behavior: smooth;
+            overscroll-behavior-x: contain;
+          }
+
+          .v54-mobile-tab-shell [data-mixparty-horizontal-scroll="true"]::-webkit-scrollbar {
+            display: none;
+          }
+
+          /* File / Classement : lignes avec le même volume tactile. */
+          .v54-mobile-queue-section button,
+          .v54-mobile-ranking-section button {
+            border-radius: 18px;
+          }
+
+          /* Profil : évite l'impression "page web embarquée". */
+          .v54-mobile-profile-section {
+            overflow-x: clip;
+          }
+
+          .v54-mobile-profile-section > div {
+            max-width: 100%;
+          }
+        }
+
+        @keyframes v54-native-tab-in {
+          from {
+            opacity: .72;
+            transform: translateY(4px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .v54-mobile-tab-shell {
+            animation: none !important;
+          }
+
+          .v54-mobile-tab-shell button:active,
+          .v54-mobile-tab-shell a:active {
+            transform: none !important;
+          }
+        }
+
+        /* =========================================================
            MOBILE — POLISH LECTURE EN COURS
            320 px -> grands Android/iPhone + paysage
            ========================================================= */
