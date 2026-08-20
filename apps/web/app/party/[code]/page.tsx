@@ -346,6 +346,9 @@ export default function PartyPage() {
   const [djModeActive, setDjModeActive] = useState(false);
   const [mobileDjPanelOpen, setMobileDjPanelOpen] = useState(false);
   const [profileOverlayOpen, setProfileOverlayOpen] = useState(false);
+  const [queueActionNotice, setQueueActionNotice] = useState("");
+  const [pendingMobileRemoval, setPendingMobileRemoval] = useState<{ index: number; song: Song } | null>(null);
+  const [removingQueuedSong, setRemovingQueuedSong] = useState(false);
   const [isPartyCreator, setIsPartyCreator] = useState(false);
   const [endPartyConfirmOpen, setEndPartyConfirmOpen] = useState(false);
   const [endingParty, setEndingParty] = useState(false);
@@ -582,6 +585,24 @@ export default function PartyPage() {
   useEffect(() => {
     djModeActiveRef.current = djModeActive;
   }, [djModeActive]);
+
+  useEffect(() => {
+    if (!queueActionNotice) return;
+    const timer = window.setTimeout(() => setQueueActionNotice(""), 2600);
+    return () => window.clearTimeout(timer);
+  }, [queueActionNotice]);
+
+  function isMobileViewport() {
+    return typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+  }
+
+  function showQueueActionMessage(message: string) {
+    if (isMobileViewport()) {
+      setQueueActionNotice(message);
+      return;
+    }
+    window.alert(message);
+  }
 
   useEffect(() => {
     if (!mobileFloatingPlayerActive || typeof window === "undefined") return;
@@ -1937,30 +1958,11 @@ sourceQuery: video.sourceQuery || search.trim(),
       setAddingVideoId(null);
     }
   }
-async function removeSong(index: number, song: Song) {
+async function performRemoveSong(index: number, song: Song) {
   const creatorToken =
     localStorage.getItem(`mixparty_creator_${code}`) || "";
 
-  const isCreator = Boolean(creatorToken);
-
-  const isOwner = Boolean(
-    song.addedById &&
-    participantId &&
-    song.addedById === participantId
-  );
-
-  if (!isCreator && !isOwner) {
-    window.alert(
-      "Tu peux supprimer uniquement les musiques que tu as ajoutées."
-    );
-    return;
-  }
-
-  const confirmed = window.confirm(
-    `Supprimer « ${song.title} » de la file ?`
-  );
-
-  if (!confirmed) return;
+  setRemovingQueuedSong(true);
 
   try {
     const response = await fetch(
@@ -1981,7 +1983,7 @@ async function removeSong(index: number, song: Song) {
     const updated = await response.json();
 
     if (!response.ok || updated.error) {
-      window.alert(
+      showQueueActionMessage(
         updated.error ||
         "Impossible de supprimer cette musique."
       );
@@ -1993,14 +1995,50 @@ async function removeSong(index: number, song: Song) {
     if (normalized) {
       setParty(normalized);
     }
+
+    setPendingMobileRemoval(null);
   } catch (error) {
     console.error("Suppression chanson impossible", error);
-
-    window.alert(
+    showQueueActionMessage(
       "Impossible de supprimer cette musique pour le moment."
     );
+  } finally {
+    setRemovingQueuedSong(false);
   }
 }
+
+async function removeSong(index: number, song: Song) {
+  const creatorToken =
+    localStorage.getItem(`mixparty_creator_${code}`) || "";
+
+  const isCreator = Boolean(creatorToken);
+
+  const isOwner = Boolean(
+    song.addedById &&
+    participantId &&
+    song.addedById === participantId
+  );
+
+  if (!isCreator && !isOwner) {
+    showQueueActionMessage(
+      "Tu peux supprimer uniquement les musiques que tu as ajoutées."
+    );
+    return;
+  }
+
+  if (isMobileViewport()) {
+    setPendingMobileRemoval({ index, song });
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Supprimer « ${song.title} » de la file ?`
+  );
+
+  if (!confirmed) return;
+  await performRemoveSong(index, song);
+}
+
   async function vote(index: number) {
     const votedSong = party?.songs[index];
     if (votedSong) {
@@ -2025,7 +2063,7 @@ async function removeSong(index: number, song: Song) {
     const updated = await response.json();
 
     if (updated.error) {
-      alert(updated.error);
+      showQueueActionMessage(updated.error);
       return;
     }
 
@@ -3748,6 +3786,56 @@ async function removeSong(index: number, song: Song) {
               </span>
             </button>
           </section>
+        </div>
+      ) : null}
+
+      {queueActionNotice ? (
+        <div
+          className="pointer-events-none fixed left-1/2 top-[calc(env(safe-area-inset-top)+14px)] z-[10040] w-[calc(100%-24px)] max-w-sm -translate-x-1/2 md:hidden"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="rounded-[18px] border border-white/[0.10] bg-[#0d0917]/95 px-4 py-3 text-center text-[11px] font-black text-white shadow-[0_18px_55px_rgba(0,0,0,.55)] backdrop-blur-xl">
+            {queueActionNotice}
+          </div>
+        </div>
+      ) : null}
+
+      {pendingMobileRemoval ? (
+        <div className="fixed inset-0 z-[10030] grid place-items-center bg-[#05030c]/72 px-4 backdrop-blur-md md:hidden">
+          <div className="w-full max-w-sm rounded-[26px] border border-white/[0.10] bg-[#0b0813]/98 p-5 shadow-[0_30px_90px_rgba(0,0,0,.62)]">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl border border-rose-300/15 bg-rose-500/10 text-rose-200">
+              <Trash2 className="h-5 w-5" />
+            </div>
+            <p className="mt-4 text-[10px] font-black uppercase tracking-[.18em] text-rose-300">
+              File d’attente
+            </p>
+            <h2 className="mt-2 text-lg font-black text-white">
+              Supprimer cette musique ?
+            </h2>
+            <p className="mt-2 line-clamp-2 text-sm leading-5 text-white/50">
+              « {pendingMobileRemoval.song.title} » sera retirée de la file. La musique en cours continuera de jouer.
+            </p>
+
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingMobileRemoval(null)}
+                disabled={removingQueuedSong}
+                className="min-h-12 rounded-2xl border border-white/10 bg-white/[0.04] px-3 text-sm font-black text-white/60 disabled:opacity-50"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => void performRemoveSong(pendingMobileRemoval.index, pendingMobileRemoval.song)}
+                disabled={removingQueuedSong}
+                className="min-h-12 rounded-2xl border border-rose-300/20 bg-rose-500/80 px-3 text-sm font-black text-white shadow-[0_12px_32px_rgba(244,63,94,.18)] disabled:cursor-wait disabled:opacity-60"
+              >
+                {removingQueuedSong ? "Suppression…" : "Supprimer"}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 
