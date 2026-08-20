@@ -412,6 +412,7 @@ type MusicBrainArtistsResponse = {
   summary: {
     totalArtists: number;
     suspiciousArtists: number;
+    blockedArtists: number;
   };
   items: MusicBrainArtistAdminItem[];
 };
@@ -949,7 +950,7 @@ export default function MusicBrainAdminPage() {
     }
 
     const confirmed = window.confirm(
-      `Supprimer définitivement « ${item.name} » de MusicBrain ?\n\n${item.songCount} morceau(x) lié(s) seront également retirés du catalogue MusicBrain.\n\nUtilise ce bouton uniquement si cet artiste est faux / inexistant.`
+      `Supprimer définitivement « ${item.name} » de MusicBrain ?\n\n${item.songCount} morceau(x) lié(s) seront également retirés du catalogue MusicBrain.\n\nL’artiste sera aussi placé en liste noire et ne pourra plus revenir automatiquement.\n\nUtilise ce bouton uniquement si cet artiste est faux / inexistant.`
     );
     if (!confirmed) return;
 
@@ -3754,11 +3755,12 @@ export default function MusicBrainAdminPage() {
           <p className="mt-4 max-w-2xl text-sm leading-6 text-white/50">
             Cette vue remonte en priorité les identités suspectes : noms de chaîne YouTube,
             artistes génériques, entrées très courtes, artistes dont tous les morceaux viennent
-            d’un fallback ou ont une faible confiance.
+            d’un fallback ou ont une faible confiance. Un artiste supprimé est maintenant gardé
+            en liste noire afin que MusicBrain refuse de le réapprendre plus tard.
           </p>
         </div>
 
-        <div className="grid min-w-[250px] grid-cols-2 gap-2">
+        <div className="grid min-w-[360px] grid-cols-3 gap-2">
           <div className="rounded-2xl border border-amber-300/10 bg-amber-500/[0.06] px-4 py-4 text-center">
             <p className="text-xl font-black text-amber-300">
               {number.format(artistAdminData?.summary.suspiciousArtists ?? 0)}
@@ -3773,6 +3775,14 @@ export default function MusicBrainAdminPage() {
             </p>
             <p className="mt-1 text-[9px] font-black uppercase tracking-[.12em] text-white/35">
               artistes
+            </p>
+          </div>
+          <div className="rounded-2xl border border-red-300/10 bg-red-500/[0.06] px-4 py-4 text-center">
+            <p className="text-xl font-black text-red-300">
+              {number.format(artistAdminData?.summary.blockedArtists ?? 0)}
+            </p>
+            <p className="mt-1 text-[9px] font-black uppercase tracking-[.12em] text-white/35">
+              bloqués
             </p>
           </div>
         </div>

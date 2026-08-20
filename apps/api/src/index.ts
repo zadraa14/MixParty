@@ -304,6 +304,10 @@ type MusicBrainDatabase = {
   songs: Record<string, MusicBrainSong>;
   transitions: Record<string, MusicBrainTransition>;
   artistRelations: Record<string, MusicBrainArtistRelation>;
+  blockedArtists: Record<
+    string,
+    { key: string; name: string; deletedAt: number; deletedSongCount: number }
+  >;
 };
 
 
@@ -1058,6 +1062,7 @@ function createEmptyMusicBrain(): MusicBrainDatabase {
     songs: {},
     transitions: {},
     artistRelations: {},
+    blockedArtists: {},
   };
 }
 
@@ -1084,6 +1089,10 @@ function loadMusicBrain() {
         version: 2,
         transitions: parsed.transitions || {},
         artistRelations: parsed.artistRelations || {},
+        blockedArtists:
+          parsed.blockedArtists && typeof parsed.blockedArtists === "object"
+            ? parsed.blockedArtists
+            : {},
       };
       mergeMusicBrainArtists();
     }
@@ -1092,6 +1101,31 @@ function loadMusicBrain() {
     musicBrain = createEmptyMusicBrain();
     saveMusicBrain();
   }
+}
+
+
+function musicBrainBlockedArtistKey(value: unknown) {
+  return normalizeMusicQuery(cleanArtistName(String(value || "")));
+}
+
+function isMusicBrainArtistBlocked(value: unknown) {
+  const key = musicBrainBlockedArtistKey(value);
+  return Boolean(key && musicBrain.blockedArtists?.[key]);
+}
+
+function blockMusicBrainArtist(artistName: unknown, deletedSongCount = 0) {
+  const name = cleanArtistName(String(artistName || ""));
+  const key = musicBrainBlockedArtistKey(name);
+  if (!key) return false;
+
+  musicBrain.blockedArtists ||= {};
+  musicBrain.blockedArtists[key] = {
+    key,
+    name: name || key,
+    deletedAt: Date.now(),
+    deletedSongCount: Math.max(0, Number(deletedSongCount || 0)),
+  };
+  return true;
 }
 
 function mergeMusicBrainArtists() {
@@ -1109,6 +1143,11 @@ function mergeMusicBrainArtists() {
     const artistName = credits.main;
     const artistKey = normalizeMusicQuery(artistName) || "unknown";
     const now = Date.now();
+
+    if (isMusicBrainArtistBlocked(artistName)) {
+      delete musicBrain.songs[song.videoId];
+      continue;
+    }
 
     song.title = cleanDisplayTitle(song.title || "");
     song.artistKey = artistKey;
@@ -1208,6 +1247,7 @@ function recordArtistRelation(mainName: string, collaboratorName: string) {
   const mainKey = normalizeMusicQuery(mainName);
   const collaboratorKey = normalizeMusicQuery(collaboratorName);
   if (!mainKey || !collaboratorKey || mainKey === collaboratorKey) return;
+  if (isMusicBrainArtistBlocked(mainName) || isMusicBrainArtistBlocked(collaboratorName)) return;
   const now = Date.now();
   const collaborator = musicBrain.artists[collaboratorKey] || {
     key: collaboratorKey, name: cleanArtistName(collaboratorName), aliases: [], collaborators: {},
@@ -1643,6 +1683,8 @@ function musicBrainLearningDecision(params: {
   const titleText = `${params.rawTitle || ""} ${params.title || ""}`.toLowerCase();
   const confidence = Number(params.metadataConfidence || 0);
 
+  const blockedArtist = isMusicBrainArtistBlocked(artistName);
+
   const clearlyUnknown =
     !artistKey ||
     /^(unknown|inconnu|artiste inconnu|unknown artist|various artists?|divers)$/i.test(artistName);
@@ -1678,6 +1720,7 @@ function musicBrainLearningDecision(params: {
       (confidence >= 85 && officialChannel && artistChannelMatch)
     );
 
+  if (blockedArtist) return { learn: false, reason: "artiste_bloque" };
   if (junkContent) return { learn: false, reason: "contenu_non_musical" };
   if (clearlyUnknown) return { learn: false, reason: "artiste_inconnu" };
   if (genericArtist && !genericButStrong) return { learn: false, reason: "artiste_generique" };
@@ -13389,10 +13432,44 @@ app.get("/partybrain/musicbrain-artists", (req, res) => {
       suspiciousArtists: Object.values(musicBrain.artists).filter(
         (artist) => musicBrainArtistAdminSuspicion(artist).suspicious
       ).length,
+      blockedArtists: Object.keys(musicBrain.blockedArtists || {}).length,
     },
     items: pageItems,
   });
 });
+
+
+app.get("/partybrain/musicbrain-artists/blocked", (_req, res) => {
+  const items = Object.values(musicBrain.blockedArtists || {})
+    .slice()
+    .sort((a, b) => Number(b.deletedAt || 0) - Number(a.deletedAt || 0));
+
+  return res.json({
+    generatedAt: Date.now(),
+    total: items.length,
+    items,
+  });
+});
+
+app.delete("/partybrain/maintenance/musicbrain-artists/blocked/:artistKey", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  const artistKey = String(req.params.artistKey || "").trim();
+  const blocked = musicBrain.blockedArtists?.[artistKey];
+
+  if (!blocked) {
+    return res.status(404).json({ error: "Artiste bloqué introuvable." });
+  }
+
+  delete musicBrain.blockedArtists[artistKey];
+  saveMusicBrain();
+
+  return res.json({
+    ok: true,
+    message: `« ${blocked.name} » est de nouveau autorisé à être appris par MusicBrain.`,
+  });
+});
+
 
 app.delete("/partybrain/maintenance/musicbrain-artists/:artistKey", (req, res) => {
   if (!requirePartyBrainAdmin(req, res)) return;
@@ -13407,6 +13484,9 @@ app.delete("/partybrain/maintenance/musicbrain-artists/:artistKey", (req, res) =
   const songs = Object.values(artist.songs || {});
   const videoIds = new Set(songs.map((song) => song.videoId));
   const deletedSongCount = songs.length;
+
+  // Permanent tombstone: this identity is remembered even after deletion.
+  blockMusicBrainArtist(artist.name, deletedSongCount);
 
   // Remove artist catalog bucket.
   delete musicBrain.artists[artistKey];
@@ -13453,7 +13533,7 @@ app.delete("/partybrain/maintenance/musicbrain-artists/:artistKey", (req, res) =
     ok: true,
     artistName: artist.name,
     deletedSongCount,
-    message: `Artiste « ${artist.name} » supprimé de MusicBrain avec ${deletedSongCount} morceau(x) associé(s).`,
+    message: `Artiste « ${artist.name} » supprimé de MusicBrain avec ${deletedSongCount} morceau(x) associé(s) et ajouté à la liste noire pour empêcher son retour.`,
   });
 });
 
