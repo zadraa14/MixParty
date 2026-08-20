@@ -13216,6 +13216,113 @@ function updateMusicBrainSongIdentity(
   };
 }
 
+
+function musicBrainSafeAutoRenameCandidate(song: MusicBrainSong) {
+  const suggestion = musicBrainRenameSuggestion(song);
+  const issues = musicBrainRenameIssues(song);
+
+  const currentTitle = String(song.title || "").trim();
+  const currentArtist = String(song.artistName || "").trim();
+  const proposedTitle = String(suggestion.proposedTitle || "").trim();
+  const proposedArtist = String(suggestion.proposedArtistName || "").trim();
+
+  const titleChanged =
+    normalizeMusicQuery(proposedTitle) !== normalizeMusicQuery(currentTitle);
+  const artistUnchanged =
+    normalizeMusicQuery(proposedArtist) === normalizeMusicQuery(currentArtist);
+
+  const deterministicTitleIssue =
+    issues.includes("titre_youtube_brut") ||
+    issues.includes("titre_avec_balise_video") ||
+    issues.includes("artiste_dans_le_titre");
+
+  const safeTitle =
+    proposedTitle.length >= 2 &&
+    proposedTitle.length <= 240 &&
+    !/\b(official\s*(music\s*)?video|official\s*audio|lyrics?|clip\s*officiel|audio\s*officiel|visuali[sz]er)\b/i.test(
+      proposedTitle
+    );
+
+  return Boolean(
+    titleChanged &&
+    artistUnchanged &&
+    deterministicTitleIssue &&
+    safeTitle
+  );
+}
+
+function musicBrainSafeAutoRenamePreview() {
+  const candidates = Object.values(musicBrain.songs).filter(
+    musicBrainSafeAutoRenameCandidate
+  );
+
+  return {
+    generatedAt: Date.now(),
+    count: candidates.length,
+    examples: candidates.slice(0, 12).map((song) => {
+      const suggestion = musicBrainRenameSuggestion(song);
+      return {
+        videoId: song.videoId,
+        artistName: song.artistName,
+        currentTitle: song.title,
+        proposedTitle: suggestion.proposedTitle,
+      };
+    }),
+  };
+}
+
+app.get("/partybrain/musicbrain-renaming/auto-preview", (_req, res) => {
+  return res.json(musicBrainSafeAutoRenamePreview());
+});
+
+app.post("/partybrain/maintenance/musicbrain-renaming/auto-safe", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  const candidates = Object.values(musicBrain.songs).filter(
+    musicBrainSafeAutoRenameCandidate
+  );
+
+  let renamed = 0;
+  const errors: Array<{ videoId: string; reason: string }> = [];
+
+  for (const song of candidates) {
+    const suggestion = musicBrainRenameSuggestion(song);
+    const result = updateMusicBrainSongIdentity(
+      song,
+      suggestion.proposedTitle,
+      song.artistName
+    );
+
+    if (result.ok) {
+      renamed += 1;
+    } else {
+      errors.push({
+        videoId: song.videoId,
+        reason: result.reason,
+      });
+    }
+  }
+
+  if (renamed > 0) {
+    musicBrain.updatedAt = Date.now();
+    saveMusicBrain();
+    saveKaraokeAudit();
+  }
+
+  const after = musicBrainSafeAutoRenamePreview();
+
+  return res.json({
+    ok: true,
+    renamed,
+    errors,
+    remainingSafe: after.count,
+    message:
+      renamed > 0
+        ? `${renamed} titre(s) sûr(s) nettoyé(s) automatiquement. Aucun artiste n’a été modifié.`
+        : "Aucun titre sûr à corriger automatiquement.",
+  });
+});
+
 app.get("/partybrain/musicbrain-renaming/items", (req, res) => {
   const requestedFilter = String(req.query?.filter || "issues").trim().toLowerCase();
   const filter: MusicBrainRenameFilter =
@@ -13287,6 +13394,9 @@ app.get("/partybrain/musicbrain-renaming/items", (req, res) => {
       ).length,
       renamed: Object.values(musicBrain.songs).filter(
         (song) => Boolean(song.manualRenamedAt)
+      ).length,
+      safeAutoRename: Object.values(musicBrain.songs).filter(
+        musicBrainSafeAutoRenameCandidate
       ).length,
     },
     items: pageItems,

@@ -419,6 +419,7 @@ type MusicBrainRenameResponse = {
     totalSongs: number;
     issues: number;
     renamed: number;
+    safeAutoRename: number;
   };
   items: MusicBrainRenameItem[];
 };
@@ -570,6 +571,7 @@ export default function MusicBrainAdminPage() {
     Record<string, { title: string; artistName: string }>
   >({});
   const [renameSavingVideoId, setRenameSavingVideoId] = useState("");
+  const [renameAutoLoading, setRenameAutoLoading] = useState(false);
 
   const [activeAdminTab, setActiveAdminTab] = useState<
     | "overview"
@@ -980,6 +982,60 @@ export default function MusicBrainAdminPage() {
       );
     } finally {
       setRenameSavingVideoId("");
+    }
+  }
+
+
+  async function runSafeAutoRename() {
+    if (!adminToken.trim()) {
+      setRenameError(
+        "Entre le code administrateur Railway dans Maintenance avant de lancer la correction automatique."
+      );
+      return;
+    }
+
+    const count = Number(renameData?.summary.safeAutoRename || 0);
+    if (count <= 0) {
+      setRenameError("Aucun titre sûr à corriger automatiquement.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Corriger automatiquement ${count} titre(s) sûr(s) ?\n\nCette action nettoie uniquement les titres évidents (Clip officiel, Official Video, artiste répété, etc.). Aucun nom d’artiste ne sera modifié automatiquement.`
+    );
+    if (!confirmed) return;
+
+    setRenameAutoLoading(true);
+    setRenameError("");
+    setRenameMessage("");
+
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/maintenance/musicbrain-renaming/auto-safe`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-partybrain-admin-token": adminToken.trim(),
+          },
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Correction automatique impossible.");
+      }
+
+      setRenameMessage(data?.message || "Correction automatique terminée.");
+      setRenameDrafts({});
+      await loadRenameItems(renameFilter, renameSearch);
+      await loadStats();
+    } catch (err) {
+      setRenameError(
+        err instanceof Error ? err.message : "Correction automatique impossible."
+      );
+    } finally {
+      setRenameAutoLoading(false);
     }
   }
 
@@ -3567,6 +3623,37 @@ export default function MusicBrainAdminPage() {
               <p className="mt-1 text-[9px] font-black uppercase tracking-[.12em] text-white/35">{label}</p>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-[22px] border border-emerald-300/12 bg-emerald-500/[0.055] p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-emerald-300" />
+              <p className="text-xs font-black uppercase tracking-[.14em] text-emerald-200">
+                Correction automatique sûre
+              </p>
+            </div>
+            <p className="mt-1 text-sm font-bold text-white/70">
+              {number.format(renameData?.summary.safeAutoRename ?? 0)} titre(s) peuvent être nettoyés automatiquement.
+            </p>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-white/35">
+              Uniquement les cas évidents : Clip officiel, Official Video, Lyrics, artiste répété dans le titre, etc.
+              Les noms d’artistes ne sont jamais modifiés par ce bouton.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => void runSafeAutoRename()}
+            disabled={renameAutoLoading || Number(renameData?.summary.safeAutoRename || 0) <= 0}
+            className="shrink-0 rounded-2xl border border-emerald-300/20 bg-gradient-to-r from-emerald-600/70 to-cyan-600/70 px-5 py-3 text-xs font-black text-white shadow-[0_12px_30px_rgba(16,185,129,.14)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-35"
+          >
+            {renameAutoLoading
+              ? "Correction en cours…"
+              : `Corriger les ${number.format(renameData?.summary.safeAutoRename ?? 0)} titres sûrs`}
+          </button>
         </div>
       </div>
 
