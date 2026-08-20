@@ -13475,12 +13475,17 @@ app.delete("/partybrain/maintenance/musicbrain-artists/blocked/:artistKey", (req
 app.post("/partybrain/maintenance/musicbrain-artists/bulk-delete", (req, res) => {
   if (!requirePartyBrainAdmin(req, res)) return;
 
-  const rawKeys = Array.isArray(req.body?.artistKeys) ? req.body.artistKeys : [];
-  const artistKeys = [...new Set(
-    rawKeys
-      .map((value: unknown) => String(value || "").trim())
-      .filter(Boolean)
-  )].slice(0, 500);
+  const rawKeys: unknown[] = Array.isArray(req.body?.artistKeys)
+    ? req.body.artistKeys
+    : [];
+
+  const artistKeys: string[] = Array.from(
+    new Set<string>(
+      rawKeys
+        .map((value: unknown) => String(value || "").trim())
+        .filter((value): value is string => Boolean(value))
+    )
+  ).slice(0, 500);
 
   if (!artistKeys.length) {
     return res.status(400).json({ error: "Aucun artiste sélectionné." });
