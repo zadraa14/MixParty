@@ -811,6 +811,9 @@ type Party = {
   voteStreakSongKeys: string[];
 };
 
+const PARTY_NO_MUSIC_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+const PARTY_GENERAL_INACTIVITY_TIMEOUT_MS = 6 * 60 * 60 * 1000;
+
 let parties: Party[] = [];
 
 if(fs.existsSync(dataFilePath)){
@@ -875,9 +878,6 @@ function generateCode() {
 }
 
 
-
-const PARTY_NO_MUSIC_TIMEOUT_MS = 2 * 60 * 60 * 1000;
-const PARTY_GENERAL_INACTIVITY_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 
 function partyLastActivityAt(party: Party) {
   return Number(party.lastActivityAt || party.createdAt || 0);
