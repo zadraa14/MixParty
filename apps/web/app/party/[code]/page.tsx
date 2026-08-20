@@ -5569,11 +5569,6 @@ const hasVoted = Boolean(
                                       {artist.name.slice(0, 1).toUpperCase()}
                                     </span>
                                   )}
-                                  {index < 3 && !activeSearchCategory ? (
-                                    <span className="absolute bottom-0 right-0 grid h-4 w-4 place-items-center rounded-full border border-[#0a0912] bg-fuchsia-500 text-[5px] font-black text-white">
-                                      {index + 1}
-                                    </span>
-                                  ) : null}
                                 </span>
                                 <span className="mt-1.5 block truncate text-[8px] font-black text-white/65">
                                   {artist.name}
