@@ -2014,7 +2014,7 @@ export default function MusicBrainAdminPage() {
     artiste_inconnu: "Artiste inconnu",
     artiste_generique: "Artiste générique",
     musicbrain_rejected: "Refusé par MusicBrain",
-    autofix_available: "Correction automatique sûre disponible",
+    autofix_available: "Nettoyage automatique sûr disponible",
     autovalidated_consensus: "Validé automatiquement par consensus",
     manual_artist_review: "Artiste réellement ambigu",
     manual_metadata_review: "Métadonnées encore ambiguës",
@@ -3636,11 +3636,10 @@ export default function MusicBrainAdminPage() {
               </p>
             </div>
             <p className="mt-1 text-sm font-bold text-white/70">
-              {number.format(renameData?.summary.safeAutoRename ?? 0)} titre(s) peuvent être nettoyés automatiquement.
+              {number.format(renameData?.summary.safeAutoRename ?? 0)} titre(s) peuvent encore être nettoyés automatiquement.
             </p>
             <p className="mt-1 max-w-2xl text-xs leading-5 text-white/35">
-              Uniquement les cas évidents : Clip officiel, Official Video, Lyrics, artiste répété dans le titre, etc.
-              Les noms d’artistes ne sont jamais modifiés par ce bouton.
+              Le moteur nettoie maintenant aussi les variantes entre parenthèses/crochets, les hashtags et les préfixes « ARTISTE - TITRE » quand l’identité du morceau reste sûre. Les noms d’artistes ne sont jamais modifiés par ce bouton.
             </p>
           </div>
 

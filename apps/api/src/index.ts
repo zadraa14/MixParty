@@ -13019,7 +13019,18 @@ function musicBrainRenameSuggestion(song: MusicBrainSong) {
     song.rawTitle || song.title || "",
     proposedArtist || currentArtist
   );
-  const proposedTitle = cleanDisplayTitle(cleanedFromRaw || song.title || "");
+
+  const deterministicTitle =
+    typeof deterministicMusicBrainTitleCleanup === "function"
+      ? deterministicMusicBrainTitleCleanup(
+          cleanedFromRaw || song.rawTitle || song.title || "",
+          proposedArtist || currentArtist
+        )
+      : "";
+
+  const proposedTitle = cleanDisplayTitle(
+    deterministicTitle || cleanedFromRaw || song.title || ""
+  );
 
   return {
     proposedTitle: proposedTitle || cleanDisplayTitle(song.title || ""),
@@ -13217,38 +13228,121 @@ function updateMusicBrainSongIdentity(
 }
 
 
-function musicBrainSafeAutoRenameCandidate(song: MusicBrainSong) {
-  const suggestion = musicBrainRenameSuggestion(song);
-  const issues = musicBrainRenameIssues(song);
 
-  const currentTitle = String(song.title || "").trim();
-  const currentArtist = String(song.artistName || "").trim();
-  const proposedTitle = String(suggestion.proposedTitle || "").trim();
-  const proposedArtist = String(suggestion.proposedArtistName || "").trim();
+function deterministicMusicBrainTitleCleanup(
+  rawValue: unknown,
+  artistNameValue: unknown
+) {
+  let value = String(rawValue || "").trim();
+  const artistName = String(artistNameValue || "").trim();
 
-  const titleChanged =
-    normalizeMusicQuery(proposedTitle) !== normalizeMusicQuery(currentTitle);
-  const artistUnchanged =
-    normalizeMusicQuery(proposedArtist) === normalizeMusicQuery(currentArtist);
+  if (!value) return "";
 
-  const deterministicTitleIssue =
-    issues.includes("titre_youtube_brut") ||
-    issues.includes("titre_avec_balise_video") ||
-    issues.includes("artiste_dans_le_titre");
+  // Decode/normalize using the same core helpers already used by MusicBrain.
+  value = coreDecodeHtmlEntities(value);
+  value = value.replace(/\s+/g, " ").trim();
 
-  const safeTitle =
-    proposedTitle.length >= 2 &&
-    proposedTitle.length <= 240 &&
-    !/\b(official\s*(music\s*)?video|official\s*audio|lyrics?|clip\s*officiel|audio\s*officiel|visuali[sz]er)\b/i.test(
-      proposedTitle
+  // Remove a leading artist prefix when YouTube stores "ARTIST - TITLE".
+  if (artistName) {
+    const escapedArtist = artistName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    value = value.replace(
+      new RegExp(`^\\s*${escapedArtist}\\s*[-–—:|]\\s*`, "i"),
+      ""
+    );
+  }
+
+  // Remove common YouTube/media tags when they are isolated in brackets/parentheses.
+  const disposableBracketChunk =
+    /\s*[\[(]\s*(?:(?:clip|music\s*video|video|audio|lyrics?|paroles|visuali[sz]er|live\s*session|official|officiel(?:le)?|version\s*officielle|audio\s*officiel(?:le)?|clip\s*officiel(?:le)?|official\s*audio|official\s*video|official\s*music\s*video|4k|hd|hq)(?:\s+(?:official|officiel(?:le)?|video|audio|lyrics?|clip|music|version|4k|hd|hq))*)\s*[\])]\s*/gi;
+
+  value = value.replace(disposableBracketChunk, " ");
+
+  // Remove trailing bare tags frequently appended outside brackets.
+  value = value
+    .replace(
+      /\s*[-–—|:]\s*(?:official\s*(?:music\s*)?video|official\s*audio|clip\s*officiel(?:le)?|audio\s*officiel(?:le)?|lyrics?|paroles|visuali[sz]er|video\s*officielle?|version\s*officielle?|4k|hd|hq)\s*$/i,
+      ""
+    )
+    .replace(
+      /\s+(?:official\s*(?:music\s*)?video|official\s*audio|clip\s*officiel(?:le)?|audio\s*officiel(?:le)?|lyrics?|paroles|visuali[sz]er|video\s*officielle?|version\s*officielle?)\s*$/i,
+      ""
     );
 
-  return Boolean(
-    titleChanged &&
-    artistUnchanged &&
-    deterministicTitleIssue &&
-    safeTitle
+  // Remove trailing hashtags. They are discovery metadata, not the track title.
+  value = value.replace(/(?:\s+#[\p{L}\p{N}_-]+)+\s*$/gu, "");
+
+  // Clean leftover separators/spaces.
+  value = value
+    .replace(/\s+/g, " ")
+    .replace(/\s*[-–—|:]\s*$/, "")
+    .replace(/^[\-–—|:]+\s*/, "")
+    .trim();
+
+  return cleanDisplayTitle(value);
+}
+
+function musicBrainDeterministicRenameProposal(song: MusicBrainSong) {
+  const currentTitle = String(song.title || "").trim();
+  const sourceTitle = String(song.rawTitle || song.title || "").trim();
+
+  const fromCurrent = deterministicMusicBrainTitleCleanup(
+    currentTitle,
+    song.artistName
   );
+  const fromRaw = deterministicMusicBrainTitleCleanup(
+    sourceTitle,
+    song.artistName
+  );
+
+  const proposedTitle =
+    fromCurrent &&
+    normalizeMusicQuery(fromCurrent) !== normalizeMusicQuery(currentTitle)
+      ? fromCurrent
+      : fromRaw &&
+          normalizeMusicQuery(fromRaw) !== normalizeMusicQuery(currentTitle)
+        ? fromRaw
+        : currentTitle;
+
+  return {
+    proposedTitle,
+    changed:
+      Boolean(proposedTitle) &&
+      normalizeMusicQuery(proposedTitle) !== normalizeMusicQuery(currentTitle),
+  };
+}
+
+function musicBrainSafeAutoRenameCandidate(song: MusicBrainSong) {
+  const deterministic = musicBrainDeterministicRenameProposal(song);
+  const currentTitle = String(song.title || "").trim();
+  const proposedTitle = String(deterministic.proposedTitle || "").trim();
+
+  if (!deterministic.changed) return false;
+
+  // Never auto-rename a suspicious/unknown artist record. Those stay manual.
+  if (
+    !song.artistName ||
+    isSuspiciousArtistName(song.artistName) ||
+    song.metadataSource === "QUERY_FALLBACK" ||
+    Number(song.metadataConfidence || 0) < 45
+  ) {
+    return false;
+  }
+
+  // Avoid destructive cleanups: the resulting title must retain enough identity.
+  const currentKey = normalizeMusicQuery(currentTitle);
+  const proposedKey = normalizeMusicQuery(proposedTitle);
+  if (!proposedKey || proposedKey.length < 2) return false;
+
+  const proposedTokens = new Set(proposedKey.split(/\s+/).filter(Boolean));
+  const currentTokens = currentKey.split(/\s+/).filter(Boolean);
+  const retainedTokens = currentTokens.filter((token) => proposedTokens.has(token));
+
+  // At least one meaningful token and a sane relative length must remain.
+  if (retainedTokens.length === 0) return false;
+  if (proposedTitle.length < Math.min(3, currentTitle.length)) return false;
+  if (proposedTitle.length > currentTitle.length + 8) return false;
+
+  return true;
 }
 
 function musicBrainSafeAutoRenamePreview() {
@@ -13260,12 +13354,12 @@ function musicBrainSafeAutoRenamePreview() {
     generatedAt: Date.now(),
     count: candidates.length,
     examples: candidates.slice(0, 12).map((song) => {
-      const suggestion = musicBrainRenameSuggestion(song);
+      const deterministic = musicBrainDeterministicRenameProposal(song);
       return {
         videoId: song.videoId,
         artistName: song.artistName,
         currentTitle: song.title,
-        proposedTitle: suggestion.proposedTitle,
+        proposedTitle: deterministic.proposedTitle,
       };
     }),
   };
@@ -13286,10 +13380,10 @@ app.post("/partybrain/maintenance/musicbrain-renaming/auto-safe", (req, res) => 
   const errors: Array<{ videoId: string; reason: string }> = [];
 
   for (const song of candidates) {
-    const suggestion = musicBrainRenameSuggestion(song);
+    const deterministic = musicBrainDeterministicRenameProposal(song);
     const result = updateMusicBrainSongIdentity(
       song,
-      suggestion.proposedTitle,
+      deterministic.proposedTitle,
       song.artistName
     );
 
