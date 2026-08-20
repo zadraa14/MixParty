@@ -539,9 +539,6 @@ export default function ProfilePage() {
   const [featuredDraft, setFeaturedDraft] = useState<string[]>([]);
   const [savingFeaturedBadges, setSavingFeaturedBadges] = useState(false);
   const [featuredBadgesMessage, setFeaturedBadgesMessage] = useState("");
-  const [activeProfileTab, setActiveProfileTab] = useState<
-    "profile" | "badges" | "stats" | "history"
-  >("profile");
   const [historyVisibleCount, setHistoryVisibleCount] = useState(5);
   const [showDetailedStats, setShowDetailedStats] = useState(false);
   const profileTopRef = useRef<HTMLDivElement | null>(null);
@@ -1091,23 +1088,6 @@ export default function ProfilePage() {
     }
   }
 
-
-  function navigateProfileTab(
-    tab: "profile" | "badges" | "stats" | "history",
-  ) {
-    setActiveProfileTab(tab);
-
-    const target =
-      tab === "profile"
-        ? profileTopRef.current
-        : tab === "badges"
-          ? badgesSectionRef.current
-          : tab === "stats"
-            ? statsSectionRef.current
-            : historySectionRef.current;
-
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }
 
   const allProfileHistory = [...(account?.history || [])].sort(
     (a, b) =>
@@ -1898,49 +1878,6 @@ export default function ProfilePage() {
             )}
           </div>
         </section>
-
-        <section className="mt-6 grid gap-4 sm:grid-cols-4">
-          {[
-            { id: "profile" as const, label: "Profil", detail: "Identité & avatar", Icon: UserRound },
-            { id: "badges" as const, label: "Badges", detail: "Mes badges", Icon: Medal },
-            { id: "stats" as const, label: "Statistiques", detail: "Progression", Icon: Trophy },
-            { id: "history" as const, label: "Historique", detail: "Tes soirées", Icon: History },
-          ].map(({ id, label, detail, Icon }) => {
-            const active = activeProfileTab === id;
-
-            return (
-              <button
-                key={id}
-                type="button"
-                onClick={() => navigateProfileTab(id)}
-                className={`group flex min-h-20 items-center gap-3 rounded-[24px] border px-4 text-left backdrop-blur-xl transition hover:-translate-y-0.5 ${
-                  active
-                    ? "border-fuchsia-300/25 bg-gradient-to-br from-fuchsia-500/15 to-violet-500/10 shadow-[0_16px_45px_rgba(168,85,247,.12)]"
-                    : "border-white/[0.08] bg-white/[0.035] hover:border-white/15 hover:bg-white/[0.055]"
-                }`}
-              >
-                <span
-                  className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl border ${
-                    active
-                      ? "border-fuchsia-300/20 bg-fuchsia-500/10 text-fuchsia-200"
-                      : "border-white/10 bg-white/[0.04] text-white/45"
-                  }`}
-                >
-                  <Icon className="h-5 w-5" />
-                </span>
-                <span className="min-w-0">
-                  <span className="block font-[family:var(--font-exo-2)] text-sm font-black text-white/80">
-                    {label}
-                  </span>
-                  <span className="mt-0.5 block text-[11px] font-bold text-white/35">
-                    {detail}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
-        </section>
-
 
         <section className="mt-6 overflow-hidden rounded-[30px] border border-violet-300/10 bg-[radial-gradient(circle_at_0%_0%,rgba(124,58,237,.14),transparent_42%),linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.025))] shadow-[0_22px_70px_rgba(0,0,0,.24)] backdrop-blur-2xl">
           <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
