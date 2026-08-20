@@ -1089,11 +1089,13 @@ export default function ProfilePage() {
   }
 
 
-  const allProfileHistory = [...(account?.history || [])].sort(
-    (a, b) =>
-      (b.endedAt || b.lastSeenAt || b.joinedAt) -
-      (a.endedAt || a.lastSeenAt || a.joinedAt),
-  );
+  const allProfileHistory = [...(account?.history || [])]
+    .filter((entry) => Boolean(entry.endedAt || entry.resultCounted))
+    .sort(
+      (a, b) =>
+        (b.endedAt || b.lastSeenAt || b.joinedAt) -
+        (a.endedAt || a.lastSeenAt || a.joinedAt),
+    );
 
   const profileHistory = allProfileHistory.slice(0, historyVisibleCount);
   const hasMoreHistory = historyVisibleCount < allProfileHistory.length;
