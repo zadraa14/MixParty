@@ -13471,6 +13471,87 @@ app.delete("/partybrain/maintenance/musicbrain-artists/blocked/:artistKey", (req
 });
 
 
+
+app.post("/partybrain/maintenance/musicbrain-artists/bulk-delete", (req, res) => {
+  if (!requirePartyBrainAdmin(req, res)) return;
+
+  const rawKeys = Array.isArray(req.body?.artistKeys) ? req.body.artistKeys : [];
+  const artistKeys = [...new Set(
+    rawKeys
+      .map((value: unknown) => String(value || "").trim())
+      .filter(Boolean)
+  )].slice(0, 500);
+
+  if (!artistKeys.length) {
+    return res.status(400).json({ error: "Aucun artiste sélectionné." });
+  }
+
+  let deletedArtists = 0;
+  let deletedSongs = 0;
+  const missing: string[] = [];
+
+  for (const artistKey of artistKeys) {
+    const artist = musicBrain.artists[artistKey];
+    if (!artist) {
+      missing.push(artistKey);
+      continue;
+    }
+
+    const songs = Object.values(artist.songs || {});
+    const videoIds = new Set(songs.map((song) => song.videoId));
+
+    blockMusicBrainArtist(artist.name, songs.length);
+
+    delete musicBrain.artists[artistKey];
+
+    for (const videoId of videoIds) {
+      delete musicBrain.songs[videoId];
+      delete karaokeAudit.entries[videoId];
+      delete karaokeLyricsAudit.entries[videoId];
+      delete karaokeSyncEngineState.entries[videoId];
+    }
+
+    for (const [transitionKey, transition] of Object.entries(musicBrain.transitions)) {
+      if (
+        videoIds.has(transition.fromVideoId) ||
+        videoIds.has(transition.toVideoId)
+      ) {
+        delete musicBrain.transitions[transitionKey];
+      }
+    }
+
+    for (const [relationKey, relation] of Object.entries(musicBrain.artistRelations)) {
+      if (relation.fromKey === artistKey || relation.toKey === artistKey) {
+        delete musicBrain.artistRelations[relationKey];
+      }
+    }
+
+    for (const remainingArtist of Object.values(musicBrain.artists)) {
+      if (remainingArtist.collaborators?.[artistKey]) {
+        delete remainingArtist.collaborators[artistKey];
+      }
+    }
+
+    deletedArtists += 1;
+    deletedSongs += songs.length;
+  }
+
+  musicBrain.updatedAt = Date.now();
+  saveMusicBrain();
+  saveKaraokeAudit();
+  saveKaraokeLyricsAudit();
+  saveKaraokeSyncEngineState();
+
+  return res.json({
+    ok: true,
+    deletedArtists,
+    deletedSongs,
+    missing,
+    message: `${deletedArtists} artiste(s) supprimé(s), ${deletedSongs} morceau(x) retiré(s) et toutes les identités supprimées ont été ajoutées à la liste noire.`,
+  });
+});
+
+
 app.delete("/partybrain/maintenance/musicbrain-artists/:artistKey", (req, res) => {
   if (!requirePartyBrainAdmin(req, res)) return;
 

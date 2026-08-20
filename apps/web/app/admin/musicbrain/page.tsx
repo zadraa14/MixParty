@@ -613,6 +613,8 @@ export default function MusicBrainAdminPage() {
   const [artistAdminFilter, setArtistAdminFilter] = useState<"suspects" | "all">("suspects");
   const [artistAdminSearch, setArtistAdminSearch] = useState("");
   const [artistDeleteKey, setArtistDeleteKey] = useState("");
+  const [selectedArtistKeys, setSelectedArtistKeys] = useState<Record<string, boolean>>({});
+  const [artistBulkDeleteLoading, setArtistBulkDeleteLoading] = useState(false);
 
   const [renameData, setRenameData] = useState<MusicBrainRenameResponse | null>(null);
   const [renameLoading, setRenameLoading] = useState(false);
@@ -984,6 +986,102 @@ export default function MusicBrainAdminPage() {
       );
     } finally {
       setArtistDeleteKey("");
+    }
+  }
+
+
+  function toggleArtistSelection(artistKey: string) {
+    setSelectedArtistKeys((current) => ({
+      ...current,
+      [artistKey]: !current[artistKey],
+    }));
+  }
+
+  function toggleAllVisibleArtists() {
+    const items = artistAdminData?.items || [];
+    if (!items.length) return;
+
+    const allSelected = items.every((item) => selectedArtistKeys[item.key]);
+
+    if (allSelected) {
+      setSelectedArtistKeys((current) => {
+        const next = { ...current };
+        for (const item of items) delete next[item.key];
+        return next;
+      });
+      return;
+    }
+
+    setSelectedArtistKeys((current) => {
+      const next = { ...current };
+      for (const item of items) next[item.key] = true;
+      return next;
+    });
+  }
+
+  async function deleteSelectedMusicBrainArtists() {
+    if (!adminToken.trim()) {
+      setArtistAdminError(
+        "Entre le code administrateur Railway dans Maintenance avant de supprimer des artistes."
+      );
+      return;
+    }
+
+    const artistKeys = Object.entries(selectedArtistKeys)
+      .filter(([, selected]) => selected)
+      .map(([key]) => key);
+
+    if (!artistKeys.length) {
+      setArtistAdminError("Sélectionne au moins un artiste.");
+      return;
+    }
+
+    const selectedItems = (artistAdminData?.items || []).filter((item) =>
+      artistKeys.includes(item.key)
+    );
+    const songCount = selectedItems.reduce(
+      (total, item) => total + Number(item.songCount || 0),
+      0
+    );
+
+    const confirmed = window.confirm(
+      `Supprimer ${artistKeys.length} artiste(s) sélectionné(s) ?\n\nEnviron ${songCount} morceau(x) lié(s) seront retirés de MusicBrain.\n\nTous les artistes supprimés seront ajoutés à la liste noire et ne pourront plus revenir automatiquement.`
+    );
+    if (!confirmed) return;
+
+    setArtistBulkDeleteLoading(true);
+    setArtistAdminError("");
+    setArtistAdminMessage("");
+
+    try {
+      const response = await fetch(
+        `${getApiBaseUrl()}/partybrain/maintenance/musicbrain-artists/bulk-delete`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-partybrain-admin-token": adminToken.trim(),
+          },
+          body: JSON.stringify({ artistKeys }),
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || "Suppression multiple impossible.");
+      }
+
+      setArtistAdminMessage(data?.message || "Suppression multiple terminée.");
+      setSelectedArtistKeys({});
+      await loadMusicBrainArtists(artistAdminFilter, artistAdminSearch);
+      await loadStats();
+      await loadRenameItems(renameFilter, renameSearch);
+    } catch (err) {
+      setArtistAdminError(
+        err instanceof Error ? err.message : "Suppression multiple impossible."
+      );
+    } finally {
+      setArtistBulkDeleteLoading(false);
     }
   }
 
@@ -3870,6 +3968,40 @@ export default function MusicBrainAdminPage() {
         </p>
       </div>
 
+      <div className="mb-5 flex flex-col gap-3 rounded-[22px] border border-white/8 bg-black/20 p-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={toggleAllVisibleArtists}
+            className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-black text-white/65 transition hover:bg-white/[0.07]"
+          >
+            {(artistAdminData?.items || []).length > 0 &&
+            (artistAdminData?.items || []).every((item) => selectedArtistKeys[item.key])
+              ? "Tout désélectionner"
+              : "Tout sélectionner"}
+          </button>
+
+          <span className="rounded-full border border-cyan-300/10 bg-cyan-500/[0.06] px-3 py-1.5 text-[10px] font-black uppercase tracking-[.10em] text-cyan-200">
+            {Object.values(selectedArtistKeys).filter(Boolean).length} sélectionné(s)
+          </span>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => void deleteSelectedMusicBrainArtists()}
+          disabled={
+            artistBulkDeleteLoading ||
+            Object.values(selectedArtistKeys).filter(Boolean).length === 0
+          }
+          className="inline-flex items-center justify-center gap-2 rounded-2xl border border-red-300/15 bg-red-500/10 px-5 py-3 text-xs font-black text-red-100 transition hover:bg-red-500/15 disabled:cursor-not-allowed disabled:opacity-35"
+        >
+          <Trash2 className="h-4 w-4" />
+          {artistBulkDeleteLoading
+            ? "Suppression en cours…"
+            : `Supprimer la sélection (${Object.values(selectedArtistKeys).filter(Boolean).length})`}
+        </button>
+      </div>
+
       <div className="space-y-4">
         {(artistAdminData?.items || []).map((item) => {
           const reasonLabels: Record<string, string> = {
@@ -3885,8 +4017,26 @@ export default function MusicBrainAdminPage() {
           return (
             <article
               key={item.key}
-              className="rounded-[26px] border border-white/[0.08] bg-[linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.018))] p-4 shadow-[0_16px_44px_rgba(0,0,0,.18)]"
+              className={`rounded-[26px] border p-4 shadow-[0_16px_44px_rgba(0,0,0,.18)] transition ${
+                selectedArtistKeys[item.key]
+                  ? "border-cyan-300/25 bg-cyan-500/[0.055]"
+                  : "border-white/[0.08] bg-[linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.018))]"
+              }`}
             >
+              <div className="mb-3 flex items-center justify-between">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-white/8 bg-black/20 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(selectedArtistKeys[item.key])}
+                    onChange={() => toggleArtistSelection(item.key)}
+                    className="h-4 w-4 accent-cyan-400"
+                  />
+                  <span className="text-[10px] font-black uppercase tracking-[.10em] text-white/50">
+                    Sélectionner
+                  </span>
+                </label>
+              </div>
+
               <div className="grid gap-5 xl:grid-cols-[minmax(220px,.72fr)_minmax(0,1.6fr)_180px] xl:items-start">
                 <div>
                   <div className="flex items-start gap-3">
